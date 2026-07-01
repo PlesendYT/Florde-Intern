@@ -635,7 +635,7 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 
 document.getElementById('btn-close-settings').addEventListener('click', () => {
   document.getElementById('settings-modal').classList.add('hidden');
-  if (document.getElementById('start-menu').classList.contains('hidden') === false) {
+  if (document.getElementById('app-view').classList.contains('hidden')) {
     showStartMenu();
   }
 });
@@ -657,6 +657,9 @@ document.getElementById('btn-save-settings').addEventListener('click', async () 
 
   await saveSettingsToDisk();
   document.getElementById('settings-modal').classList.add('hidden');
+  if (document.getElementById('app-view').classList.contains('hidden')) {
+    showStartMenu();
+  }
 });
 
 // ==================== INIT ====================

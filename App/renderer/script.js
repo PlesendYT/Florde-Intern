@@ -264,10 +264,41 @@ async function sendMessage() {
       document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
     });
     chatHistory.push({ role: 'assistant', content: fullText });
+
+    // Extract code blocks into the editor
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    let match;
+    let lastCode = null;
+    let lastLang = null;
+    while ((match = codeBlockRegex.exec(fullText)) !== null) {
+      lastLang = match[1] || null;
+      lastCode = match[2].trim();
+    }
+    if (lastCode && editor) {
+      editor.setValue(lastCode);
+      if (lastLang) {
+        const langMap = { py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript' };
+        const normalizedLang = langMap[lastLang] || lastLang;
+        const langSelect = document.getElementById('language-select');
+        const option = Array.from(langSelect.options).find(o => o.value === normalizedLang);
+        if (option) {
+          langSelect.value = normalizedLang;
+          monaco.editor.setModelLanguage(editor.getModel(), normalizedLang);
+        }
+      }
+    }
   } catch (err) {
     messageDiv.textContent = `Error: ${err.message}`;
   }
 }
+
+document.getElementById('btn-send-to-chat').addEventListener('click', () => {
+  const code = editor ? editor.getValue() : '';
+  if (code.trim()) {
+    document.getElementById('chat-input').value = `Here is my current code:\n\`\`\`\n${code}\n\`\`\`\n\nPlease help me modify it: `;
+    document.getElementById('chat-input').focus();
+  }
+});
 
 document.getElementById('btn-send').addEventListener('click', sendMessage);
 document.getElementById('chat-input').addEventListener('keydown', (e) => {

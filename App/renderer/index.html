@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Florde</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <div class="titlebar">
+      <span class="titlebar-text">Florde</span>
+      <div class="titlebar-controls">
+        <button id="btn-save">Save</button>
+        <button id="btn-open">Open</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="editor-panel">
+        <div class="panel-header">
+          <span id="file-name">untitled.py</span>
+          <select id="language-select">
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+          </select>
+        </div>
+        <div id="editor-container"></div>
+      </div>
+
+      <div class="chat-panel">
+        <div class="panel-header">
+          <span>AI Chat</span>
+          <select id="provider-select">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="mistral">Mistral</option>
+            <option value="ollama">Ollama (Local)</option>
+          </select>
+          <button id="btn-settings">&#9881;</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="chat-input-area">
+          <textarea id="chat-input" placeholder="Describe what you want to build..." rows="3"></textarea>
+          <button id="btn-send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Settings</h2>
+      <div class="settings-form">
+        <label>OpenAI API Key</label>
+        <input type="password" id="key-openai" placeholder="sk-..." />
+        <label>OpenAI Model</label>
+        <select id="model-openai">
+          <option value="gpt-4o">GPT-4o</option>
+          <option value="gpt-4o-mini">GPT-4o Mini</option>
+        </select>
+        <label>DeepSeek API Key</label>
+        <input type="password" id="key-deepseek" placeholder="sk-..." />
+        <label>DeepSeek Model</label>
+        <select id="model-deepseek">
+          <option value="deepseek-chat">DeepSeek Chat</option>
+          <option value="deepseek-coder">DeepSeek Coder</option>
+        </select>
+        <label>Mistral API Key</label>
+        <input type="password" id="key-mistral" placeholder="..." />
+        <label>Mistral Model</label>
+        <select id="model-mistral">
+          <option value="mistral-large-latest">Mistral Large</option>
+          <option value="mistral-medium-latest">Mistral Medium</option>
+        </select>
+        <label>Ollama Base URL</label>
+        <input type="text" id="url-ollama" value="http://localhost:11434" />
+        <label>Ollama Model</label>
+        <input type="text" id="model-ollama" value="codellama" />
+      </div>
+      <div class="modal-actions">
+        <button id="btn-save-settings" class="btn btn-primary">Save</button>
+        <button id="btn-close-settings" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

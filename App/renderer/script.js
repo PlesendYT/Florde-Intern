@@ -146,12 +146,18 @@ async function loadProjectList() {
   const container = document.getElementById('project-items');
   const projects = await window.electronAPI.listProjects();
   container.innerHTML = '';
-  if (projects.length === 0) { container.innerHTML = '<div style="color:#666;font-size:0.85rem;padding:0.5rem;">No projects yet</div>'; return; }
+  document.getElementById('project-list').classList.remove('hidden');
+  if (projects.length === 0) {
+    container.innerHTML = '<div style="color:#666;font-size:0.85rem;padding:0.5rem;">No projects yet</div>';
+    return;
+  }
   for (const p of projects) {
     const div = document.createElement('div');
     div.className = 'project-item';
-    div.innerHTML = `<span>${p.name}</span><button class="project-del" data-name="${p.name}">&times;</button>`;
-    div.querySelector('span').addEventListener('click', () => openProject(p.name));
+    div.innerHTML = `<span style="flex:1">${p.name}</span><button class="project-del" data-name="${p.name}">&times;</button>`;
+    div.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') openProject(p.name);
+    });
     div.querySelector('.project-del').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`Delete project "${p.name}"?`)) {
@@ -161,7 +167,6 @@ async function loadProjectList() {
     });
     container.appendChild(div);
   }
-  document.getElementById('project-list').classList.remove('hidden');
 }
 
 document.getElementById('btn-start-new').addEventListener('click', () => {
@@ -174,16 +179,22 @@ document.getElementById('btn-cancel-new').addEventListener('click', () => {
   document.getElementById('new-project-modal').classList.add('hidden');
 });
 
-document.getElementById('btn-create-project').addEventListener('click', async () => {
+function createProjectFromInput() {
   const name = document.getElementById('new-project-name').value.trim();
-  if (!name) return;
-  const ok = await window.electronAPI.createProject(name);
-  if (ok) {
-    document.getElementById('new-project-modal').classList.add('hidden');
-    await openProject(name);
-  } else {
-    alert('Project already exists');
-  }
+  if (!name) { alert('Please enter a project name'); return; }
+  window.electronAPI.createProject(name).then(ok => {
+    if (ok) {
+      document.getElementById('new-project-modal').classList.add('hidden');
+      openProject(name);
+    } else {
+      alert('Project already exists');
+    }
+  });
+}
+
+document.getElementById('btn-create-project').addEventListener('click', createProjectFromInput);
+document.getElementById('new-project-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') createProjectFromInput();
 });
 
 document.getElementById('btn-start-open').addEventListener('click', loadProjectList);

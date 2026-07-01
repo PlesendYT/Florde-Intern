@@ -7,14 +7,50 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app-container">
-    <div class="titlebar">
-      <span class="titlebar-text">Florde</span>
-      <div class="titlebar-controls">
-        <button id="btn-save">Save</button>
-        <button id="btn-open">Open</button>
+  <!-- Start Menu -->
+  <div id="start-menu">
+    <div class="start-center">
+      <h1 class="start-logo">Florde</h1>
+      <p class="start-tagline">AI-powered code generation from plain language</p>
+      <div class="start-buttons">
+        <button id="btn-start-new" class="btn btn-primary">New Project</button>
+        <button id="btn-start-open" class="btn btn-secondary">Open Project</button>
+        <button id="btn-start-settings" class="btn btn-secondary">Settings</button>
+      </div>
+      <div id="project-list" class="project-list hidden">
+        <h3>Recent Projects</h3>
+        <div id="project-items"></div>
       </div>
     </div>
+  </div>
+
+  <!-- New Project Modal -->
+  <div id="new-project-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>New Project</h2>
+      <div class="settings-form">
+        <label>Project Name</label>
+        <input type="text" id="new-project-name" placeholder="my-project" />
+      </div>
+      <div class="modal-actions">
+        <button id="btn-create-project" class="btn btn-primary">Create</button>
+        <button id="btn-cancel-new" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app-view" class="hidden">
+    <div class="titlebar">
+      <span class="titlebar-text">Florde</span>
+      <span id="project-name" class="titlebar-project"></span>
+      <div class="titlebar-controls">
+        <button id="btn-back-menu">Menu</button>
+        <button id="btn-save-all">Save All</button>
+      </div>
+    </div>
+
+    <div id="file-tabs" class="file-tabs"></div>
 
     <div class="main-content">
       <div class="editor-panel">
@@ -52,6 +88,7 @@
     </div>
   </div>
 
+  <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content">
       <h2>Settings</h2>

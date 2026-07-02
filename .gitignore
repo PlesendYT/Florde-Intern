@@ -1,3 +1,34 @@
+# Dependencies
 node_modules/
+App/node_modules/
+
+# Build output
 dist/
 App/dist/
+App_Installer/*.exe
+Website/App_Download/*.exe
+*.exe
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+App/*.log
+
+

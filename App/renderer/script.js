@@ -118,6 +118,161 @@ class OllamaProvider {
   }
 }
 
+class GrokProvider extends OpenAIProvider {
+  constructor(apiKey, model = 'grok-4.3') { super(apiKey, model); this.apiKey = apiKey; this.model = model; }
+  async sendMessage(messages, onChunk) {
+    const r = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, stream: true }),
+    });
+    return this._stream(r, onChunk);
+  }
+  async sendWithTools(messages, tools) {
+    const r = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message || { content: '', role: 'assistant' };
+  }
+  async sendPlain(messages) {
+    const r = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+}
+
+class AnthropicProvider {
+  constructor(apiKey, model = 'claude-sonnet-4-6') { this.apiKey = apiKey; this.model = model; }
+  async _headers() {
+    return { 'Content-Type': 'application/json', 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01' };
+  }
+  _toAnthropic(messages) {
+    const msgs = [], sys = [];
+    for (const m of messages) {
+      if (m.role === 'system') { sys.push(m.content); continue; }
+      msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
+    }
+    return { system: sys.join('\n'), messages: msgs };
+  }
+  _fromAnthropic(data) {
+    const content = data.content?.map(c => c.text).filter(Boolean).join('') || '';
+    const toolCalls = data.content?.filter(c => c.type === 'tool_use').map(c => ({
+      id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.input) }
+    }));
+    return { content, role: 'assistant', tool_calls: toolCalls };
+  }
+  async sendMessage(messages, onChunk) {
+    const { system, messages: msgs } = this._toAnthropic(messages);
+    const body = { model: this.model, max_tokens: 8192, messages: msgs, stream: true };
+    if (system) body.system = system;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: await this._headers(),
+      body: JSON.stringify(body),
+    });
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let full = '';
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        try { const p = JSON.parse(data); if (p.type === 'content_block_delta' && p.delta?.text) { full += p.delta.text; onChunk(full); } } catch {}
+      }
+    }
+    return full;
+  }
+  async sendWithTools(messages, tools) {
+    const { system, messages: msgs } = this._toAnthropic(messages);
+    const body = { model: this.model, max_tokens: 8192, messages: msgs };
+    if (system) body.system = system;
+    if (tools) body.tools = tools.map(t => t.function);
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: await this._headers(),
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    return this._fromAnthropic(data);
+  }
+  async sendPlain(messages) {
+    const { system, messages: msgs } = this._toAnthropic(messages);
+    const body = { model: this.model, max_tokens: 8192, messages: msgs };
+    if (system) body.system = system;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: await this._headers(),
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    return this._fromAnthropic(data).content;
+  }
+}
+
+class GeminiProvider {
+  constructor(apiKey, model = 'gemini-2.5-flash') { this.apiKey = apiKey; this.model = model; }
+  _toGemini(messages) {
+    const contents = [];
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content || '' }] });
+    }
+    return contents;
+  }
+  _fromGemini(data) {
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).filter(Boolean).join('') || '';
+    return { content: text, role: 'assistant' };
+  }
+  async sendMessage(messages, onChunk) {
+    const contents = this._toGemini(messages);
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents }),
+    });
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let full = '';
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6);
+        if (d === '[DONE]') continue;
+        try { const p = JSON.parse(d); const t = p.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || ''; if (t) { full += t; onChunk(full); } } catch {}
+      }
+    }
+    return full;
+  }
+  async sendWithTools(messages, tools) {
+    const contents = this._toGemini(messages);
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents }),
+    });
+    const data = await r.json();
+    return this._fromGemini(data);
+  }
+  async sendPlain(messages) {
+    const contents = this._toGemini(messages);
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents }),
+    });
+    const data = await r.json();
+    return this._fromGemini(data).content;
+  }
+}
+
 // ==================== STATE ====================
 
 let providers = {};
@@ -179,15 +334,21 @@ function getToolResultMsg(toolCallId, name, result) {
 async function loadSettings() {
   const s = await window.electronAPI.getSettings();
   if (!s) return;
-  if (s.openaiKey) { document.getElementById('key-openai').value = s.openaiKey; providers.openai = new OpenAIProvider(s.openaiKey, s.openaiModel || 'gpt-4o'); }
+  if (s.openaiKey) { document.getElementById('key-openai').value = s.openaiKey; providers.openai = new OpenAIProvider(s.openaiKey, s.openaiModel || 'gpt-5.5'); }
   if (s.deepseekKey) { document.getElementById('key-deepseek').value = s.deepseekKey; providers.deepseek = new DeepSeekProvider(s.deepseekKey, s.deepseekModel || 'deepseek-chat'); }
   if (s.mistralKey) { document.getElementById('key-mistral').value = s.mistralKey; providers.mistral = new MistralProvider(s.mistralKey, s.mistralModel || 'mistral-large-latest'); }
+  if (s.anthropicKey) { document.getElementById('key-anthropic').value = s.anthropicKey; providers.anthropic = new AnthropicProvider(s.anthropicKey, s.anthropicModel || 'claude-sonnet-4-6'); }
+  if (s.geminiKey) { document.getElementById('key-gemini').value = s.geminiKey; providers.gemini = new GeminiProvider(s.geminiKey, s.geminiModel || 'gemini-2.5-flash'); }
+  if (s.grokKey) { document.getElementById('key-grok').value = s.grokKey; providers.grok = new GrokProvider(s.grokKey, s.grokModel || 'grok-4.3'); }
   if (s.ollamaUrl) document.getElementById('url-ollama').value = s.ollamaUrl;
   if (s.ollamaModel) document.getElementById('model-ollama').value = s.ollamaModel;
   providers.ollama = new OllamaProvider(s.ollamaUrl || 'http://localhost:11434', s.ollamaModel || 'codellama');
   if (s.openaiModel) document.getElementById('model-openai').value = s.openaiModel;
   if (s.deepseekModel) document.getElementById('model-deepseek').value = s.deepseekModel;
   if (s.mistralModel) document.getElementById('model-mistral').value = s.mistralModel;
+  if (s.anthropicModel) document.getElementById('model-anthropic').value = s.anthropicModel;
+  if (s.geminiModel) document.getElementById('model-gemini').value = s.geminiModel;
+  if (s.grokModel) document.getElementById('model-grok').value = s.grokModel;
   await initSandbox();
   try {
     const autoStart = await window.electronAPI.getAutoStart();
@@ -204,6 +365,12 @@ async function saveSettingsToDisk() {
     deepseekModel: document.getElementById('model-deepseek').value,
     mistralKey: document.getElementById('key-mistral').value,
     mistralModel: document.getElementById('model-mistral').value,
+    anthropicKey: document.getElementById('key-anthropic').value,
+    anthropicModel: document.getElementById('model-anthropic').value,
+    geminiKey: document.getElementById('key-gemini').value,
+    geminiModel: document.getElementById('model-gemini').value,
+    grokKey: document.getElementById('key-grok').value,
+    grokModel: document.getElementById('model-grok').value,
     ollamaUrl: document.getElementById('url-ollama').value,
     ollamaModel: document.getElementById('model-ollama').value,
     theme: currentTheme,
@@ -675,6 +842,7 @@ function renderChat() {
     container.appendChild(div);
   }
   container.scrollTop = container.scrollHeight;
+  updateTokenCount();
 }
 
 function formatMessageContent(content) {
@@ -689,6 +857,20 @@ function formatMessageContent(content) {
   return html.replace(/\n/g, '<br/>');
 }
 
+function countTokens(text) {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+function updateTokenCount() {
+  const input = document.getElementById('chat-input').value;
+  const inputTokens = countTokens(input);
+  let historyTokens = 0;
+  for (const m of chatHistory) historyTokens += countTokens(m.content);
+  document.getElementById('token-count').textContent = `~${inputTokens} input · ~${historyTokens} session`;
+}
+
+document.getElementById('chat-input').addEventListener('input', updateTokenCount);
 document.getElementById('chat-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
@@ -1095,12 +1277,21 @@ document.getElementById('btn-save-settings').addEventListener('click', async () 
   const dm = document.getElementById('model-deepseek').value;
   const mk = document.getElementById('key-mistral').value;
   const mm = document.getElementById('model-mistral').value;
+  const ak = document.getElementById('key-anthropic').value;
+  const am = document.getElementById('model-anthropic').value;
+  const gk = document.getElementById('key-gemini').value;
+  const gm = document.getElementById('model-gemini').value;
+  const xk = document.getElementById('key-grok').value;
+  const xm = document.getElementById('model-grok').value;
   const ou = document.getElementById('url-ollama').value;
   const olm = document.getElementById('model-ollama').value;
 
   if (ok) providers.openai = new OpenAIProvider(ok, om);
   if (dk) providers.deepseek = new DeepSeekProvider(dk, dm);
   if (mk) providers.mistral = new MistralProvider(mk, mm);
+  if (ak) providers.anthropic = new AnthropicProvider(ak, am);
+  if (gk) providers.gemini = new GeminiProvider(gk, gm);
+  if (xk) providers.grok = new GrokProvider(xk, xm);
   providers.ollama = new OllamaProvider(ou, olm);
 
   await saveSettingsToDisk();
@@ -1126,7 +1317,12 @@ async function openTab(filename, switchTo = true) {
 
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', (e) => {
-    if (e.target === m && !m.id.includes('diff')) m.classList.add('hidden');
+    if (e.target === m && !m.id.includes('diff')) {
+      m.classList.add('hidden');
+      if (document.getElementById('start-menu').classList.contains('hidden') && document.getElementById('app-view').classList.contains('hidden')) {
+        showStartMenu();
+      }
+    }
   });
 });
 

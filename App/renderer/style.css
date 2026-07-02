@@ -152,7 +152,8 @@ body {
 .titlebar-controls button:hover { background: var(--hover); border-color: var(--accent); }
 
 /* ==================== APP BODY ==================== */
-.app-body { display: flex; height: calc(100vh - 42px); }
+#app-view { display: flex; flex-direction: column; height: 100vh; }
+.app-body { display: flex; flex: 1; min-height: 0; }
 
 /* ==================== SIDEBAR ==================== */
 .sidebar {
@@ -217,13 +218,36 @@ body {
 .chat-msg { padding: 0.6rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.5; white-space: pre-wrap; }
 .chat-msg.user { background: var(--chat-user); align-self: flex-end; max-width: 85%; }
 .chat-msg.ai { background: var(--chat-ai); align-self: flex-start; max-width: 100%; border: 1px solid var(--border); }
-.chat-msg .msg-label { font-size: 0.7rem; font-weight: 600; margin-bottom: 0.3rem; color: var(--text3); }
+.chat-msg .msg-label { font-size: 0.7rem; font-weight: 600; margin-bottom: 0.3rem; color: var(--text3); display: flex; align-items: center; gap: 0.5rem; }
+.chat-msg .copy-msg { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 0.65rem; opacity: 0; transition: opacity 0.2s; padding: 0.1rem 0.3rem; border-radius: 3px; margin-left: auto; }
+.chat-msg:hover .copy-msg { opacity: 1; }
+.chat-msg .copy-msg:hover { background: rgba(255,255,255,0.1); color: var(--text); }
 .chat-msg code { background: rgba(0,0,0,0.2); padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.8rem; }
+.chat-msg pre {
+  position: relative; background: rgba(0,0,0,0.3); border-radius: 6px;
+  padding: 0.5rem; margin: 0.4rem 0; overflow-x: auto;
+  border: 1px solid var(--border);
+}
+.chat-msg pre code {
+  background: none; padding: 0; font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.78rem; line-height: 1.4;
+}
+.chat-msg pre .copy-code {
+  position: absolute; top: 4px; right: 4px;
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text2);
+  font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 4px; cursor: pointer; opacity: 0;
+  transition: opacity 0.2s;
+}
+.chat-msg pre:hover .copy-code { opacity: 1; }
+.chat-msg pre .copy-code:hover { background: var(--accent); color: white; }
 .chat-msg .file-block {
-  display: block; margin: 0.3rem 0; padding: 0.3rem 0.5rem;
-  background: rgba(124,58,237,0.1); border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+  display: block; margin: 0.3rem 0; padding: 0.5rem;
+  background: rgba(124,58,237,0.1); border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+  border: 1px solid rgba(124,58,237,0.2);
 }
 .chat-msg .file-block:hover { background: rgba(124,58,237,0.2); }
+.chat-msg .file-block pre { margin: 0.3rem 0 0 0; }
+.chat-msg .file-block-name { font-weight: 600; color: var(--accent); }
 .chat-input-area { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.5rem; border-top: 1px solid var(--border); }
 .chat-input-area textarea {
   flex: 1; background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
@@ -279,8 +303,64 @@ body {
 .search-result-text { color: var(--text); margin-top: 0.2rem; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; }
 .search-result-text mark { background: rgba(124,58,237,0.3); color: var(--text); }
 
+/* ==================== SHORTCUT HELP ==================== */
+.shortcut-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.3rem 0; font-size: 0.85rem; }
+.shortcut-row kbd {
+  display: inline-block; min-width: 80px; padding: 0.15rem 0.5rem;
+  background: rgba(255,255,255,0.08); border: 1px solid var(--border2);
+  border-radius: 4px; font-family: monospace; font-size: 0.8rem; text-align: center;
+  color: var(--accent);
+}
+.shortcut-row span { color: var(--text2); }
+
 /* ==================== DIFF ==================== */
 #diff-container { overflow: hidden; }
+
+/* ==================== STATUS BAR ==================== */
+.status-bar {
+  display: flex; align-items: center; gap: 1rem; padding: 0.2rem 0.8rem;
+  background: var(--bg2); border-top: 1px solid var(--border);
+  font-size: 0.72rem; color: var(--text3); user-select: none; flex-shrink: 0;
+}
+.status-bar span { display: flex; align-items: center; gap: 0.3rem; }
+#status-mode { color: var(--accent); font-weight: 600; }
+#status-language { margin-left: auto; }
+#status-encoding { color: var(--text3); }
+
+/* ==================== PLUGIN MARKETPLACE ==================== */
+.plugin-list { display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; max-height: 30vh; }
+.plugin-card {
+  display: flex; align-items: flex-start; gap: 1rem; padding: 0.8rem 1rem;
+  background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px;
+  transition: border-color 0.15s, opacity 0.3s; opacity: 0.85;
+}
+.plugin-card:hover { border-color: var(--accent); opacity: 1; }
+.plugin-card-icon {
+  width: 36px; height: 36px; border-radius: 8px; display: flex;
+  align-items: center; justify-content: center; font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.plugin-card .plugin-info { flex: 1; min-width: 0; }
+.plugin-card .plugin-name { font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 0.15rem; }
+.plugin-card .plugin-desc { font-size: 0.78rem; color: var(--text2); line-height: 1.4; }
+.plugin-card .plugin-author { font-size: 0.7rem; color: var(--text3); margin-top: 0.25rem; }
+.plugin-card .plugin-status {
+  font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 4px;
+  flex-shrink: 0; align-self: center;
+}
+.plugin-status.installed {
+   background: var(--accent); color: #fff; opacity: 0.8;
+}
+.plugin-status.enabled {
+   background: var(--success, #22c55e); color: #fff;
+}
+.plugin-card .plugin-toggle {
+  flex-shrink: 0; align-self: center; background: none; border: 1px solid var(--border2);
+  color: var(--text2); padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer;
+  font-size: 0.75rem; transition: all 0.15s;
+}
+.plugin-card .plugin-toggle:hover { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.08); }
+.plugin-card .plugin-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ==================== FOOTER ==================== */
 .footer { text-align: center; padding: 2rem; color: var(--text3); }

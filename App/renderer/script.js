@@ -1,12 +1,44 @@
+// ==================== DYNAMIC TOOLS ====================
+
+function getActiveTools() {
+  const baseTools = [
+    { type: 'function', function: { name: 'read_file', description: 'Read a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
+    { type: 'function', function: { name: 'write_file', description: 'Create or overwrite a file in the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, content: { type: 'string', description: 'Full file content' } }, required: ['path', 'content'] } } },
+    { type: 'function', function: { name: 'delete_file', description: 'Delete a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
+    { type: 'function', function: { name: 'list_files', description: 'List all files in the project', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'search_files', description: 'Search for text across all project files', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text to search for' } }, required: ['query'] } } },
+    { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' } }, required: ['command'] } } },
+  ];
+  const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
+  return [...baseTools, ...pluginTools];
+}
+
+window.__updateTools = function() {
+  if (typeof pluginRegistry !== 'undefined' && pluginRegistry._loaded) {
+    if (document.getElementById('marketplace-list')) renderPluginMarketplace();
+  }
+};
+
 // ==================== AI PROVIDERS ====================
 
+function fetchWithTimeout(url, options, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 class OpenAIProvider {
-  constructor(apiKey, model = 'gpt-4o') { this.apiKey = apiKey; this.model = model; }
-  async sendMessage(messages, onChunk) {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+  constructor(apiKey, model = 'gpt-4o') { this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://api.openai.com/v1/chat/completions'; }
+  async _post(url, body, timeoutMs = 60000) {
+    const r = await fetchWithTimeout(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
-    });
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) throw new Error(`${this.constructor.name} API error: ${r.status} ${r.statusText}`);
+    return r;
+  }
+  async sendMessage(messages, onChunk) {
+    const r = await this._post(this.baseUrl, { model: this.model, messages, stream: true }, 120000);
     return this._stream(r, onChunk);
   }
   async _stream(r, onChunk) {
@@ -25,68 +57,53 @@ class OpenAIProvider {
     return full;
   }
   async sendWithTools(messages, tools) {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
-    });
+    const r = await this._post(this.baseUrl, { model: this.model, messages, tools, tool_choice: 'auto', stream: false });
     const data = await r.json();
     return data.choices?.[0]?.message || { content: '', role: 'assistant' };
   }
   async sendPlain(messages) {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: false }),
-    });
+    const r = await this._post(this.baseUrl, { model: this.model, messages, stream: false });
     const data = await r.json();
     return data.choices?.[0]?.message?.content || '';
   }
 }
 
 class DeepSeekProvider extends OpenAIProvider {
-  constructor(apiKey, model = 'deepseek-chat') { super(apiKey, 'deepseek-chat'); this.apiKey = apiKey; this.model = model; }
-  async sendMessage(messages, onChunk) {
-    const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  constructor(apiKey, model = 'deepseek-chat') { super(apiKey, 'deepseek-chat'); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://api.deepseek.com/v1/chat/completions'; }
+  async _post(url, body, timeoutMs = 60000) {
+    const r = await fetchWithTimeout(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
-    });
-    return this._stream(r, onChunk);
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`DeepSeek API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    return r;
   }
 }
 
 class MistralProvider extends OpenAIProvider {
-  constructor(apiKey, model = 'mistral-large-latest') { super(apiKey, model); this.apiKey = apiKey; this.model = model; }
-  async sendMessage(messages, onChunk) {
-    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
+  constructor(apiKey, model = 'mistral-large-latest') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://api.mistral.ai/v1/chat/completions'; }
+  async _post(url, body, timeoutMs = 60000) {
+    const r = await fetchWithTimeout(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
-    });
-    return this._stream(r, onChunk);
-  }
-  async sendWithTools(messages, tools) {
-    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
-    });
-    const data = await r.json();
-    return data.choices?.[0]?.message || { content: '', role: 'assistant' };
-  }
-  async sendPlain(messages) {
-    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: false }),
-    });
-    const data = await r.json();
-    return data.choices?.[0]?.message?.content || '';
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`Mistral API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    return r;
   }
 }
 
 class OllamaProvider {
   constructor(baseUrl = 'http://localhost:11434', model = 'codellama') { this.baseUrl = baseUrl.replace(/\/+$/, ''); this.model = model; }
-  async sendMessage(messages, onChunk) {
-    const r = await fetch(`${this.baseUrl}/api/chat`, {
+  async _post(endpoint, body, timeoutMs = 120000) {
+    const r = await fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
-    });
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) throw new Error(`Ollama API error: ${r.status} ${r.statusText}`);
+    return r;
+  }
+  async sendMessage(messages, onChunk) {
+    const r = await this._post('/api/chat', { model: this.model, messages, stream: true });
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
     while (true) {
@@ -100,55 +117,34 @@ class OllamaProvider {
     return full;
   }
   async sendWithTools(messages, tools) {
-    const r = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, tools, stream: false }),
-    });
+    const r = await this._post('/api/chat', { model: this.model, messages, tools, stream: false });
     const data = await r.json();
     const msg = data.message || {};
     return { content: msg.content || '', role: 'assistant', tool_calls: msg.tool_calls };
   }
   async sendPlain(messages) {
-    const r = await fetch(`${this.baseUrl}/api/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, messages, stream: false }),
-    });
+    const r = await this._post('/api/chat', { model: this.model, messages, stream: false });
     const data = await r.json();
     return data.message?.content || '';
   }
 }
 
 class GrokProvider extends OpenAIProvider {
-  constructor(apiKey, model = 'grok-4.3') { super(apiKey, model); this.apiKey = apiKey; this.model = model; }
-  async sendMessage(messages, onChunk) {
-    const r = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: true }),
-    });
-    return this._stream(r, onChunk);
-  }
-  async sendWithTools(messages, tools) {
-    const r = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
-    });
-    const data = await r.json();
-    return data.choices?.[0]?.message || { content: '', role: 'assistant' };
-  }
-  async sendPlain(messages) {
-    const r = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-      body: JSON.stringify({ model: this.model, messages, stream: false }),
-    });
-    const data = await r.json();
-    return data.choices?.[0]?.message?.content || '';
-  }
+  constructor(apiKey, model = 'grok-4.3') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://api.x.ai/v1/chat/completions'; }
 }
 
 class AnthropicProvider {
   constructor(apiKey, model = 'claude-sonnet-4-6') { this.apiKey = apiKey; this.model = model; }
-  async _headers() {
+  _headers() {
     return { 'Content-Type': 'application/json', 'x-api-key': this.apiKey, 'anthropic-version': '2023-06-01' };
+  }
+  async _post(url, body, timeoutMs = 120000) {
+    const r = await fetchWithTimeout(url, {
+      method: 'POST', headers: this._headers(),
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) throw new Error(`Anthropic API error: ${r.status} ${r.statusText}`);
+    return r;
   }
   _toAnthropic(messages) {
     const msgs = [], sys = [];
@@ -169,10 +165,7 @@ class AnthropicProvider {
     const { system, messages: msgs } = this._toAnthropic(messages);
     const body = { model: this.model, max_tokens: 8192, messages: msgs, stream: true };
     if (system) body.system = system;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: await this._headers(),
-      body: JSON.stringify(body),
-    });
+    const r = await this._post('https://api.anthropic.com/v1/messages', body);
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
     let buffer = '';
@@ -206,10 +199,7 @@ class AnthropicProvider {
     const { system, messages: msgs } = this._toAnthropic(messages);
     const body = { model: this.model, max_tokens: 8192, messages: msgs };
     if (system) body.system = system;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST', headers: await this._headers(),
-      body: JSON.stringify(body),
-    });
+    const r = await this._post('https://api.anthropic.com/v1/messages', body);
     const data = await r.json();
     return this._fromAnthropic(data).content;
   }
@@ -217,6 +207,14 @@ class AnthropicProvider {
 
 class GeminiProvider {
   constructor(apiKey, model = 'gemini-2.5-flash') { this.apiKey = apiKey; this.model = model; }
+  async _post(path, body, timeoutMs = 120000) {
+    const r = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) throw new Error(`Gemini API error: ${r.status} ${r.statusText}`);
+    return r;
+  }
   _toGemini(messages) {
     const contents = [];
     for (const m of messages) {
@@ -231,10 +229,7 @@ class GeminiProvider {
   }
   async sendMessage(messages, onChunk) {
     const contents = this._toGemini(messages);
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents }),
-    });
+    const r = await this._post(`streamGenerateContent?alt=sse&key=${this.apiKey}`, { contents });
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
     let buffer = '';
@@ -255,19 +250,13 @@ class GeminiProvider {
   }
   async sendWithTools(messages, tools) {
     const contents = this._toGemini(messages);
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents }),
-    });
+    const r = await this._post(`generateContent?key=${this.apiKey}`, { contents });
     const data = await r.json();
     return this._fromGemini(data);
   }
   async sendPlain(messages) {
     const contents = this._toGemini(messages);
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents }),
-    });
+    const r = await this._post(`generateContent?key=${this.apiKey}`, { contents });
     const data = await r.json();
     return this._fromGemini(data).content;
   }
@@ -291,14 +280,7 @@ let sandboxDir = null;
 
 // ==================== TOOLS ====================
 
-const AI_TOOLS = [
-  { type: 'function', function: { name: 'read_file', description: 'Read a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
-  { type: 'function', function: { name: 'write_file', description: 'Create or overwrite a file in the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, content: { type: 'string', description: 'Full file content' } }, required: ['path', 'content'] } } },
-  { type: 'function', function: { name: 'delete_file', description: 'Delete a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
-  { type: 'function', function: { name: 'list_files', description: 'List all files in the project', parameters: { type: 'object', properties: {} } } },
-  { type: 'function', function: { name: 'search_files', description: 'Search for text across all project files', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text to search for' } }, required: ['query'] } } },
-  { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' } }, required: ['command'] } } },
-];
+// (tools now come from getActiveTools())
 
 function buildSystemPrompt() {
   return `You are Florde AI, an AI coding assistant with direct access to the user's project files.
@@ -322,7 +304,15 @@ RULES:
 
 Project: ${currentProject}
 Type: ${currentProjectType}
-${currentProjectType === 'local' ? 'Notes: This is a local project. exec_command runs in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. exec_command runs in the isolated sandbox directory.'}`;
+${currentProjectType === 'local' ? 'Notes: This is a local project. exec_command runs in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. exec_command runs in the isolated sandbox directory.'}
+
+${getPluginPromptExtensions()}`;
+}
+
+function getPluginPromptExtensions() {
+  if (typeof pluginRegistry === 'undefined') return '';
+  const extensions = pluginRegistry.getActivePromptExtensions();
+  return extensions.map((ext, i) => `--- Plugin Extension (${i + 1}) ---\n${ext}`).join('\n\n');
 }
 
 function getToolResultMsg(toolCallId, name, result) {
@@ -474,11 +464,26 @@ document.getElementById('btn-cancel-new').addEventListener('click', () => {
   document.getElementById('new-project-modal').classList.add('hidden');
 });
 
+const TEMPLATES = {
+  'web-app': { 'index.html': '<!DOCTYPE html><html><head><title>My App</title><link rel="stylesheet" href="style.css"></head><body><h1>Hello World</h1><script src="script.js"></script></body></html>', 'style.css': 'body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; background: #0a0a0f; color: #e0e0e0; }', 'script.js': '// Welcome to your web app\nconsole.log("App is running!");' },
+  'python-script': { 'main.py': '# Welcome to Florde\n\ndef main():\n    print("Hello, World!")\n\nif __name__ == "__main__":\n    main()\n', 'README.md': '# Python Project\n\nGenerated by Florde' },
+  'node-api': { 'index.js': 'const express = require("express");\nconst app = express();\nconst port = process.env.PORT || 3000;\n\napp.get("/", (req, res) => {\n  res.json({ message: "Hello World" });\n});\n\napp.listen(port, () => {\n  console.log(`Server running on port ${port}`);\n});\n', 'package.json': JSON.stringify({ name: 'my-api', version: '1.0.0', main: 'index.js', scripts: { start: 'node index.js' }, dependencies: { express: '^4.18.0' } }, null, 2) },
+  'react-app': { 'index.html': '<!DOCTYPE html><html><head><title>React App</title></head><body><div id="root"></div><script src="https://unpkg.com/react@18/umd/react.development.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script><script src="app.js"></script></body></html>', 'app.js': 'const App = () => {\n  const [count, setCount] = React.useState(0);\n  return React.createElement("div", null,\n    React.createElement("h1", null, "Hello React"),\n    React.createElement("p", null, `Count: ${count}`),\n    React.createElement("button", { onClick: () => setCount(c => c + 1) }, "Increment")\n  );\n};\nReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));\n' },
+  'cli-tool': { 'cli.py': '#!/usr/bin/env python3\nimport argparse\n\ndef main():\n    parser = argparse.ArgumentParser(description="CLI Tool")\n    parser.add_argument("--name", default="World", help="Name to greet")\n    args = parser.parse_args()\n    print(f"Hello, {args.name}!")\n\nif __name__ == "__main__":\n    main()\n', 'README.md': '# CLI Tool\n\nA command-line tool generated by Florde\n\nUsage: `python cli.py --name YourName`' }
+};
+
 function createProjectFromInput() {
   const name = document.getElementById('new-project-name').value.trim();
+  const template = document.getElementById('project-template').value;
   if (!name) { alert('Please enter a project name'); return; }
-  window.electronAPI.createSandboxProject(name).then(ok => {
+  window.electronAPI.createSandboxProject(name).then(async ok => {
     if (ok) {
+      if (template && TEMPLATES[template]) {
+        for (const [file, content] of Object.entries(TEMPLATES[template])) {
+          await window.electronAPI.projectWriteFile(name, file, content);
+        }
+        logToTerminal(`Created project "${name}" from template`, 'success');
+      }
       document.getElementById('new-project-modal').classList.add('hidden');
       openProject(name);
     } else {
@@ -582,6 +587,31 @@ async function openProject(name) {
   }
 }
 
+// ==================== PLUGIN MARKETPLACE ====================
+
+document.getElementById('btn-start-plugins').addEventListener('click', () => {
+  document.getElementById('plugin-modal').classList.remove('hidden');
+  renderPluginMarketplace();
+});
+
+document.getElementById('btn-plugins').addEventListener('click', () => {
+  document.getElementById('plugin-modal').classList.remove('hidden');
+  renderPluginMarketplace();
+});
+
+document.getElementById('btn-close-plugins').addEventListener('click', () => {
+  document.getElementById('plugin-modal').classList.add('hidden');
+});
+
+document.getElementById('plugin-search').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll('.plugin-card').forEach(card => {
+    const name = card.querySelector('.plugin-name')?.textContent?.toLowerCase() || '';
+    const desc = card.querySelector('.plugin-desc')?.textContent?.toLowerCase() || '';
+    card.style.display = (name.includes(q) || desc.includes(q)) ? '' : 'none';
+  });
+});
+
 document.getElementById('btn-back-menu').addEventListener('click', async () => {
   await saveSession();
   showStartMenu();
@@ -655,6 +685,9 @@ function renderTabs() {
   });
 }
 
+let autoSaveTimer;
+const modelDisposables = new Map();
+
 function switchTab(index) {
   if (activeTabIndex >= 0 && activeTabIndex < openTabs.length && editor) {
     tabContents[openTabs[activeTabIndex]] = editor.getValue();
@@ -673,16 +706,17 @@ function switchTab(index) {
       const newModel = monaco.editor.createModel(tabContents[name] || '', lang, uri);
       editor.setModel(newModel);
     }
-    editor.setValue(tabContents[name] || '');
-    let autoSaveTimer;
-    editor.getModel().onDidChangeContent(() => {
-      tabDirty[name] = true;
-      if (activeTabIndex === openTabs.indexOf(name)) renderTabs();
-      if (currentProjectType === 'local') {
-        clearTimeout(autoSaveTimer);
-        autoSaveTimer = setTimeout(() => saveCurrentFile(), 1000);
-      }
-    });
+    if (!modelDisposables.has(name)) {
+      const disposable = editor.getModel().onDidChangeContent(() => {
+        tabDirty[name] = true;
+        if (activeTabIndex === openTabs.indexOf(name)) renderTabs();
+        if (currentProjectType === 'local') {
+          clearTimeout(autoSaveTimer);
+          autoSaveTimer = setTimeout(() => saveCurrentFile(), 1000);
+        }
+      });
+      modelDisposables.set(name, disposable);
+    }
   }
   renderTabs();
   renderFileTree();
@@ -690,7 +724,13 @@ function switchTab(index) {
 
 function closeTab(index) {
   if (openTabs.length <= 1) return;
+  const name = openTabs[index];
+  if (tabDirty[name] && !confirm(`"${name}" has unsaved changes. Close anyway?`)) return;
   if (currentProjectType === 'local') saveCurrentFile();
+  const disposable = modelDisposables.get(name);
+  if (disposable) { disposable.dispose(); modelDisposables.delete(name); }
+  const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
+  if (model) model.dispose();
   openTabs.splice(index, 1);
   if (index <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
   if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
@@ -698,9 +738,11 @@ function closeTab(index) {
   else {
     document.getElementById('file-name').textContent = 'No file open';
     if (editor) editor.setValue('');
+    if (editor) editor.setModel(null);
   }
   renderTabs();
   renderFileTree();
+  updateStatusBar();
 }
 
 function renameTab(index) {
@@ -816,6 +858,19 @@ document.getElementById('btn-new-folder').addEventListener('click', async () => 
   renderFileTree();
 });
 
+document.getElementById('btn-refresh-tree').addEventListener('click', () => { renderFileTree(); logToTerminal('File tree refreshed', 'info'); });
+
+function updateStatusBar() {
+  if (!editor) return;
+  const pos = editor.getPosition();
+  if (pos) {
+    document.getElementById('status-line-col').textContent = `Ln ${pos.lineNumber}, Col ${pos.column}`;
+  }
+  const name = openTabs[activeTabIndex] || '';
+  const lang = tabLanguages[name] || detectLanguage(name) || 'Plain Text';
+  document.getElementById('status-language').textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+}
+
 // ==================== MONACO EDITOR ====================
 
 function detectLanguage(filename) {
@@ -838,7 +893,9 @@ function renderChat() {
   for (const msg of chatHistory) {
     const div = document.createElement('div');
     div.className = 'chat-msg ' + msg.role;
-    div.innerHTML = `<div class="msg-label">${msg.role === 'user' ? 'You' : 'Florde AI'}</div>` + formatMessageContent(msg.content);
+    const label = msg.role === 'user' ? 'You' : 'Florde AI';
+    const modelHint = msg.role === 'assistant' && msg.model ? ` · ${msg.model}` : '';
+    div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" onclick="event.stopPropagation();navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(msg.content)}'))">Copy</button></div>` + formatMessageContent(msg.content);
     container.appendChild(div);
   }
   container.scrollTop = container.scrollHeight;
@@ -848,18 +905,30 @@ function renderChat() {
 function formatMessageContent(content) {
   let html = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   html = html.replace(/```file:([^\n]+)\n([\s\S]*?)```/g, (m, file, code) => {
-    return `<div class="file-block" data-file="${file}" data-code="${encodeURIComponent(code)}">${file}</div>`;
+    const id = 'fb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    const safeCode = code.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<div class="file-block" id="${id}"><span class="file-block-name">${file}</span><pre><code>${safeCode}</code></pre></div>`;
   });
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => {
-    return `<pre><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`;
+    const safeCode = code.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const langClass = lang ? ` class="lang-${lang}"` : '';
+    return `<pre${langClass}><button class="copy-code" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(code)}'))">Copy</button><code>${safeCode}</code></pre>`;
   });
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  return html.replace(/\n/g, '<br/>');
+  html = html.replace(/\n/g, '<br/>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  return html;
 }
 
 function countTokens(text) {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 300) + 'px';
 }
 
 function updateTokenCount() {
@@ -870,12 +939,19 @@ function updateTokenCount() {
   document.getElementById('token-count').textContent = `~${inputTokens} input · ~${historyTokens} session`;
 }
 
-document.getElementById('chat-input').addEventListener('input', updateTokenCount);
+const chatInput = document.getElementById('chat-input');
+chatInput.addEventListener('input', () => { updateTokenCount(); autoResizeTextarea(chatInput); });
 document.getElementById('chat-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
 document.getElementById('btn-send').addEventListener('click', sendMessage);
+
+function sanitizePath(filePath) {
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\.\.(\/|$)|^\/+|\/\.\.(\/|$)/g, '');
+  const cleaned = normalized.replace(/\/+/g, '/').replace(/^\//, '');
+  return cleaned || '_';
+}
 
 async function executeToolCall(name, args) {
   const project = currentProject;
@@ -884,17 +960,17 @@ async function executeToolCall(name, args) {
   switch (name) {
     case 'read_file':
       if (!project) throw new Error('No project open');
-      return await window.electronAPI.projectReadFile(project, args.path);
+      return await window.electronAPI.projectReadFile(project, sanitizePath(args.path));
 
     case 'write_file':
       if (!project) throw new Error('No project open');
-      await window.electronAPI.projectWriteFile(project, args.path, args.content);
-      return 'File written: ' + args.path;
+      await window.electronAPI.projectWriteFile(project, sanitizePath(args.path), args.content);
+      return 'File written: ' + sanitizePath(args.path);
 
     case 'delete_file':
       if (!project) throw new Error('No project open');
-      await window.electronAPI.projectDeleteFile(project, args.path);
-      return 'File deleted: ' + args.path;
+      await window.electronAPI.projectDeleteFile(project, sanitizePath(args.path));
+      return 'File deleted: ' + sanitizePath(args.path);
 
     case 'list_files':
       if (!project) throw new Error('No project open');
@@ -916,6 +992,9 @@ async function executeToolCall(name, args) {
       return output2;
 
     default:
+      if (typeof pluginRegistry !== 'undefined' && pluginRegistry.toolHandlers.has(name)) {
+        return await pluginRegistry.executeTool(name, args);
+      }
       throw new Error('Unknown tool: ' + name);
   }
 }
@@ -971,7 +1050,7 @@ async function sendMessage() {
     const maxRounds = 15;
 
     while (toolRounds < maxRounds) {
-      const response = await providers[provider].sendWithTools(messages, AI_TOOLS);
+      const response = await providers[provider].sendWithTools(messages, getActiveTools());
       stopAnim();
 
       if (response.tool_calls && response.tool_calls.length > 0) {
@@ -1009,15 +1088,11 @@ async function sendMessage() {
       return;
     }
 
-    if (finalContent) {
-      contentDiv.innerHTML = formatMessageContent(finalContent);
-      chatHistory.push({ role: 'assistant', content: finalContent });
-    } else {
-      const lastAssistant = messages.filter(m => m.role === 'assistant' && m.content).pop();
-      if (lastAssistant) {
-        contentDiv.innerHTML = formatMessageContent(lastAssistant.content);
-        chatHistory.push({ role: 'assistant', content: lastAssistant.content });
-      }
+    const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
+    if (responseContent) {
+      contentDiv.innerHTML = formatMessageContent(responseContent);
+      chatHistory.push({ role: 'assistant', content: responseContent, model: provider });
+      processAIResponse(responseContent);
     }
 
     await saveSession();
@@ -1026,8 +1101,15 @@ async function sendMessage() {
     }
     logToTerminal('AI response received', 'success');
   } catch (err) {
-    contentDiv.textContent = 'Error: ' + err.message;
-    logToTerminal('AI request failed: ' + err.message, 'error');
+    stopAnim();
+    const msg = err.message || 'Unknown error';
+    let displayMsg = msg;
+    if (err.name === 'AbortError') displayMsg = 'Request timed out. Check your network.';
+    else if (/40[13]/.test(msg)) displayMsg = msg + ' — Check your API key in settings.';
+    else if (/429/.test(msg)) displayMsg = msg + ' — Rate limited. Wait a moment and retry.';
+    else if (/Failed to fetch/.test(msg)) displayMsg = 'Network error — check your connection and the API endpoint URL.';
+    contentDiv.textContent = 'Error: ' + displayMsg;
+    logToTerminal('AI request failed: ' + displayMsg, 'error');
   }
 }
 
@@ -1054,6 +1136,8 @@ document.getElementById('btn-send-chat').addEventListener('click', () => {
 
 // ==================== DIFF VIEW ====================
 
+let diffModels = [];
+
 function showDiffView(changes) {
   const modal = document.getElementById('diff-modal');
   modal.classList.remove('hidden');
@@ -1062,7 +1146,14 @@ function showDiffView(changes) {
 
   let currentIndex = 0;
 
+  function disposeDiffModels() {
+    diffModels.forEach(m => m.dispose());
+    diffModels = [];
+    if (diffEditor) { diffEditor.dispose(); diffEditor = null; }
+  }
+
   function renderDiff(index) {
+    disposeDiffModels();
     container.innerHTML = '';
     if (index >= changes.length) { container.innerHTML = '<div style="padding:1rem;color:#666;">All changes applied!</div>'; return; }
     const change = changes[index];
@@ -1080,6 +1171,7 @@ function showDiffView(changes) {
     setTimeout(() => {
       const originalModel = monaco.editor.createModel(originalContent, detectLanguage(change.file), monaco.Uri.parse('file:///diff-old-' + change.file));
       const modifiedModel = monaco.editor.createModel(change.code, detectLanguage(change.file), monaco.Uri.parse('file:///diff-new-' + change.file));
+      diffModels = [originalModel, modifiedModel];
       if (diffEditor) diffEditor.dispose();
       diffEditor = monaco.editor.createDiffEditor(diffContainer, {
         enableSplitViewResizing: false, renderSideBySide: true, readOnly: true,
@@ -1125,7 +1217,12 @@ function showDiffView(changes) {
 
   renderDiff(0);
 
-  document.getElementById('btn-diff-accept').addEventListener('click', async () => {
+  const closeDiff = () => {
+    disposeDiffModels();
+    modal.classList.add('hidden');
+  };
+
+  const acceptAll = async () => {
     for (const change of changes) {
       if (currentProject) await window.electronAPI.projectWriteFile(currentProject, change.file, change.code);
       const existing = openTabs.indexOf(change.file);
@@ -1142,13 +1239,14 @@ function showDiffView(changes) {
     if (openTabs.length > 0 && (activeTabIndex < 0 || activeTabIndex >= openTabs.length)) switchTab(0);
     renderFileTree();
     logToTerminal('All changes applied', 'success');
-    modal.classList.add('hidden');
-  }, { once: true });
+    closeDiff();
+  };
+  document.getElementById('btn-diff-accept').addEventListener('click', acceptAll);
 
   document.getElementById('btn-diff-reject').addEventListener('click', () => {
     logToTerminal('Changes rejected', 'warn');
-    modal.classList.add('hidden');
-  }, { once: true });
+    closeDiff();
+  });
 }
 
 // ==================== SEARCH ====================
@@ -1257,6 +1355,15 @@ document.addEventListener('keydown', (e) => {
       switchTab(next);
     }
   }
+  else if (ctrl && e.key === '`') { e.preventDefault(); document.getElementById('btn-terminal-toggle').click(); }
+  else if (e.key === '?' && !ctrl && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    document.getElementById('help-modal').classList.toggle('hidden');
+  }
+});
+
+document.getElementById('btn-close-help').addEventListener('click', () => {
+  document.getElementById('help-modal').classList.add('hidden');
 });
 
 // ==================== SETTINGS MODAL ====================
@@ -1307,8 +1414,14 @@ async function openTab(filename, switchTo = true) {
     return;
   }
   if (!currentProject) { openTabs.push(filename); tabContents[filename] = ''; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = true; if (switchTo) switchTab(openTabs.length - 1); return; }
-  const content = await window.electronAPI.projectReadFile(currentProject, filename);
-  if (content === null) { openTabs.push(filename); tabContents[filename] = ''; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = true; } else { tabContents[filename] = content; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = false; }
+  try {
+    const content = await window.electronAPI.projectReadFile(currentProject, filename);
+    if (content === null) { tabContents[filename] = ''; tabDirty[filename] = true; } else { tabContents[filename] = content; tabDirty[filename] = false; }
+  } catch (err) {
+    logToTerminal(`Failed to open ${filename}: ${err.message}`, 'error');
+    tabContents[filename] = ''; tabDirty[filename] = true;
+  }
+  tabLanguages[filename] = detectLanguage(filename);
   openTabs.push(filename);
   if (switchTo) switchTab(openTabs.length - 1);
 }
@@ -1319,9 +1432,8 @@ document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', (e) => {
     if (e.target === m && !m.id.includes('diff')) {
       m.classList.add('hidden');
-      if (document.getElementById('start-menu').classList.contains('hidden') && document.getElementById('app-view').classList.contains('hidden')) {
-        showStartMenu();
-      }
+      const av = document.getElementById('app-view');
+      if (av.classList.contains('hidden')) showStartMenu();
     }
   });
 });
@@ -1329,6 +1441,9 @@ document.querySelectorAll('.modal').forEach(m => {
 // ==================== INIT ====================
 
 loadSettings();
+pluginRegistry.init().then(() => {
+  window.__updateTools();
+});
 showStartMenu();
 
 require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
@@ -1350,4 +1465,6 @@ require(['vs/editor/editor.main'], () => {
     const name = getActiveFileName();
     if (name) { tabDirty[name] = true; renderTabs(); }
   });
+  editor.onDidChangeCursorPosition(() => updateStatusBar());
+  updateStatusBar();
 });

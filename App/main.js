@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -297,6 +297,50 @@ ipcMain.handle('get-auto-start', () => {
 ipcMain.handle('set-auto-start', (event, enable) => {
   app.setLoginItemSettings({ openAtLogin: enable });
   return true;
+});
+
+// ==================== PLUGINS ====================
+
+const pluginsPath = path.join(app.getPath('userData'), 'plugins.json');
+
+ipcMain.handle('get-plugins', () => {
+  try { return JSON.parse(fs.readFileSync(pluginsPath, 'utf-8')); }
+  catch { return []; }
+});
+
+ipcMain.handle('save-plugins', (event, data) => {
+  fs.writeFileSync(pluginsPath, JSON.stringify(data, null, 2), 'utf-8');
+  return true;
+});
+
+ipcMain.handle('web-search', async (event, query, numResults = 5) => {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const html = await new Promise((resolve, reject) => {
+      const req = net.request(url);
+      req.on('response', (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => resolve(data));
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    const results = [];
+    const regex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m;
+    while ((m = regex.exec(html)) !== null && results.length < numResults) {
+      const title = m[2].replace(/<[^>]+>/g, '').trim();
+      const url2 = m[1];
+      if (title && url2 && !url2.includes('duckduckgo.com')) {
+        results.push({ title, url: url2 });
+      }
+    }
+    return JSON.stringify(results.slice(0, numResults));
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
 });
 
 // ==================== APP ====================

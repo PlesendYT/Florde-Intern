@@ -8,17 +8,9 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   });
 });
 
-document.querySelectorAll('.buy-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const plan = btn.dataset.plan;
-    alert(`[Coming Soon] Subscription for the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan. Payment integration coming soon!`);
-  });
-});
-
-document.querySelectorAll('.btn-download-top').forEach(btn => {
-  btn.addEventListener('click', () => {
-    window.location.href = 'App_Download/Florde-Setup.exe';
-  });
+const downloadApp = () => { window.location.href = 'App_Download/Florde-Setup.exe'; };
+document.querySelectorAll('.buy-btn, .btn-download-top, .btn-download').forEach(btn => {
+  btn.addEventListener('click', (e) => { e.preventDefault(); downloadApp(); });
 });
 
 // Auth Modal
@@ -62,12 +54,10 @@ document.querySelectorAll('.auth-modal').forEach(m => {
   });
 });
 
-document.getElementById('signin-form').addEventListener('submit', (e) => {
+const showAuthInfo = (e, mode) => {
   e.preventDefault();
-  alert('Sign in is coming soon!');
-});
-
-document.getElementById('signup-form').addEventListener('submit', (e) => {
-  e.preventDefault();
-  alert('Sign up is coming soon!');
-});
+  hideModal(mode === 'signin' ? 'signin-modal' : 'signup-modal');
+  alert(`Cloud accounts are coming soon! For now, download the app and use it with your own API keys.`);
+};
+document.getElementById('signin-form').addEventListener('submit', (e) => showAuthInfo(e, 'signin'));
+document.getElementById('signup-form').addEventListener('submit', (e) => showAuthInfo(e, 'signup'));

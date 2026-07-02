@@ -35,4 +35,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
   setAutoStart: (e) => ipcRenderer.invoke('set-auto-start', e),
+
+  getPlugins: () => ipcRenderer.invoke('get-plugins'),
+  savePlugins: (d) => ipcRenderer.invoke('save-plugins', d),
+
+  webSearch: (q, n) => ipcRenderer.invoke('web-search', q, n),
 });

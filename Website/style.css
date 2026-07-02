@@ -371,29 +371,76 @@ h2 {
 }
 
 @media (max-width: 768px) {
-  .steps, .features-grid, .pricing-grid {
-    grid-template-columns: 1fr;
+  .navbar {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.8rem 1rem;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.3rem;
+  }
+
+  .nav-links a {
+    margin: 0 0.5rem !important;
+    font-size: 0.85rem;
+  }
+
+  .btn-nav {
+    margin-left: 0.5rem !important;
+    padding: 0.3rem 0.8rem;
+  }
+
+  section {
+    padding: 3rem 1rem;
   }
 
   .hero-content h1 {
     font-size: 2rem;
   }
 
-  .pricing-card.featured {
-    transform: none;
-  }
-
-  .navbar {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .nav-links a {
-    margin: 0 0.75rem !important;
+  .hero-sub {
+    font-size: 1rem;
   }
 
   .hero-cta .btn {
     display: block;
-    margin: 0.5rem 0;
+    margin: 0.5rem auto;
+    max-width: 280px;
+  }
+
+  .steps, .features-grid, .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pricing-card.featured {
+    transform: none;
+  }
+
+  h2 {
+    font-size: 1.8rem;
+  }
+
+  .auth-modal-content {
+    min-width: auto;
+    max-width: 90%;
+    padding: 1.5rem;
+  }
+
+  #hero {
+    padding-top: 120px;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-content h1 {
+    font-size: 1.5rem;
+  }
+  
+  .nav-brand {
+    font-size: 1.1rem;
   }
 }

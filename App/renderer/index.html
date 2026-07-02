@@ -17,6 +17,7 @@
         <button id="btn-start-local" class="btn btn-secondary">Open Local Project</button>
         <button id="btn-start-open" class="btn btn-secondary">Recent Projects</button>
         <button id="btn-start-settings" class="btn btn-secondary">Settings</button>
+        <button id="btn-start-plugins" class="btn btn-secondary">Plugins</button>
       </div>
       <div id="project-list" class="project-list hidden">
         <h3>Recent Projects</h3>
@@ -27,11 +28,20 @@
 
   <!-- New Sandbox Project Modal -->
   <div id="new-project-modal" class="modal hidden">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:550px;">
       <h2>New Sandbox Project</h2>
       <div class="settings-form">
         <label>Project Name</label>
         <input type="text" id="new-project-name" placeholder="my-project" />
+        <label>Template (optional)</label>
+        <select id="project-template">
+          <option value="">Blank project</option>
+          <option value="web-app">Web App (HTML/CSS/JS)</option>
+          <option value="python-script">Python Script</option>
+          <option value="node-api">Node.js API</option>
+          <option value="react-app">React App</option>
+          <option value="cli-tool">CLI Tool (Python)</option>
+        </select>
       </div>
       <div class="modal-actions">
         <button id="btn-create-project" class="btn btn-primary">Create</button>
@@ -72,6 +82,7 @@
         <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
         <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
         <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
+        <button id="btn-plugins" title="Plugin Marketplace">&#9889;</button>
         <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
         <button id="btn-back-menu">Menu</button>
@@ -85,6 +96,7 @@
           <span>Files</span>
           <button id="btn-new-file" title="New File (Ctrl+N)">+</button>
           <button id="btn-new-folder" title="New Folder">&#128193;</button>
+          <button id="btn-refresh-tree" title="Refresh file tree">&#8635;</button>
         </div>
         <div id="file-tree" class="file-tree"></div>
       </div>
@@ -136,6 +148,13 @@
           <div id="terminal-output" class="terminal-output"></div>
         </div>
       </div>
+    </div>
+    <!-- Status Bar -->
+    <div id="status-bar" class="status-bar">
+      <span id="status-mode">NORMAL</span>
+      <span id="status-line-col">Ln 1, Col 1</span>
+      <span id="status-language">Plain Text</span>
+      <span id="status-encoding">UTF-8</span>
     </div>
   </div>
 
@@ -250,7 +269,55 @@
     </div>
   </div>
 
+  <!-- Plugin Marketplace Modal -->
+  <div id="plugin-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:700px;min-width:500px;max-height:85vh;">
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
+        <h2 style="margin-bottom:0;flex:1;">Plugin Marketplace</h2>
+        <span style="font-size:0.8rem;color:var(--text3);">&#9889; Powered by Florde</span>
+      </div>
+      <div style="display:flex;gap:1rem;margin-bottom:1rem;">
+        <input type="text" id="plugin-search" placeholder="Search plugins..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:8px;font-size:0.9rem;" />
+      </div>
+      <div style="border-bottom:1px solid var(--border);margin-bottom:1rem;padding-bottom:0.5rem;">
+        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;">Installed Plugins</span>
+      </div>
+      <div id="marketplace-list" class="plugin-list"></div>
+      <div style="border-bottom:1px solid var(--border);margin:1rem 0;padding-bottom:0.5rem;">
+        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;">Available from Marketplace</span>
+      </div>
+      <div id="available-plugins" class="plugin-list"></div>
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button id="btn-close-plugins" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="help-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:500px;">
+      <h2>Keyboard Shortcuts</h2>
+      <div class="settings-form">
+        <div class="shortcut-row"><kbd>Ctrl+S</kbd> <span>Save current file</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+N</kbd> <span>New file</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+W</kbd> <span>Close current tab</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Tab</kbd> <span>Next tab</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Shift+Tab</kbd> <span>Previous tab</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+B</kbd> <span>Toggle sidebar</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Shift+F</kbd> <span>Search in files</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+`</kbd> <span>Toggle terminal</span></div>
+        <div class="shortcut-row"><kbd>Enter</kbd> <span>Send chat message</span></div>
+        <div class="shortcut-row"><kbd>Shift+Enter</kbd> <span>New line in chat</span></div>
+        <div class="shortcut-row"><kbd>?</kbd> <span>Toggle this help</span></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-close-help" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
+  <script src="plugin-system.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 {
-  "name": "florde",
+  "name": "Florde",
   "version": "1.0.0",
   "description": "AI-powered code generation from natural language",
   "main": "main.js",
@@ -20,10 +20,33 @@
     "files": [
       "main.js",
       "preload.js",
-      "renderer/**/*"
+      "renderer/**/*",
+      "LICENSE.txt"
     ],
+    "icon": "../config/icon/icon.png",
     "win": {
-      "target": "nsis"
-    }
+      "target": "nsis",
+      "icon": "../config/icon/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "license": "LICENSE.txt",
+      "installerIcon": "../config/icon/icon.ico",
+      "installerSidebar": "../config/icon/installer-sidebar.bmp"
+    },
+    "fileAssociations": [
+      { "ext": "py", "name": "Python", "description": "Python Source File", "icon": "../config/icon/icon.ico" },
+      { "ext": "js", "name": "JavaScript", "description": "JavaScript File", "icon": "../config/icon/icon.ico" },
+      { "ext": "ts", "name": "TypeScript", "description": "TypeScript File", "icon": "../config/icon/icon.ico" },
+      { "ext": "md", "name": "Markdown", "description": "Markdown File", "icon": "../config/icon/icon.ico" },
+      { "ext": "html", "name": "HTML", "description": "HTML File", "icon": "../config/icon/icon.ico" },
+      { "ext": "css", "name": "CSS", "description": "CSS File", "icon": "../config/icon/icon.ico" },
+      { "ext": "json", "name": "JSON", "description": "JSON File", "icon": "../config/icon/icon.ico" }
+    ]
   }
 }

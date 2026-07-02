@@ -13,6 +13,8 @@
       <a href="#how-it-works">How It Works</a>
       <a href="#features">Features</a>
       <a href="#pricing">Pricing</a>
+      <a href="#" id="btn-signin" class="btn-nav">Sign In</a>
+      <a href="#" id="btn-signup" class="btn-nav btn-nav-primary">Sign Up</a>
     </div>
   </nav>
 
@@ -23,6 +25,7 @@
       <div class="hero-cta">
         <a href="#pricing" class="btn btn-primary">Get Started</a>
         <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
+        <a href="App_Download/Florde-Setup.exe" class="btn btn-download" download>Download App</a>
       </div>
     </div>
   </section>
@@ -70,43 +73,89 @@
     <h2>Choose Your Plan</h2>
     <div class="pricing-grid">
       <div class="pricing-card">
-        <h3>Starter</h3>
-        <p class="price">€19</p>
-        <p class="price-period">one-time</p>
+        <h3>Free</h3>
+        <p class="price">€0</p>
+        <p class="price-period">forever free</p>
         <ul>
           <li>Basic code generation</li>
-          <li>Project templates</li>
+          <li>50 requests / month</li>
           <li>Community support</li>
         </ul>
-        <button class="btn btn-primary buy-btn" data-plan="starter">Buy Now</button>
+        <button class="btn btn-secondary btn-download-top">Download</button>
+      </div>
+      <div class="pricing-card">
+        <h3>Starter</h3>
+        <p class="price">€19</p>
+        <p class="price-period">per month</p>
+        <ul>
+          <li>Unlimited code generation</li>
+          <li>Project templates</li>
+          <li>Code Explained Mode</li>
+          <li>Email support</li>
+        </ul>
+        <button class="btn btn-primary buy-btn" data-plan="starter">Subscribe</button>
       </div>
       <div class="pricing-card featured">
         <h3>Pro</h3>
         <p class="price">€49</p>
-        <p class="price-period">one-time</p>
+        <p class="price-period">per month</p>
         <ul>
-          <li>Advanced code generation</li>
+          <li>Everything in Starter</li>
+          <li>Fix-It AI Debug Assistant</li>
           <li>All project templates</li>
-          <li>Code Explained Mode</li>
           <li>Priority support</li>
         </ul>
-        <button class="btn btn-primary buy-btn" data-plan="pro">Buy Now</button>
+        <button class="btn btn-primary buy-btn" data-plan="pro">Subscribe</button>
       </div>
       <div class="pricing-card">
         <h3>Founder</h3>
         <p class="price">€199</p>
-        <p class="price-period">one-time</p>
+        <p class="price-period">per month</p>
         <ul>
           <li>Everything in Pro</li>
-          <li>Fix-It AI Debug Assistant</li>
+          <li>Unlimited requests</li>
           <li>Lifetime early access pricing</li>
           <li>Feature voting priority</li>
           <li>Direct support</li>
         </ul>
-        <button class="btn btn-primary buy-btn" data-plan="founder">Buy Now</button>
+        <button class="btn btn-primary buy-btn" data-plan="founder">Subscribe</button>
       </div>
     </div>
   </section>
+
+  <!-- Sign In Modal -->
+  <div id="signin-modal" class="auth-modal hidden">
+    <div class="auth-modal-content">
+      <button class="auth-close" id="btn-close-signin">&times;</button>
+      <h2>Sign In</h2>
+      <form id="signin-form" class="auth-form">
+        <label>Email</label>
+        <input type="email" placeholder="you@example.com" required />
+        <label>Password</label>
+        <input type="password" placeholder="••••••••" required />
+        <button type="submit" class="btn btn-primary auth-submit">Sign In</button>
+        <p class="auth-switch">Don't have an account? <a href="#" id="switch-to-signup">Sign Up</a></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sign Up Modal -->
+  <div id="signup-modal" class="auth-modal hidden">
+    <div class="auth-modal-content">
+      <button class="auth-close" id="btn-close-signup">&times;</button>
+      <h2>Sign Up</h2>
+      <form id="signup-form" class="auth-form">
+        <label>Email</label>
+        <input type="email" placeholder="you@example.com" required />
+        <label>Password</label>
+        <input type="password" placeholder="••••••••" required />
+        <label>Confirm Password</label>
+        <input type="password" placeholder="••••••••" required />
+        <button type="submit" class="btn btn-primary auth-submit">Sign Up</button>
+        <p class="auth-switch">Already have an account? <a href="#" id="switch-to-signin">Sign In</a></p>
+      </form>
+    </div>
+  </div>
 
   <footer class="footer">
     <p>&copy; 2026 Florde. All rights reserved.</p>

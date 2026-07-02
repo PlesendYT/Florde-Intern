@@ -11,7 +11,63 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
 document.querySelectorAll('.buy-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const plan = btn.dataset.plan;
-    const prices = { starter: 19, pro: 49, founder: 199 };
-    alert(`[Demo] You selected the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan (\u20AC${prices[plan]}). Payment integration coming soon!`);
+    alert(`[Coming Soon] Subscription for the ${plan.charAt(0).toUpperCase() + plan.slice(1)} plan. Payment integration coming soon!`);
   });
+});
+
+document.querySelectorAll('.btn-download-top').forEach(btn => {
+  btn.addEventListener('click', () => {
+    window.location.href = 'App_Download/Florde-Setup.exe';
+  });
+});
+
+// Auth Modal
+function showModal(id) {
+  document.getElementById(id).classList.remove('hidden');
+}
+
+function hideModal(id) {
+  document.getElementById(id).classList.add('hidden');
+}
+
+document.getElementById('btn-signin').addEventListener('click', (e) => {
+  e.preventDefault();
+  showModal('signin-modal');
+});
+
+document.getElementById('btn-signup').addEventListener('click', (e) => {
+  e.preventDefault();
+  showModal('signup-modal');
+});
+
+document.getElementById('btn-close-signin').addEventListener('click', () => hideModal('signin-modal'));
+document.getElementById('btn-close-signup').addEventListener('click', () => hideModal('signup-modal'));
+
+document.getElementById('switch-to-signup').addEventListener('click', (e) => {
+  e.preventDefault();
+  hideModal('signin-modal');
+  showModal('signup-modal');
+});
+
+document.getElementById('switch-to-signin').addEventListener('click', (e) => {
+  e.preventDefault();
+  hideModal('signup-modal');
+  showModal('signin-modal');
+});
+
+// Close modals on backdrop click
+document.querySelectorAll('.auth-modal').forEach(m => {
+  m.addEventListener('click', (e) => {
+    if (e.target === m) m.classList.add('hidden');
+  });
+});
+
+document.getElementById('signin-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  alert('Sign in is coming soon!');
+});
+
+document.getElementById('signup-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  alert('Sign up is coming soon!');
 });

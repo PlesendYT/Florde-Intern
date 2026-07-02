@@ -24,6 +24,22 @@ class OpenAIProvider {
     }
     return full;
   }
+  async sendWithTools(messages, tools) {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message || { content: '', role: 'assistant' };
+  }
+  async sendPlain(messages) {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
 }
 
 class DeepSeekProvider extends OpenAIProvider {
@@ -46,10 +62,26 @@ class MistralProvider extends OpenAIProvider {
     });
     return this._stream(r, onChunk);
   }
+  async sendWithTools(messages, tools) {
+    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message || { content: '', role: 'assistant' };
+  }
+  async sendPlain(messages) {
+    const r = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.model, messages, stream: false }),
+    });
+    const data = await r.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
 }
 
 class OllamaProvider {
-  constructor(baseUrl = 'http://localhost:11434', model = 'codellama') { this.baseUrl = baseUrl; this.model = model; }
+  constructor(baseUrl = 'http://localhost:11434', model = 'codellama') { this.baseUrl = baseUrl.replace(/\/+$/, ''); this.model = model; }
   async sendMessage(messages, onChunk) {
     const r = await fetch(`${this.baseUrl}/api/chat`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -61,44 +93,86 @@ class OllamaProvider {
       const { done, value } = await reader.read();
       if (done) break;
       const lines = decoder.decode(value).split('\n').filter(l => l.trim());
-      for (const line of lines) { try { const p = JSON.parse(line); const c = p.message?.content || ''; full += c; onChunk(full); } catch {} }
+      for (const line of lines) {
+        try { const p = JSON.parse(line); const c = p.message?.content || ''; full += c; onChunk(full); } catch {}
+      }
     }
     return full;
+  }
+  async sendWithTools(messages, tools) {
+    const r = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, messages, tools, stream: false }),
+    });
+    const data = await r.json();
+    const msg = data.message || {};
+    return { content: msg.content || '', role: 'assistant', tool_calls: msg.tool_calls };
+  }
+  async sendPlain(messages) {
+    const r = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: this.model, messages, stream: false }),
+    });
+    const data = await r.json();
+    return data.message?.content || '';
   }
 }
 
 // ==================== STATE ====================
 
-const providers = {};
-let editor = null;
+let providers = {};
 let chatHistory = [];
 let currentProject = null;
+let currentProjectType = null;
 let openTabs = [];
-let activeTabIndex = -1;
 let tabContents = {};
 let tabLanguages = {};
 let tabDirty = {};
-let lastAssistantText = '';
-let autoSaveTimer = null;
+let activeTabIndex = -1;
+let editor = null;
+let diffEditor = null;
+let currentTheme = 'dark';
+let sandboxDir = null;
 
-const SYSTEM_PROMPT_BASE = `You are Florde, an AI coding assistant inside the Florde desktop app.
+// ==================== TOOLS ====================
 
-You help users build software by writing, modifying, and explaining code.
+const AI_TOOLS = [
+  { type: 'function', function: { name: 'read_file', description: 'Read a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
+  { type: 'function', function: { name: 'write_file', description: 'Create or overwrite a file in the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, content: { type: 'string', description: 'Full file content' } }, required: ['path', 'content'] } } },
+  { type: 'function', function: { name: 'delete_file', description: 'Delete a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
+  { type: 'function', function: { name: 'list_files', description: 'List all files in the project', parameters: { type: 'object', properties: {} } } },
+  { type: 'function', function: { name: 'search_files', description: 'Search for text across all project files', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text to search for' } }, required: ['query'] } } },
+  { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' } }, required: ['command'] } } },
+];
 
-## Project Files
-{fileList}
+function buildSystemPrompt() {
+  return `You are Florde AI, an AI coding assistant with direct access to the user's project files.
 
-## File Operations
-When you write code, use code blocks with filenames like:
-\`\`\`file:path/to/file.py
-[code content]
-\`\`\`
+You can use the following tools:
+- read_file(path): Read file content
+- write_file(path, content): Create or overwrite files
+- delete_file(path): Delete files
+- list_files(): List all project files
+- search_files(query): Find text in files
+- exec_command(command): Run shell commands in the project directory
 
-This creates or updates files in the project. The editor will show the modified file.
+RULES:
+1. Always start by listing files to understand the project structure
+2. Read files before making changes
+3. Use write_file to create or modify files — never just show the code
+4. Use exec_command to install dependencies, run the project, etc.
+5. After making changes, verify with exec_command if appropriate
+6. Explain what you're doing at each step
+7. Only modify files inside the project — do not access files outside
 
-To delete a file write: [DELETE FILE: path/to/file.py]
+Project: ${currentProject}
+Type: ${currentProjectType}
+${currentProjectType === 'local' ? 'Notes: This is a local project. exec_command runs in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. exec_command runs in the isolated sandbox directory.'}`;
+}
 
-To explain things, just write normally. The user sees everything you say in the chat.`;
+function getToolResultMsg(toolCallId, name, result) {
+  return { role: 'tool', tool_call_id: toolCallId, content: String(result) };
+}
 
 // ==================== SETTINGS ====================
 
@@ -114,6 +188,12 @@ async function loadSettings() {
   if (s.openaiModel) document.getElementById('model-openai').value = s.openaiModel;
   if (s.deepseekModel) document.getElementById('model-deepseek').value = s.deepseekModel;
   if (s.mistralModel) document.getElementById('model-mistral').value = s.mistralModel;
+  await initSandbox();
+  try {
+    const autoStart = await window.electronAPI.getAutoStart();
+    document.getElementById('auto-start').checked = autoStart;
+  } catch {}
+  if (s.theme) { currentTheme = s.theme; applyTheme(); }
 }
 
 async function saveSettingsToDisk() {
@@ -126,7 +206,54 @@ async function saveSettingsToDisk() {
     mistralModel: document.getElementById('model-mistral').value,
     ollamaUrl: document.getElementById('url-ollama').value,
     ollamaModel: document.getElementById('model-ollama').value,
+    theme: currentTheme,
   });
+  await window.electronAPI.setAutoStart(document.getElementById('auto-start').checked);
+}
+
+// ==================== THEME ====================
+
+function applyTheme() {
+  document.body.classList.toggle('light-theme', currentTheme === 'light');
+  document.getElementById('btn-theme-toggle').textContent = currentTheme === 'light' ? '\u263D' : '\u2600';
+  if (editor) {
+    monaco.editor.setTheme(currentTheme === 'light' ? 'vs' : 'vs-dark');
+  }
+}
+
+// ==================== SANDBOX ====================
+
+async function initSandbox() {
+  sandboxDir = await window.electronAPI.getSandboxDir();
+  updateSandboxStatus();
+}
+
+function updateSandboxStatus() {
+  const el = document.getElementById('sandbox-status');
+  if (currentProjectType === 'local') {
+    el.textContent = '';
+    el.className = 'sandbox-status hidden';
+    return;
+  }
+  if (sandboxDir) {
+    el.textContent = 'Sandbox ready';
+    el.className = 'sandbox-status active';
+  } else {
+    el.textContent = 'No sandbox set';
+    el.className = 'sandbox-status';
+  }
+}
+
+// ==================== TERMINAL ====================
+
+function logToTerminal(message, type = 'info') {
+  const el = document.getElementById('terminal-output');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + type;
+  const time = new Date().toLocaleTimeString();
+  div.textContent = `[${time}] ${message}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
 }
 
 // ==================== START MENU ====================
@@ -148,13 +275,14 @@ async function loadProjectList() {
   container.innerHTML = '';
   document.getElementById('project-list').classList.remove('hidden');
   if (projects.length === 0) {
-    container.innerHTML = '<div style="color:#666;font-size:0.85rem;padding:0.5rem;">No projects yet</div>';
+    container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">No projects yet</div>';
     return;
   }
   for (const p of projects) {
     const div = document.createElement('div');
     div.className = 'project-item';
-    div.innerHTML = `<span style="flex:1">${p.name}</span><button class="project-del" data-name="${p.name}">&times;</button>`;
+    const typeLabel = p.type === 'local' ? 'Local' : 'Sandbox';
+    div.innerHTML = `<span class="project-type">${typeLabel}</span><span style="flex:1">${p.name}</span><button class="project-del" data-name="${p.name}">&times;</button>`;
     div.addEventListener('click', (e) => {
       if (e.target.tagName !== 'BUTTON') openProject(p.name);
     });
@@ -172,7 +300,7 @@ async function loadProjectList() {
 document.getElementById('btn-start-new').addEventListener('click', () => {
   document.getElementById('new-project-modal').classList.remove('hidden');
   document.getElementById('new-project-name').value = '';
-  document.getElementById('new-project-name').focus();
+  setTimeout(() => document.getElementById('new-project-name').focus(), 100);
 });
 
 document.getElementById('btn-cancel-new').addEventListener('click', () => {
@@ -182,7 +310,7 @@ document.getElementById('btn-cancel-new').addEventListener('click', () => {
 function createProjectFromInput() {
   const name = document.getElementById('new-project-name').value.trim();
   if (!name) { alert('Please enter a project name'); return; }
-  window.electronAPI.createProject(name).then(ok => {
+  window.electronAPI.createSandboxProject(name).then(ok => {
     if (ok) {
       document.getElementById('new-project-modal').classList.add('hidden');
       openProject(name);
@@ -197,6 +325,38 @@ document.getElementById('new-project-name').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') createProjectFromInput();
 });
 
+// Local Project
+document.getElementById('btn-start-local').addEventListener('click', () => {
+  document.getElementById('local-project-modal').classList.remove('hidden');
+  document.getElementById('local-project-name').value = '';
+  document.getElementById('local-project-path').value = '';
+});
+
+document.getElementById('btn-cancel-local').addEventListener('click', () => {
+  document.getElementById('local-project-modal').classList.add('hidden');
+});
+
+document.getElementById('btn-browse-folder').addEventListener('click', async () => {
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) document.getElementById('local-project-path').value = folder;
+});
+
+document.getElementById('btn-create-local').addEventListener('click', async () => {
+  const name = document.getElementById('local-project-name').value.trim();
+  const path = document.getElementById('local-project-path').value.trim();
+  if (!name) { alert('Please enter a project name'); return; }
+  if (!path) { alert('Please select a folder'); return; }
+  const result = await window.electronAPI.createLocalProject(name, path);
+  if (result.ok) {
+    document.getElementById('local-project-modal').classList.add('hidden');
+    openProject(name);
+  } else if (result.error === 'exists') {
+    alert('Project already exists');
+  } else {
+    alert('Folder not found');
+  }
+});
+
 document.getElementById('btn-start-open').addEventListener('click', loadProjectList);
 
 document.getElementById('btn-start-settings').addEventListener('click', () => {
@@ -204,10 +364,7 @@ document.getElementById('btn-start-settings').addEventListener('click', () => {
   document.getElementById('start-menu').classList.add('hidden');
 });
 
-document.getElementById('btn-back-menu').addEventListener('click', async () => {
-  await saveSession();
-  showStartMenu();
-});
+
 
 // ==================== PROJECT ====================
 
@@ -225,168 +382,286 @@ async function openProject(name) {
   tabDirty = {};
   activeTabIndex = -1;
 
+  const meta = (await window.electronAPI.listProjects()).find(p => p.name === name);
+  currentProjectType = meta ? meta.type : 'sandbox';
+  document.getElementById('project-type-badge').textContent = currentProjectType === 'local' ? 'LOCAL' : 'SANDBOX';
+  document.getElementById('btn-export-zip').style.display = currentProjectType === 'sandbox' ? '' : 'none';
+  document.getElementById('btn-save-all').style.display = currentProjectType === 'sandbox' ? '' : 'none';
+
+
   if (files.length > 0) {
     for (const f of files) await openTab(f, false);
     if (openTabs.length > 0) switchTab(0);
   } else {
-    newUntitledTab();
+    const defaultContent = '# Welcome to Florde!\n# Start coding or describe what you want to build in the chat.';
+    const defaultName = 'welcome.py';
+    tabContents[defaultName] = defaultContent;
+    tabLanguages[defaultName] = 'python';
+    tabDirty[defaultName] = false;
+    openTabs.push(defaultName);
+    activeTabIndex = 0;
+    switchTab(0);
   }
 
-  renderTabs();
-  renderChat();
   showAppView();
+  renderFileTree();
+  logToTerminal(`Opened project: ${name} (${currentProjectType})`, 'success');
+
+  if (chatHistory.length === 0) {
+    const welcome = 'I\'m your AI coding assistant. I can help you write, explain, and debug code. ' +
+      'Send me a message to get started!';
+    chatHistory.push({ role: 'assistant', content: welcome });
+    renderChat();
+  }
 }
+
+document.getElementById('btn-back-menu').addEventListener('click', async () => {
+  await saveSession();
+  showStartMenu();
+});
+
+document.getElementById('btn-save-all').addEventListener('click', saveAllTabs);
 
 async function saveSession() {
   if (!currentProject) return;
-  // Save all dirty files first
-  for (const tab of openTabs) {
-    if (tabDirty[tab]) {
-      await window.electronAPI.projectWriteFile(currentProject, tab, tabContents[tab]);
-    }
+  const currentContent = editor ? editor.getValue() : '';
+  for (let f of Object.keys(tabContents)) {
+    tabContents[f] = f === getActiveFileName() ? currentContent : tabContents[f];
+    tabDirty[f] = false;
   }
   await window.electronAPI.saveSession(currentProject, { history: chatHistory });
-}
-
-// ==================== TABS (MULTI-EDIT) ====================
-
-function getLangFromFilename(name) {
-  const ext = name.split('.').pop();
-  const map = { py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript', html: 'html', css: 'css', json: 'json', md: 'markdown', txt: 'plaintext', cpp: 'cpp', c: 'c', h: 'c', java: 'java', go: 'go', rs: 'rust', rb: 'ruby', php: 'php', swift: 'swift', kt: 'kotlin', yml: 'yaml', yaml: 'yaml', xml: 'xml', sql: 'sql', sh: 'shell', bat: 'bat' };
-  return map[ext] || 'plaintext';
-}
-
-async function openTab(filePath, switchTo = true) {
-  if (openTabs.includes(filePath)) {
-    if (switchTo) switchTab(openTabs.indexOf(filePath));
-    return;
-  }
-  openTabs.push(filePath);
-  const content = await window.electronAPI.projectReadFile(currentProject, filePath);
-  tabContents[filePath] = content || '';
-  tabLanguages[filePath] = getLangFromFilename(filePath);
-  tabDirty[filePath] = false;
-  if (switchTo) switchTab(openTabs.length - 1);
-  renderTabs();
-}
-
-function closeTab(index) {
-  const filePath = openTabs[index];
-  if (tabDirty[filePath]) {
-    if (!confirm(`Save changes to ${filePath}?`)) return;
-    saveCurrentTab();
-  }
-  openTabs.splice(index, 1);
-  delete tabContents[filePath];
-  delete tabLanguages[filePath];
-  delete tabDirty[filePath];
-  if (openTabs.length === 0) newUntitledTab();
-  if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
-  if (activeTabIndex >= 0) switchTab(activeTabIndex);
-  renderTabs();
-}
-
-function newUntitledTab() {
-  const name = 'untitled.py';
-  if (!openTabs.includes(name)) {
-    openTabs.push(name);
-    tabContents[name] = '';
-    tabLanguages[name] = 'python';
-    tabDirty[name] = false;
-  }
-  switchTab(openTabs.indexOf(name));
-  renderTabs();
-}
-
-function switchTab(index) {
-  if (index < 0 || index >= openTabs.length) return;
-  if (activeTabIndex >= 0 && activeTabIndex < openTabs.length) {
-    const oldFile = openTabs[activeTabIndex];
-    if (editor && tabDirty[oldFile]) {
-      tabContents[oldFile] = editor.getValue();
-    }
-  }
-  activeTabIndex = index;
-  const filePath = openTabs[index];
-  document.getElementById('file-name').textContent = filePath;
-  const lang = tabLanguages[filePath];
-  document.getElementById('language-select').value = lang;
-  if (editor) {
-    editor.setValue(tabContents[filePath] || '');
-    monaco.editor.setModelLanguage(editor.getModel(), lang);
-    editor.focus();
-  }
-  renderTabs();
-}
-
-function saveCurrentTab() {
-  if (activeTabIndex < 0 || !currentProject) return;
-  const filePath = openTabs[activeTabIndex];
-  if (editor) tabContents[filePath] = editor.getValue();
-  tabDirty[filePath] = false;
-  window.electronAPI.projectWriteFile(currentProject, filePath, tabContents[filePath]);
   renderTabs();
 }
 
 async function saveAllTabs() {
-  for (const tab of openTabs) {
-    if (activeTabIndex >= 0 && tab === openTabs[activeTabIndex] && editor) {
-      tabContents[tab] = editor.getValue();
+  const currentContent = editor ? editor.getValue() : '';
+  for (let f of Object.keys(tabContents)) {
+    tabContents[f] = f === getActiveFileName() ? currentContent : tabContents[f];
+    if (currentProject) {
+      await window.electronAPI.projectWriteFile(currentProject, f, tabContents[f]);
     }
-    if (tabDirty[tab]) {
-      await window.electronAPI.projectWriteFile(currentProject, tab, tabContents[tab]);
-      tabDirty[tab] = false;
-    }
+    tabDirty[f] = false;
   }
   renderTabs();
+  logToTerminal('All files saved', 'success');
 }
+
+async function saveCurrentFile() {
+  const name = getActiveFileName();
+  if (!name) return;
+  tabContents[name] = editor ? editor.getValue() : '';
+  tabDirty[name] = false;
+  if (currentProject) {
+    await window.electronAPI.projectWriteFile(currentProject, name, tabContents[name]);
+  }
+  renderTabs();
+  logToTerminal(`Saved: ${name}`, 'success');
+}
+
+function getActiveFileName() {
+  return activeTabIndex >= 0 && activeTabIndex < openTabs.length ? openTabs[activeTabIndex] : null;
+}
+
+// ==================== FILE TABS ====================
 
 function renderTabs() {
   const container = document.getElementById('file-tabs');
   container.innerHTML = '';
-  for (let i = 0; i < openTabs.length; i++) {
-    const f = openTabs[i];
-    const div = document.createElement('div');
-    div.className = 'file-tab' + (i === activeTabIndex ? ' active' : '');
-    const name = f.split('/').pop();
-    div.innerHTML = `${tabDirty[f] ? '<span class="tab-dot">&#x25CF;</span>' : ''}${name}<button class="tab-close">&times;</button>`;
-    div.addEventListener('click', (e) => { if (e.target.tagName !== 'BUTTON') switchTab(i); });
-    div.querySelector('.tab-close').addEventListener('click', (e) => { e.stopPropagation(); closeTab(i); });
-    container.appendChild(div);
-  }
-}
-
-// Editor change tracking
-function onEditorContentChange() {
-  if (activeTabIndex < 0) return;
-  const filePath = openTabs[activeTabIndex];
-  if (editor && editor.getValue() !== tabContents[filePath]) {
-    tabDirty[filePath] = true;
-    renderTabs();
-    scheduleAutoSave();
-  }
-}
-
-function scheduleAutoSave() {
-  if (autoSaveTimer) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(saveAllTabs, 10000);
-}
-
-// ==================== MONACO ====================
-
-require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
-require(['vs/editor/editor.main'], function () {
-  editor = monaco.editor.create(document.getElementById('editor-container'), {
-    value: '# Welcome to Florde\n# Create or open a project to start building.\n',
-    language: 'python',
-    theme: 'vs-dark',
-    fontSize: 14,
-    minimap: { enabled: false },
-    automaticLayout: true,
-    padding: { top: 12 },
+  openTabs.forEach((name, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'file-tab' + (i === activeTabIndex ? ' active' : '');
+    if (tabDirty[name]) {
+      const dot = document.createElement('span');
+      dot.className = 'dirty'; dot.textContent = '\u25CF';
+      tab.appendChild(dot);
+    }
+    const label = document.createElement('span');
+    label.textContent = name.split('/').pop();
+    tab.appendChild(label);
+    const close = document.createElement('button');
+    close.className = 'close-tab'; close.textContent = '\u00D7';
+    close.addEventListener('click', (e) => { e.stopPropagation(); closeTab(i); });
+    tab.appendChild(close);
+    tab.addEventListener('click', () => switchTab(i));
+    tab.addEventListener('dblclick', () => renameTab(i));
+    container.appendChild(tab);
   });
-  editor.onDidChangeModelContent(onEditorContentChange);
+}
+
+function switchTab(index) {
+  if (activeTabIndex >= 0 && activeTabIndex < openTabs.length && editor) {
+    tabContents[openTabs[activeTabIndex]] = editor.getValue();
+    if (currentProjectType === 'local') saveCurrentFile();
+  }
+  activeTabIndex = index;
+  const name = openTabs[index];
+  document.getElementById('file-name').textContent = name;
+  const lang = tabLanguages[name] || detectLanguage(name);
+  if (editor) {
+    const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
+    if (model) {
+      editor.setModel(model);
+    } else {
+      const uri = monaco.Uri.parse('file:///' + name);
+      const newModel = monaco.editor.createModel(tabContents[name] || '', lang, uri);
+      editor.setModel(newModel);
+    }
+    editor.setValue(tabContents[name] || '');
+    let autoSaveTimer;
+    editor.getModel().onDidChangeContent(() => {
+      tabDirty[name] = true;
+      if (activeTabIndex === openTabs.indexOf(name)) renderTabs();
+      if (currentProjectType === 'local') {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(() => saveCurrentFile(), 1000);
+      }
+    });
+  }
+  renderTabs();
+  renderFileTree();
+}
+
+function closeTab(index) {
+  if (openTabs.length <= 1) return;
+  if (currentProjectType === 'local') saveCurrentFile();
+  openTabs.splice(index, 1);
+  if (index <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
+  if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
+  if (openTabs.length > 0) switchTab(activeTabIndex);
+  else {
+    document.getElementById('file-name').textContent = 'No file open';
+    if (editor) editor.setValue('');
+  }
+  renderTabs();
+  renderFileTree();
+}
+
+function renameTab(index) {
+  const oldName = openTabs[index];
+  const newName = prompt('Rename file:', oldName);
+  if (!newName || newName === oldName) return;
+  if (currentProject) {
+    window.electronAPI.projectRenameFile(currentProject, oldName, newName).then(() => {
+      openTabs[index] = newName;
+      tabContents[newName] = tabContents[oldName];
+      tabLanguages[newName] = tabLanguages[oldName];
+      tabDirty[newName] = tabDirty[oldName];
+      delete tabContents[oldName]; delete tabLanguages[oldName]; delete tabDirty[oldName];
+      renderTabs();
+      renderFileTree();
+    });
+  }
+}
+
+// ==================== FILE TREE (SIDEBAR) ====================
+
+async function renderFileTree() {
+  if (!currentProject) return;
+  const container = document.getElementById('file-tree');
+  container.innerHTML = '';
+  const files = await window.electronAPI.projectListFiles(currentProject);
+  const tree = buildTree(files);
+  for (const node of tree) renderTreeNode(node, container, '');
+}
+
+function buildTree(files) {
+  const root = {};
+  for (const f of files) {
+    const parts = f.split('/');
+    let current = root;
+    for (let i = 0; i < parts.length; i++) {
+      const isFile = i === parts.length - 1;
+      if (isFile) {
+        if (!current._files) current._files = [];
+        current._files.push(parts[i]);
+      } else {
+        if (!current[parts[i]]) current[parts[i]] = {};
+        current = current[parts[i]];
+      }
+    }
+  }
+  function toList(obj, path) {
+    const items = [];
+    const dirs = Object.keys(obj).filter(k => k !== '_files').sort();
+    for (const d of dirs) {
+      items.push({ type: 'dir', name: d, path: path + d + '/', children: toList(obj[d], path + d + '/') });
+    }
+    if (obj._files) {
+      for (const f of obj._files.sort()) items.push({ type: 'file', name: f, path: path + f });
+    }
+    return items;
+  }
+  return toList(root, '');
+}
+
+function renderTreeNode(node, parent, path) {
+  if (node.type === 'dir') {
+    const details = document.createElement('details');
+    details.className = 'tree-dir';
+    details.open = true;
+    const summary = document.createElement('summary');
+    summary.className = 'tree-item';
+    summary.innerHTML = `<span class="icon">\u{1F4C1}</span><span class="name">${node.name}</span>`;
+    summary.addEventListener('click', (e) => {
+      e.preventDefault();
+      details.open = !details.open;
+    });
+    details.appendChild(summary);
+    const children = document.createElement('div');
+    children.className = 'tree-children';
+    for (const child of node.children) renderTreeNode(child, children, node.path);
+    details.appendChild(children);
+    parent.appendChild(details);
+  } else {
+    const item = document.createElement('div');
+    item.className = 'tree-item' + (openTabs[activeTabIndex] === node.path ? ' active' : '');
+    item.innerHTML = `<span class="icon">\u{1F4C4}</span><span class="name">${node.name}</span>`;
+    item.addEventListener('click', async () => {
+      const existing = openTabs.indexOf(node.path);
+      if (existing >= 0) switchTab(existing);
+      else await openTab(node.path, true);
+    });
+    parent.appendChild(item);
+  }
+}
+
+document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('hidden');
 });
+
+document.getElementById('btn-new-file').addEventListener('click', async () => {
+  const name = prompt('File name (e.g. script.py):');
+  if (!name) return;
+  if (openTabs.indexOf(name) >= 0) { switchTab(openTabs.indexOf(name)); return; }
+  tabContents[name] = '';
+  tabLanguages[name] = detectLanguage(name);
+  tabDirty[name] = true;
+  openTabs.push(name);
+  switchTab(openTabs.length - 1);
+  renderFileTree();
+  logToTerminal(`Created file: ${name}`, 'success');
+});
+
+document.getElementById('btn-new-folder').addEventListener('click', async () => {
+  const name = prompt('Folder name:');
+  if (!name) return;
+  logToTerminal(`Folder "${name}" will be created on first file save inside it`, 'info');
+  renderFileTree();
+});
+
+// ==================== MONACO EDITOR ====================
+
+function detectLanguage(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const map = { py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+    html: 'html', htm: 'html', css: 'css', json: 'json', md: 'markdown', java: 'java',
+    cpp: 'cpp', c: 'cpp', h: 'cpp', cs: 'csharp', go: 'go', rs: 'rust', rb: 'ruby',
+    php: 'php', sql: 'sql', sh: 'shell', bash: 'shell', yaml: 'yaml', yml: 'yaml',
+    xml: 'xml', svg: 'xml', txt: 'plaintext', gitignore: 'plaintext', env: 'plaintext' };
+  return map[ext] || 'plaintext';
+}
+
+
 
 // ==================== CHAT ====================
 
@@ -394,63 +669,73 @@ function renderChat() {
   const container = document.getElementById('chat-messages');
   container.innerHTML = '';
   for (const msg of chatHistory) {
-    addMessageToDOM(msg.role, msg.content);
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + msg.role;
+    div.innerHTML = `<div class="msg-label">${msg.role === 'user' ? 'You' : 'Florde AI'}</div>` + formatMessageContent(msg.content);
+    container.appendChild(div);
   }
-}
-
-function addMessageToDOM(role, content) {
-  const container = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.className = `message ${role}`;
-  if (role === 'assistant' && content.includes('```')) {
-    const parts = content.split('```');
-    parts.forEach((part, i) => {
-      if (i % 2 === 0) {
-        const td = document.createElement('div'); td.textContent = part; div.appendChild(td);
-      } else {
-        const cd = document.createElement('div'); cd.className = 'message code';
-        cd.textContent = part.replace(/^\w+\n/, '');
-        const isFileBlock = part.startsWith('file:');
-        if (isFileBlock) {
-          cd.style.borderLeft = '3px solid #7c3aed';
-          cd.style.cursor = 'pointer';
-          cd.title = 'Click to apply this file';
-          const filePath = part.split('\n')[0].slice(5).trim();
-          const codeContent = part.split('\n').slice(1).join('\n').trim();
-          cd.addEventListener('click', async () => {
-            if (currentProject) {
-              await window.electronAPI.projectWriteFile(currentProject, filePath, codeContent);
-              if (openTabs.includes(filePath)) {
-                tabContents[filePath] = codeContent;
-                tabDirty[filePath] = false;
-              } else {
-                await openTab(filePath);
-                tabContents[filePath] = codeContent;
-              }
-              if (activeTabIndex >= 0 && openTabs[activeTabIndex] === filePath && editor) {
-                editor.setValue(codeContent);
-                monaco.editor.setModelLanguage(editor.getModel(), getLangFromFilename(filePath));
-              }
-              renderTabs();
-            }
-          });
-        }
-        div.appendChild(cd);
-      }
-    });
-  } else {
-    div.textContent = content;
-  }
-  container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
 
-function buildSystemPrompt() {
-  let fileList = '(empty project)';
-  if (currentProject) {
-    // We'll inject file list dynamically
+function formatMessageContent(content) {
+  let html = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  html = html.replace(/```file:([^\n]+)\n([\s\S]*?)```/g, (m, file, code) => {
+    return `<div class="file-block" data-file="${file}" data-code="${encodeURIComponent(code)}">${file}</div>`;
+  });
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => {
+    return `<pre><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`;
+  });
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  return html.replace(/\n/g, '<br/>');
+}
+
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+document.getElementById('btn-send').addEventListener('click', sendMessage);
+
+async function executeToolCall(name, args) {
+  const project = currentProject;
+  const type = currentProjectType;
+
+  switch (name) {
+    case 'read_file':
+      if (!project) throw new Error('No project open');
+      return await window.electronAPI.projectReadFile(project, args.path);
+
+    case 'write_file':
+      if (!project) throw new Error('No project open');
+      await window.electronAPI.projectWriteFile(project, args.path, args.content);
+      return 'File written: ' + args.path;
+
+    case 'delete_file':
+      if (!project) throw new Error('No project open');
+      await window.electronAPI.projectDeleteFile(project, args.path);
+      return 'File deleted: ' + args.path;
+
+    case 'list_files':
+      if (!project) throw new Error('No project open');
+      const files = await window.electronAPI.projectListFiles(project);
+      return JSON.stringify(files);
+
+    case 'search_files':
+      if (!project) throw new Error('No project open');
+      const results = await window.electronAPI.searchInFiles(project, args.query);
+      return JSON.stringify(results);
+
+    case 'exec_command':
+      if (!project) throw new Error('No project open');
+      const execDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : sandboxDir;
+      if (!execDir) throw new Error('AI Sandbox not configured');
+      logToTerminal('AI executing: ' + args.command + ' in ' + execDir, 'command');
+      const output2 = await window.electronAPI.sandboxExec(execDir, args.command);
+      logToTerminal('Command output: ' + output2.substring(0, 500), 'info');
+      return output2;
+
+    default:
+      throw new Error('Unknown tool: ' + name);
   }
-  return SYSTEM_PROMPT_BASE.replace('{fileList}', '(see project files below)');
 }
 
 async function sendMessage() {
@@ -458,187 +743,341 @@ async function sendMessage() {
   const text = input.value.trim();
   if (!text) return;
 
-  input.value = '';
-  addMessageToDOM('user', text);
-  chatHistory.push({ role: 'user', content: text });
-
   const provider = document.getElementById('provider-select').value;
-  const providerInstance = providers[provider];
-  if (!providerInstance) {
-    addMessageToDOM('assistant', 'Please configure the API key in Settings.');
-    return;
+  if (!providers[provider]) { logToTerminal('Please configure API key for ' + provider + ' in Settings', 'error'); return; }
+
+  chatHistory.push({ role: 'user', content: text });
+  input.value = '';
+  renderChat();
+
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'chat-msg ai';
+  msgDiv.innerHTML = '<div class="msg-label">Florde AI</div>';
+  document.getElementById('chat-messages').appendChild(msgDiv);
+
+  const contentDiv = document.createElement('div');
+  msgDiv.appendChild(contentDiv);
+  let animInterval = null;
+  function startAnim(text, suffix = '') {
+    if (animInterval) clearInterval(animInterval);
+    let dots = 1, dir = 1;
+    const update = () => {
+      const d = '.'.repeat(dots);
+      contentDiv.innerHTML = formatMessageContent(text + d + suffix);
+      dots += dir;
+      if (dots >= 4) dir = -1;
+      if (dots <= 1) dir = 1;
+    };
+    update();
+    animInterval = setInterval(update, 400);
+  }
+  function stopAnim(final) {
+    if (animInterval) { clearInterval(animInterval); animInterval = null; }
+    if (final !== undefined) contentDiv.innerHTML = formatMessageContent(final);
   }
 
-  // Build system message with project context
-  let fileContext = 'This project has no files yet.';
-  if (currentProject) {
-    const files = await window.electronAPI.projectListFiles(currentProject);
-    if (files.length > 0) {
-      fileContext = 'Project files:\n' + files.map(f => {
-        const content = tabContents[f] !== undefined ? tabContents[f] : '(loaded)';
-        return `- ${f}`;
-      }).join('\n');
-    }
-  }
+  startAnim('*Thinking*');
 
-  const systemMsg = `You are Florde, an AI coding assistant inside the Florde desktop app.
-
-You help users build software by writing, modifying, and explaining code.
-
-${fileContext}
-
-## How to respond
-- Use \`\`\`file:path/to/file.py\n[code]\n\`\`\` to create or update files
-- Use [DELETE FILE: path/to/file.py] to delete a file
-- Use \`\`\` (without file:) for code examples that should NOT be saved to the project
-- Regular text is displayed as explanation in chat
-
-Always include complete, working code.`;
-
-  const messageDiv = document.createElement('div');
-  messageDiv.className = 'message assistant';
-  document.getElementById('chat-messages').appendChild(messageDiv);
+  logToTerminal('Sending request to ' + provider + '...', 'info');
 
   try {
-    const msgs = [{ role: 'system', content: systemMsg }, ...chatHistory];
-    lastAssistantText = '';
-    const fullText = await providerInstance.sendMessage(msgs, (currentText) => {
-      lastAssistantText = currentText;
-      messageDiv.innerHTML = '';
-      if (currentText.includes('```')) {
-        const parts = currentText.split('```');
-        parts.forEach((part, i) => {
-          if (i % 2 === 0) {
-            const td = document.createElement('div'); td.textContent = part; messageDiv.appendChild(td);
-          } else {
-            const cd = document.createElement('div'); cd.className = 'message code';
-            cd.textContent = part.replace(/^\w+\n/, '');
-            const isFileBlock = part.startsWith('file:');
-            if (isFileBlock) {
-              cd.style.borderLeft = '3px solid #7c3aed';
-              cd.style.cursor = 'pointer';
-              cd.title = 'Click to apply this file';
-              const filePath = part.split('\n')[0].slice(5).trim();
-              const codeContent = part.split('\n').slice(1).join('\n').trim();
-              cd.addEventListener('click', async () => await applyFileBlock(filePath, codeContent));
-            }
-            messageDiv.appendChild(cd);
+    const systemMsg = { role: 'system', content: buildSystemPrompt() };
+    let messages = [systemMsg, ...chatHistory.map(m => ({ role: m.role, content: m.content }))];
+
+    let finalContent = '';
+    let toolRounds = 0;
+    const maxRounds = 15;
+
+    while (toolRounds < maxRounds) {
+      const response = await providers[provider].sendWithTools(messages, AI_TOOLS);
+      stopAnim();
+
+      if (response.tool_calls && response.tool_calls.length > 0) {
+        messages.push({ role: 'assistant', content: response.content || null, tool_calls: response.tool_calls });
+        logToTerminal('AI is using tools: ' + response.tool_calls.map(t => t.function.name).join(', '), 'ai');
+
+        const toolNames = response.tool_calls.map(t => t.function.name).join(', ');
+        startAnim('*Running tools', ' (' + toolNames + ')*');
+
+        for (const toolCall of response.tool_calls) {
+          const args = JSON.parse(toolCall.function.arguments || '{}');
+          const name = toolCall.function.name;
+          stopAnim('*' + name + '(...)*');
+          let result;
+          try {
+            result = await executeToolCall(name, args);
+          } catch (err) {
+            result = 'Error: ' + err.message;
           }
-        });
+          messages.push(getToolResultMsg(toolCall.id, name, result));
+          startAnim('*Running tools', ' (' + toolNames + ')*');
+        }
+        stopAnim();
+        toolRounds++;
+        startAnim('*Waiting for AI*');
       } else {
-        messageDiv.textContent = currentText;
+        finalContent = response.content || '';
+        break;
       }
-      document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
-    });
-    chatHistory.push({ role: 'assistant', content: fullText });
-
-    // Auto-apply file blocks and delete operations
-    await processAIActions(fullText);
-
-    // Auto-save session
-    if (currentProject) {
-      await saveAllTabs();
-      await window.electronAPI.saveSession(currentProject, { history: chatHistory });
     }
+
+    if (toolRounds >= maxRounds) {
+      contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
+      logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+      return;
+    }
+
+    if (finalContent) {
+      contentDiv.innerHTML = formatMessageContent(finalContent);
+      chatHistory.push({ role: 'assistant', content: finalContent });
+    } else {
+      const lastAssistant = messages.filter(m => m.role === 'assistant' && m.content).pop();
+      if (lastAssistant) {
+        contentDiv.innerHTML = formatMessageContent(lastAssistant.content);
+        chatHistory.push({ role: 'assistant', content: lastAssistant.content });
+      }
+    }
+
+    await saveSession();
+    if (currentProject) {
+      try { await renderFileTree(); } catch {}
+    }
+    logToTerminal('AI response received', 'success');
   } catch (err) {
-    messageDiv.textContent = `Error: ${err.message}`;
+    contentDiv.textContent = 'Error: ' + err.message;
+    logToTerminal('AI request failed: ' + err.message, 'error');
   }
 }
 
-async function applyFileBlock(filePath, codeContent) {
-  if (!currentProject) { alert('Open a project first'); return; }
-  await window.electronAPI.projectWriteFile(currentProject, filePath, codeContent);
-  if (openTabs.includes(filePath)) {
-    tabContents[filePath] = codeContent;
-    tabDirty[filePath] = false;
-  } else {
-    await openTab(filePath);
-    tabContents[filePath] = codeContent;
+function processAIResponse(content) {
+  const fileBlocks = content.match(/```file:([^\n]+)\n([\s\S]*?)```/g);
+  if (!fileBlocks) return;
+  const changes = fileBlocks.map(b => {
+    const m = b.match(/```file:([^\n]+)\n([\s\S]*?)```/);
+    return { file: m[1], code: m[2] };
+  });
+  if (changes.length > 0) {
+    showDiffView(changes);
   }
-  if (activeTabIndex >= 0 && openTabs[activeTabIndex] === filePath && editor) {
-    editor.setValue(codeContent);
-    monaco.editor.setModelLanguage(editor.getModel(), getLangFromFilename(filePath));
-  }
-  document.getElementById('language-select').value = getLangFromFilename(filePath);
-  renderTabs();
 }
 
-async function processAIActions(text) {
-  // Apply file: blocks
-  const fileRegex = /```file:(\S+)\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = fileRegex.exec(text)) !== null) {
-    const filePath = match[1].trim();
-    const codeContent = match[2].trim();
-    await applyFileBlock(filePath, codeContent);
+document.getElementById('btn-send-chat').addEventListener('click', () => {
+  const content = editor ? editor.getValue() : '';
+  if (!content) return;
+  const name = getActiveFileName() || 'untitled';
+  const msg = 'Here is my current code in ' + name + ':\n```' + detectLanguage(name) + '\n' + content + '\n```\n\n';
+  document.getElementById('chat-input').value = msg;
+  document.getElementById('chat-input').focus();
+});
+
+// ==================== DIFF VIEW ====================
+
+function showDiffView(changes) {
+  const modal = document.getElementById('diff-modal');
+  modal.classList.remove('hidden');
+  const container = document.getElementById('diff-container');
+  container.innerHTML = '';
+
+  let currentIndex = 0;
+
+  function renderDiff(index) {
+    container.innerHTML = '';
+    if (index >= changes.length) { container.innerHTML = '<div style="padding:1rem;color:#666;">All changes applied!</div>'; return; }
+    const change = changes[index];
+    container.innerHTML = `<div style="padding:0.5rem;font-size:0.85rem;color:var(--text2);border-bottom:1px solid var(--border);">File: ${change.file}</div>`;
+    const diffContainer = document.createElement('div');
+    diffContainer.style.flex = '1';
+    diffContainer.style.minHeight = '250px';
+    container.appendChild(diffContainer);
+
+    let originalContent = '';
+    const existing = openTabs.indexOf(change.file);
+    if (existing >= 0) originalContent = tabContents[change.file] || '';
+    else if (currentProject) window.electronAPI.projectReadFile(currentProject, change.file).then(c => { originalContent = c || ''; });
+
+    setTimeout(() => {
+      const originalModel = monaco.editor.createModel(originalContent, detectLanguage(change.file), monaco.Uri.parse('file:///diff-old-' + change.file));
+      const modifiedModel = monaco.editor.createModel(change.code, detectLanguage(change.file), monaco.Uri.parse('file:///diff-new-' + change.file));
+      if (diffEditor) diffEditor.dispose();
+      diffEditor = monaco.editor.createDiffEditor(diffContainer, {
+        enableSplitViewResizing: false, renderSideBySide: true, readOnly: true,
+        theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
+      });
+      diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+    }, 100);
   }
 
-  // Handle delete operations
-  const delRegex = /\[DELETE FILE:\s*(\S+?)\]/g;
-  while ((match = delRegex.exec(text)) !== null) {
-    const filePath = match[1].trim();
-    if (currentProject) {
-      await window.electronAPI.projectDeleteFile(currentProject, filePath);
-      const idx = openTabs.indexOf(filePath);
-      if (idx >= 0) {
-        openTabs.splice(idx, 1);
-        delete tabContents[filePath];
-        delete tabLanguages[filePath];
-        delete tabDirty[filePath];
-        if (openTabs.length === 0) newUntitledTab();
-        if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
-        if (activeTabIndex >= 0) switchTab(activeTabIndex);
-        renderTabs();
+  const actionBar = document.createElement('div');
+  actionBar.style.cssText = 'display:flex;gap:0.5rem;padding:0.5rem 0;';
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'btn btn-secondary'; prevBtn.textContent = '\u25C0 Prev';
+  prevBtn.addEventListener('click', () => { if (currentIndex > 0) { currentIndex--; renderDiff(currentIndex); } });
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'btn btn-secondary'; nextBtn.textContent = 'Next \u25B6';
+  nextBtn.addEventListener('click', () => { currentIndex++; renderDiff(currentIndex); });
+  const applyBtn = document.createElement('button');
+  applyBtn.className = 'btn btn-primary'; applyBtn.textContent = 'Apply This';
+  applyBtn.addEventListener('click', async () => {
+    const change = changes[currentIndex];
+    if (currentProject) await window.electronAPI.projectWriteFile(currentProject, change.file, change.code);
+    const existing = openTabs.indexOf(change.file);
+    if (existing >= 0) {
+      tabContents[change.file] = change.code;
+      if (existing === activeTabIndex && editor) editor.setValue(change.code);
+    } else {
+      tabContents[change.file] = change.code;
+      tabLanguages[change.file] = detectLanguage(change.file);
+      tabDirty[change.file] = false;
+      openTabs.push(change.file);
+      switchTab(openTabs.length - 1);
+    }
+    renderFileTree();
+    logToTerminal(`Applied change to: ${change.file}`, 'success');
+    currentIndex++;
+    renderDiff(currentIndex);
+  });
+  actionBar.appendChild(prevBtn);
+  actionBar.appendChild(applyBtn);
+  actionBar.appendChild(nextBtn);
+  container.insertBefore(actionBar, container.firstChild);
+
+  renderDiff(0);
+
+  document.getElementById('btn-diff-accept').addEventListener('click', async () => {
+    for (const change of changes) {
+      if (currentProject) await window.electronAPI.projectWriteFile(currentProject, change.file, change.code);
+      const existing = openTabs.indexOf(change.file);
+      if (existing >= 0) {
+        tabContents[change.file] = change.code;
+        if (existing === activeTabIndex && editor) editor.setValue(change.code);
+      } else {
+        tabContents[change.file] = change.code;
+        tabLanguages[change.file] = detectLanguage(change.file);
+        tabDirty[change.file] = false;
+        openTabs.push(change.file);
       }
     }
-  }
+    if (openTabs.length > 0 && (activeTabIndex < 0 || activeTabIndex >= openTabs.length)) switchTab(0);
+    renderFileTree();
+    logToTerminal('All changes applied', 'success');
+    modal.classList.add('hidden');
+  }, { once: true });
 
-  // Extract last code block into current editor
-  const codeRegex = /```(\w+)?\n?([\s\S]*?)```/g;
-  let lastCode = null, lastLang = null;
-  while ((match = codeRegex.exec(text)) !== null) {
-    if (!match[0].startsWith('```file:')) {
-      lastLang = match[1] || null;
-      lastCode = match[2].trim();
+  document.getElementById('btn-diff-reject').addEventListener('click', () => {
+    logToTerminal('Changes rejected', 'warn');
+    modal.classList.add('hidden');
+  }, { once: true });
+}
+
+// ==================== SEARCH ====================
+
+document.getElementById('btn-search-toggle').addEventListener('click', () => {
+  document.getElementById('search-modal').classList.remove('hidden');
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-results').innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">Type a query and press Enter to search</div>';
+  setTimeout(() => document.getElementById('search-input').focus(), 100);
+});
+
+document.getElementById('btn-close-search').addEventListener('click', () => {
+  document.getElementById('search-modal').classList.add('hidden');
+});
+
+document.getElementById('search-input').addEventListener('keydown', async (e) => {
+  if (e.key === 'Enter') {
+    const query = e.target.value.trim();
+    if (!query || !currentProject) return;
+    const container = document.getElementById('search-results');
+    container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">Searching...</div>';
+    const results = await window.electronAPI.searchInFiles(currentProject, query);
+    container.innerHTML = '';
+    if (results.length === 0) {
+      container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">No results found</div>';
+      return;
+    }
+    for (const r of results) {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      const highlighted = r.text.replace(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), m => `<mark>${m}</mark>`);
+      item.innerHTML = `<div><span class="search-result-file">${r.file}</span><span class="search-result-line">:${r.line}</span></div><div class="search-result-text">${highlighted}</div>`;
+      item.addEventListener('click', () => {
+        document.getElementById('search-modal').classList.add('hidden');
+        const existing = openTabs.indexOf(r.file);
+        if (existing >= 0) switchTab(existing);
+        else {
+          window.electronAPI.projectReadFile(currentProject, r.file).then(content => {
+            if (content !== null) {
+              tabContents[r.file] = content;
+              tabLanguages[r.file] = detectLanguage(r.file);
+              tabDirty[r.file] = false;
+              openTabs.push(r.file);
+              switchTab(openTabs.length - 1);
+              setTimeout(() => jumpToLine(r.line), 300);
+            }
+          });
+        }
+      });
+      container.appendChild(item);
     }
   }
-  if (lastCode && editor && !currentProject) {
-    editor.setValue(lastCode);
-    if (lastLang) {
-      const langMap = { py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript' };
-      const nl = langMap[lastLang] || lastLang;
-      const sel = document.getElementById('language-select');
-      const opt = Array.from(sel.options).find(o => o.value === nl);
-      if (opt) { sel.value = nl; monaco.editor.setModelLanguage(editor.getModel(), nl); }
-    }
+});
+
+function jumpToLine(line) {
+  if (editor) {
+    editor.revealLineInCenter(line);
+    editor.setPosition({ lineNumber: line, column: 1 });
+    editor.focus();
   }
 }
 
-// ==================== EVENT LISTENERS ====================
+// ==================== EXPORT ZIP ====================
 
-document.getElementById('btn-send').addEventListener('click', sendMessage);
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+document.getElementById('btn-export-zip').addEventListener('click', async () => {
+  if (!currentProject) return;
+  logToTerminal('Exporting project as ZIP...', 'info');
+  const ok = await window.electronAPI.exportZip(currentProject);
+  if (ok) logToTerminal('Project exported as ZIP', 'success');
+  else logToTerminal('Export cancelled or failed', 'warn');
 });
 
-document.getElementById('btn-send-to-chat').addEventListener('click', () => {
-  if (!editor) return;
-  const code = editor.getValue();
-  if (code.trim()) {
-    const fileName = activeTabIndex >= 0 ? openTabs[activeTabIndex] : 'untitled.py';
-    document.getElementById('chat-input').value = `Here is my ${fileName}:\n\`\`\`\n${code}\n\`\`\`\n\nPlease help me modify it: `;
-    document.getElementById('chat-input').focus();
+// ==================== TERMINAL TOGGLE ====================
+
+document.getElementById('btn-terminal-toggle').addEventListener('click', () => {
+  document.getElementById('terminal-panel').classList.toggle('hidden');
+});
+
+document.getElementById('btn-terminal-clear').addEventListener('click', () => {
+  document.getElementById('terminal-output').innerHTML = '';
+});
+
+// ==================== THEME TOGGLE ====================
+
+document.getElementById('btn-theme-toggle').addEventListener('click', () => {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme();
+  saveSettingsToDisk();
+  logToTerminal(`Switched to ${currentTheme} theme`, 'info');
+});
+
+// ==================== KEYBOARD SHORTCUTS ====================
+
+document.addEventListener('keydown', (e) => {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key === 's') { e.preventDefault(); saveCurrentFile(); }
+  else if (ctrl && e.key === 'n') { e.preventDefault(); document.getElementById('btn-new-file').click(); }
+  else if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabIndex >= 0) closeTab(activeTabIndex); }
+  else if (ctrl && e.shiftKey && e.key === 'F') { e.preventDefault(); document.getElementById('btn-search-toggle').click(); }
+  else if (ctrl && e.key === 'b') { e.preventDefault(); document.getElementById('btn-sidebar-toggle').click(); }
+  else if (ctrl && e.key === 'Tab') {
+    e.preventDefault();
+    if (openTabs.length > 1) {
+      const dir = e.shiftKey ? -1 : 1;
+      const next = (activeTabIndex + dir + openTabs.length) % openTabs.length;
+      switchTab(next);
+    }
   }
 });
 
-document.getElementById('language-select').addEventListener('change', (e) => {
-  if (activeTabIndex < 0 || !editor) return;
-  const lang = e.target.value;
-  tabLanguages[openTabs[activeTabIndex]] = lang;
-  monaco.editor.setModelLanguage(editor.getModel(), lang);
-});
-
-document.getElementById('btn-save-all').addEventListener('click', saveAllTabs);
+// ==================== SETTINGS MODAL ====================
 
 document.getElementById('btn-settings').addEventListener('click', () => {
   document.getElementById('settings-modal').classList.remove('hidden');
@@ -646,9 +1085,7 @@ document.getElementById('btn-settings').addEventListener('click', () => {
 
 document.getElementById('btn-close-settings').addEventListener('click', () => {
   document.getElementById('settings-modal').classList.add('hidden');
-  if (document.getElementById('app-view').classList.contains('hidden')) {
-    showStartMenu();
-  }
+  if (document.getElementById('app-view').classList.contains('hidden')) showStartMenu();
 });
 
 document.getElementById('btn-save-settings').addEventListener('click', async () => {
@@ -668,12 +1105,53 @@ document.getElementById('btn-save-settings').addEventListener('click', async () 
 
   await saveSettingsToDisk();
   document.getElementById('settings-modal').classList.add('hidden');
-  if (document.getElementById('app-view').classList.contains('hidden')) {
-    showStartMenu();
+  if (document.getElementById('app-view').classList.contains('hidden')) showStartMenu();
+});
+
+// ==================== OPEN FILE FROM TREE ====================
+
+async function openTab(filename, switchTo = true) {
+  if (openTabs.indexOf(filename) >= 0) {
+    if (switchTo) switchTab(openTabs.indexOf(filename));
+    return;
   }
+  if (!currentProject) { openTabs.push(filename); tabContents[filename] = ''; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = true; if (switchTo) switchTab(openTabs.length - 1); return; }
+  const content = await window.electronAPI.projectReadFile(currentProject, filename);
+  if (content === null) { openTabs.push(filename); tabContents[filename] = ''; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = true; } else { tabContents[filename] = content; tabLanguages[filename] = detectLanguage(filename); tabDirty[filename] = false; }
+  openTabs.push(filename);
+  if (switchTo) switchTab(openTabs.length - 1);
+}
+
+// ==================== MODAL BACKDROP ====================
+
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', (e) => {
+    if (e.target === m && !m.id.includes('diff')) m.classList.add('hidden');
+  });
 });
 
 // ==================== INIT ====================
 
 loadSettings();
 showStartMenu();
+
+require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
+require(['vs/editor/editor.main'], () => {
+  editor = monaco.editor.create(document.getElementById('editor-container'), {
+    value: '# Welcome to Florde!\n# Start coding or describe what you want to build in the chat.',
+    language: 'python',
+    theme: 'vs-dark',
+    automaticLayout: true,
+    minimap: { enabled: true },
+    fontSize: 14,
+    scrollBeyondLastLine: false,
+    wordWrap: 'on',
+    tabSize: 2,
+    bracketPairColorization: { enabled: true },
+  });
+
+  editor.getModel().onDidChangeContent(() => {
+    const name = getActiveFileName();
+    if (name) { tabDirty[name] = true; renderTabs(); }
+  });
+});

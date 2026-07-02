@@ -32,6 +32,12 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .nav-links a {
   color: #a0a0b0;
   text-decoration: none;
@@ -41,6 +47,26 @@ body {
 
 .nav-links a:hover {
   color: #7c3aed;
+}
+
+.btn-nav {
+  margin-left: 1rem !important;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s;
+}
+
+.btn-nav-primary {
+  background: linear-gradient(135deg, #7c3aed, #3b82f6);
+  color: white !important;
+  border: none;
+}
+
+.btn-nav-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
 }
 
 section {
@@ -110,6 +136,18 @@ section {
   background: rgba(124, 58, 237, 0.1);
 }
 
+.btn-download {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e0e0e0;
+  margin-left: 1rem;
+}
+
+.btn-download:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
 h2 {
   font-size: 2.5rem;
   text-align: center;
@@ -172,13 +210,13 @@ h2 {
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
   align-items: center;
 }
 
 .pricing-card {
-  padding: 2.5rem 2rem;
+  padding: 2rem 1.5rem;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -191,8 +229,12 @@ h2 {
   transform: scale(1.05);
 }
 
+.pricing-card .btn {
+  width: 100%;
+}
+
 .price {
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 800;
   margin: 1rem 0 0.2rem;
 }
@@ -211,6 +253,7 @@ h2 {
 .pricing-card li {
   padding: 0.4rem 0;
   color: #a0a0b0;
+  font-size: 0.9rem;
 }
 
 .pricing-card li::before {
@@ -218,10 +261,113 @@ h2 {
   color: #7c3aed;
 }
 
+/* Auth Modal */
+.auth-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.auth-modal.hidden { display: none; }
+
+.auth-modal-content {
+  background: #1a1a24;
+  border-radius: 12px;
+  padding: 2.5rem;
+  min-width: 380px;
+  max-width: 420px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+}
+
+.auth-modal-content h2 {
+  margin-bottom: 1.5rem;
+  text-align: left;
+  font-size: 1.8rem;
+}
+
+.auth-close {
+  position: absolute;
+  top: 1rem;
+  right: 1.2rem;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.auth-close:hover { color: #e0e0e0; }
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.auth-form label {
+  font-size: 0.85rem;
+  color: #a0a0b0;
+  margin-top: 0.8rem;
+}
+
+.auth-form input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+  padding: 0.6rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #7c3aed;
+}
+
+.auth-submit {
+  margin-top: 1.2rem;
+  width: 100%;
+}
+
+.auth-switch {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: #888;
+  text-align: center;
+}
+
+.auth-switch a {
+  color: #7c3aed;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
 .footer {
   text-align: center;
   padding: 2rem;
   color: #666;
+}
+
+@media (max-width: 900px) {
+  .pricing-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .pricing-card.featured {
+    transform: none;
+  }
 }
 
 @media (max-width: 768px) {
@@ -243,6 +389,11 @@ h2 {
   }
 
   .nav-links a {
-    margin: 0 0.75rem;
+    margin: 0 0.75rem !important;
+  }
+
+  .hero-cta .btn {
+    display: block;
+    margin: 0.5rem 0;
   }
 }

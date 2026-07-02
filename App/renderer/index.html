@@ -13,8 +13,9 @@
       <h1 class="start-logo">Florde</h1>
       <p class="start-tagline">AI-powered code generation from plain language</p>
       <div class="start-buttons">
-        <button id="btn-start-new" class="btn btn-primary">New Project</button>
-        <button id="btn-start-open" class="btn btn-secondary">Open Project</button>
+        <button id="btn-start-new" class="btn btn-primary">New Sandbox Project</button>
+        <button id="btn-start-local" class="btn btn-secondary">Open Local Project</button>
+        <button id="btn-start-open" class="btn btn-secondary">Recent Projects</button>
         <button id="btn-start-settings" class="btn btn-secondary">Settings</button>
       </div>
       <div id="project-list" class="project-list hidden">
@@ -24,10 +25,10 @@
     </div>
   </div>
 
-  <!-- New Project Modal -->
+  <!-- New Sandbox Project Modal -->
   <div id="new-project-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>New Project</h2>
+      <h2>New Sandbox Project</h2>
       <div class="settings-form">
         <label>Project Name</label>
         <input type="text" id="new-project-name" placeholder="my-project" />
@@ -39,52 +40,124 @@
     </div>
   </div>
 
+  <!-- New Local Project Modal -->
+  <div id="local-project-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Open Local Project</h2>
+      <div class="settings-form">
+        <label>Project Name</label>
+        <input type="text" id="local-project-name" placeholder="my-project" />
+        <label>Folder Path</label>
+        <div style="display:flex;gap:0.5rem;">
+          <input type="text" id="local-project-path" placeholder="C:\path\to\folder" readonly style="flex:1;" />
+          <button id="btn-browse-folder" class="btn btn-secondary" style="white-space:nowrap;">Browse</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-create-local" class="btn btn-primary">Open</button>
+        <button id="btn-cancel-local" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main App -->
   <div id="app-view" class="hidden">
     <div class="titlebar">
       <span class="titlebar-text">Florde</span>
       <span id="project-name" class="titlebar-project"></span>
+      <span id="project-type-badge" class="project-type-badge"></span>
       <div class="titlebar-controls">
-        <button id="btn-back-menu">Menu</button>
+        <button id="btn-sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">&#9776;</button>
+        <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
+        <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
+        <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
+        <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
+        <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
+        <button id="btn-back-menu">Menu</button>
       </div>
     </div>
 
-    <div id="file-tabs" class="file-tabs"></div>
-
-    <div class="main-content">
-      <div class="editor-panel">
-        <div class="panel-header">
-          <span id="file-name">untitled.py</span>
-          <select id="language-select">
-            <option value="python">Python</option>
-            <option value="javascript">JavaScript</option>
-            <option value="typescript">TypeScript</option>
-            <option value="html">HTML</option>
-            <option value="css">CSS</option>
-          </select>
-          <button id="btn-send-to-chat" title="Send code to chat">&#8593; Chat</button>
+    <div class="app-body">
+      <!-- Sidebar -->
+      <div id="sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+          <span>Files</span>
+          <button id="btn-new-file" title="New File (Ctrl+N)">+</button>
+          <button id="btn-new-folder" title="New Folder">&#128193;</button>
         </div>
-        <div id="editor-container"></div>
+        <div id="file-tree" class="file-tree"></div>
       </div>
 
-      <div class="chat-panel">
-        <div class="panel-header">
-          <span>AI Chat</span>
-          <select id="provider-select">
-            <option value="openai">OpenAI</option>
-            <option value="deepseek">DeepSeek</option>
-            <option value="mistral">Mistral</option>
-            <option value="ollama">Ollama (Local)</option>
-          </select>
-          <button id="btn-settings">&#9881;</button>
+      <!-- Main Content -->
+      <div class="main-area">
+        <div id="file-tabs" class="file-tabs"></div>
+
+        <div class="main-content">
+          <div class="editor-panel">
+            <div class="panel-header">
+              <span id="file-name">untitled.py</span>
+              <span id="sandbox-status" class="sandbox-status"></span>
+            </div>
+            <div id="editor-container" class="editor-container"></div>
+          </div>
+
+          <div class="chat-panel">
+            <div class="panel-header">
+              <span>Chat</span>
+              <button id="btn-send-chat" title="Send current editor to chat">&#8593; Chat</button>
+              <select id="provider-select">
+                <option value="openai">OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="mistral">Mistral</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div class="chat-input-area">
+              <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
+              <button id="btn-send">Send</button>
+            </div>
+          </div>
         </div>
-        <div id="chat-messages"></div>
-        <div class="chat-input-area">
-          <textarea id="chat-input" placeholder="Describe what you want to build..." rows="3"></textarea>
-          <button id="btn-send">Send</button>
+
+        <!-- Terminal / Output Panel -->
+        <div id="terminal-panel" class="terminal-panel hidden">
+          <div class="terminal-header">
+            <span>Output</span>
+            <button id="btn-terminal-clear" class="terminal-clear">Clear</button>
+          </div>
+          <div id="terminal-output" class="terminal-output"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Search Modal -->
+  <div id="search-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:700px;min-width:500px;">
+      <h2>Search in Files</h2>
+      <div class="settings-form">
+        <input type="text" id="search-input" placeholder="Search..." autofocus />
+      </div>
+      <div id="search-results" class="search-results">
+        <div style="color:#666;padding:1rem;text-align:center;">Type a query and press Enter to search</div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-close-search" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff Modal -->
+  <div id="diff-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:900px;min-width:600px;max-height:80vh;display:flex;flex-direction:column;">
+      <h2>AI Changes</h2>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
+        <button id="btn-diff-accept" class="btn btn-primary">Accept All</button>
+        <button id="btn-diff-reject" class="btn btn-secondary">Reject</button>
+      </div>
+      <div id="diff-container" style="flex:1;min-height:300px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;"></div>
     </div>
   </div>
 
@@ -118,6 +191,10 @@
         <input type="text" id="url-ollama" value="http://localhost:11434" />
         <label>Ollama Model</label>
         <input type="text" id="model-ollama" value="codellama" />
+        <label style="margin-top:1rem;">
+          <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
+          Launch Florde on Windows startup
+        </label>
       </div>
       <div class="modal-actions">
         <button id="btn-save-settings" class="btn btn-primary">Save</button>

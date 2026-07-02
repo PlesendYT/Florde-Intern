@@ -237,6 +237,9 @@ The skill itself tells you which.
 
 Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
 
+## Write This In Your First Response
+I Understood. I will follow the SuperPowers Development Methodology and invoke relevant skills before responding to any user instruction.
+
 <Web Research>
 Use web_search and web_fetch to research libraries, APIs, documentation, and best practices when helping the user.`
 });

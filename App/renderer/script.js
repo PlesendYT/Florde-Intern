@@ -393,7 +393,7 @@ function updateSandboxStatus() {
     return;
   }
   if (sandboxDir) {
-    el.textContent = 'Sandbox ready';
+    el.textContent = '';
     el.className = 'sandbox-status active';
   } else {
     el.textContent = 'No sandbox set';

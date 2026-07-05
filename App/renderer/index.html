@@ -92,6 +92,8 @@
       <span id="project-type-badge" class="project-type-badge"></span>
       <span id="privacy-indicator" class="privacy-indicator" title="Privacy status"></span>
       <div class="titlebar-controls">
+        <button class="btn-toolbar-toggle" title="Toggle Toolbar">&#9654;</button>
+        <span class="toolbar-content">
         <button id="btn-audit-log" title="Audit Log">&#128196;</button>
         <button id="btn-close-all-tabs" title="Close All Tabs">&#10006;</button>
         <button id="btn-sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">&#9776;</button>
@@ -124,6 +126,7 @@
         <button id="btn-save-all">Save All</button>
         <button id="btn-git-commit-show">Git Commit</button>
         <button id="btn-back-menu">Menu</button>
+        </span>
       </div>
     </div>
 
@@ -279,6 +282,14 @@
             <option value="de">Deutsch</option>
           </select>
           <label style="margin-top:1rem;">
+            <input type="checkbox" id="see-thoughts" style="width:auto;margin-right:0.5rem;" />
+            See Thoughts (zeigt AI-Überlegungen in Echtzeit)
+          </label>
+          <label>
+            <input type="checkbox" id="instant-mode" style="width:auto;margin-right:0.5rem;" />
+            Instant Mode (Antwort erscheint komplett auf einmal)
+          </label>
+          <label>
             <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
             Launch Florde on Windows startup
           </label>
@@ -460,15 +471,17 @@
               <span>Ollama</span>
               <span class="provider-toggle">&#9660;</span>
             </div>
-            <div class="provider-body" data-provider="ollama">
-              <label>Base URL</label>
-              <input type="text" id="url-ollama" value="http://localhost:11434" />
-              <label>Model</label>
-              <div class="key-input-wrap">
-                <input type="text" id="model-ollama" value="qwen2.5-coder" />
-                <span class="key-status" id="status-ollama"></span>
+              <div class="provider-body" data-provider="ollama">
+                <label>Base URL</label>
+                <input type="text" id="url-ollama" value="http://localhost:11434" />
+                <label>Model</label>
+                <div class="key-input-wrap">
+                  <input type="text" id="model-ollama" value="qwen2.5-coder" />
+                  <span class="key-status" id="status-ollama"></span>
+                  <button id="btn-ollama-models" class="btn btn-sm btn-secondary" title="Browse installed models" style="margin-left:0.3rem;">Models &#9660;</button>
+                </div>
+                <div id="ollama-model-list" class="ollama-model-list hidden"></div>
               </div>
-            </div>
           </div>
 
           <div class="provider-group">

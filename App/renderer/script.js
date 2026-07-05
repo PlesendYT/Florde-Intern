@@ -999,7 +999,8 @@ RULES:
 5. After making changes, verify with exec_command if appropriate
 6. Explain what you're doing at each step
 7. Only modify files inside the project — do not access files outside
-8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.`;
+8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
+9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.`;
   }
 
   return basePrompt + `
@@ -1027,7 +1028,8 @@ RULES:
 5. After making changes, verify with exec_command if appropriate
 6. Explain what you're doing at each step
 7. Only modify files inside the project — do not access files outside
-8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.`;
+8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
+9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.`;
 }
 
 function getPluginPromptExtensions() {
@@ -1132,6 +1134,10 @@ async function loadSettings() {
     const autoStart = await window.electronAPI.getAutoStart();
     document.getElementById('auto-start').checked = autoStart;
   } catch {}
+  if (s.seeThoughts !== undefined) document.getElementById('see-thoughts').checked = s.seeThoughts;
+  else document.getElementById('see-thoughts').checked = true;
+  if (s.instantMode !== undefined) document.getElementById('instant-mode').checked = s.instantMode;
+  else document.getElementById('instant-mode').checked = false;
   if (s.theme) { currentTheme = s.theme; document.getElementById('settings-theme').value = s.theme; applyTheme(); }
   // Add temperature sliders to each provider body
   const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
@@ -1290,6 +1296,8 @@ async function validateAndSaveSettings() {
   }
   settings.theme = document.getElementById('settings-theme').value;
   settings.language = document.getElementById('settings-language').value;
+  settings.seeThoughts = document.getElementById('see-thoughts').checked;
+  settings.instantMode = document.getElementById('instant-mode').checked;
 
   localStorage.setItem('florde-capability-cache', JSON.stringify(capabilityCache));
   await saveSettingsToDisk(settings);
@@ -2216,7 +2224,13 @@ document.addEventListener('click', (e) => {
 });
 
 function formatMessageContent(content) {
+  const seeThoughts = document.getElementById('see-thoughts')?.checked !== false;
   let html = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (seeThoughts) {
+    html = html.replace(/\[think\]([\s\S]*?)\[\/think\]/g, '<div class="think-block">$1</div>');
+  } else {
+    html = html.replace(/\[think\][\s\S]*?\[\/think\]/g, '');
+  }
   html = html.replace(/```file:([^\n]+)\n([\s\S]*?)```/g, (m, file, code) => {
     const id = 'fb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const safeCode = code.replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2233,6 +2247,23 @@ function formatMessageContent(content) {
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
   return html;
 }
+
+// Toolbar collapse
+(function() {
+  const key = 'florde-toolbar-collapsed';
+  const btn = document.querySelector('.btn-toolbar-toggle');
+  const content = document.querySelector('.toolbar-content');
+  if (btn && content) {
+    const collapsed = localStorage.getItem(key) === 'true';
+    content.classList.toggle('collapsed', collapsed);
+    btn.textContent = collapsed ? '\u25B6' : '\u25C0';
+    btn.addEventListener('click', () => {
+      const now = content.classList.toggle('collapsed');
+      localStorage.setItem(key, now);
+      btn.textContent = now ? '\u25B6' : '\u25C0';
+    });
+  }
+})();
 
 function countTokens(text) {
   if (!text) return 0;
@@ -2389,6 +2420,8 @@ async function executeToolCall(name, args) {
     return 'Permission denied: ' + name + ' is blocked';
   }
 
+  if (typeof setActivity === 'function') setActivity(name + '(' + (args.path || args.command || args.query || '...') + ')');
+
   switch (name) {
     case 'read_file':
       if (!project) throw new Error('No project open');
@@ -2522,12 +2555,13 @@ async function sendMessage(text) {
   const contentDiv = document.createElement('div');
   msgDiv.appendChild(contentDiv);
   let animInterval = null;
+  let _bufferedContent = '';
   function startAnim(text, suffix = '') {
     if (animInterval) clearInterval(animInterval);
     let dots = 1, dir = 1;
     const update = () => {
       const d = '.'.repeat(dots);
-      contentDiv.innerHTML = formatMessageContent(text + d + suffix);
+      contentDiv.innerHTML = formatMessageContent((_bufferedContent || text) + d + (suffix || ''));
       dots += dir;
       if (dots >= 4) dir = -1;
       if (dots <= 1) dir = 1;
@@ -2537,10 +2571,48 @@ async function sendMessage(text) {
   }
   function stopAnim(final) {
     if (animInterval) { clearInterval(animInterval); animInterval = null; }
-    if (final !== undefined) contentDiv.innerHTML = formatMessageContent(final);
+    if (final !== undefined) _bufferedContent = final;
+  }
+  function renderResponse(final) {
+    if (final !== undefined) _bufferedContent = final;
+    const instant = document.getElementById('instant-mode')?.checked;
+    if (instant) {
+      contentDiv.innerHTML = formatMessageContent(_bufferedContent);
+    } else {
+      animateText(contentDiv, _bufferedContent);
+    }
+  }
+  function animateText(el, fullText) {
+    el.innerHTML = '';
+    let idx = 0;
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor-blink';
+    cursor.textContent = '\u258C';
+    const step = () => {
+      if (idx >= fullText.length) { cursor.remove(); return; }
+      el.innerHTML = formatMessageContent(fullText.slice(0, idx + 1));
+      el.appendChild(cursor);
+      idx++;
+      const delay = fullText[idx] === '\n' ? 30 : fullText[idx] === ' ' ? 15 : 8;
+      setTimeout(step, delay);
+    };
+    step();
   }
 
   startAnim('*Thinking*');
+
+  let activityEl = null;
+  let _activityTimeout = null;
+  function setActivity(text) {
+    if (!activityEl) {
+      activityEl = document.createElement('div');
+      activityEl.className = 'chat-activity';
+      msgDiv.parentNode?.insertBefore(activityEl, msgDiv.nextSibling);
+    }
+    activityEl.textContent = text;
+    if (_activityTimeout) clearTimeout(_activityTimeout);
+    _activityTimeout = setTimeout(() => { if (activityEl) { activityEl.remove(); activityEl = null; } }, 5000);
+  }
 
   logToTerminal('Sending request to ' + provider + '...', 'info');
 
@@ -2656,7 +2728,7 @@ async function sendMessage(text) {
 
     const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
     if (responseContent) {
-      contentDiv.innerHTML = formatMessageContent(responseContent);
+      renderResponse(responseContent);
       chatHistory.push({ role: 'assistant', content: responseContent, model: provider });
       trimChatHistory();
       processAIResponse(responseContent);
@@ -3040,6 +3112,106 @@ document.getElementById('settings-theme').addEventListener('change', () => {
   currentTheme = document.getElementById('settings-theme').value;
   applyTheme();
 });
+
+// Ollama model selector
+document.getElementById('btn-ollama-models')?.addEventListener('click', async () => {
+  const list = document.getElementById('ollama-model-list');
+  if (!list) return;
+  if (!list.classList.contains('hidden')) { list.classList.add('hidden'); return; }
+  list.innerHTML = '<div class="ollama-loading">Loading...</div>';
+  list.classList.remove('hidden');
+  try {
+    const url = document.getElementById('url-ollama')?.value || 'http://localhost:11434';
+    const r = await fetchWithTimeout(url.replace(/\/+$/, '') + '/api/tags', { method: 'GET' }, 5000);
+    const data = await r.json();
+    const models = data.models || [];
+    if (models.length === 0) {
+      list.innerHTML = '<div class="ollama-empty">No models installed</div><button class="ollama-download-btn">Download Model</button>';
+    } else {
+      list.innerHTML = models.map(m => '<div class="ollama-model-item" data-name="' + m.name + '">' + m.name + '</div>').join('') +
+        '<div class="ollama-download-item">Download Model...</div>';
+    }
+    list.querySelectorAll('.ollama-model-item').forEach(item => {
+      item.addEventListener('click', () => {
+        document.getElementById('model-ollama').value = item.dataset.name;
+        list.classList.add('hidden');
+      });
+    });
+    const downloadBtn = list.querySelector('.ollama-download-btn, .ollama-download-item');
+    if (downloadBtn) downloadBtn.addEventListener('click', () => showOllamaDownloadModal());
+  } catch (err) {
+    list.innerHTML = '<div class="ollama-error">Cannot connect: ' + err.message + '</div>';
+  }
+});
+
+function showOllamaDownloadModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = '<div class="modal-content" style="max-width:500px;"><h2>Download Ollama Model</h2>' +
+    '<div class="settings-form">' +
+    '<label>Model Name</label>' +
+    '<input type="text" id="ollama-dl-name" placeholder="llama3.2" />' +
+    '<p style="font-size:0.8rem;color:var(--text3);">Or choose a popular model:</p>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:1rem;">' +
+    ['llama3.2', 'llama3.1', 'qwen2.5-coder', 'mistral', 'codestral', 'deepseek-coder-v2', 'phi3', 'gemma2'].map(m =>
+      '<button class="btn btn-sm btn-secondary ollama-quick" style="font-size:0.75rem;">' + m + '</button>'
+    ).join('') +
+    '</div>' +
+    '<div id="ollama-dl-progress" class="ollama-dl-progress hidden"><div class="ollama-dl-bar"></div><span class="ollama-dl-text"></span></div>' +
+    '</div>' +
+    '<div class="modal-actions"><button id="ollama-dl-start" class="btn btn-primary">Download</button><button class="btn btn-secondary ollama-dl-close">Cancel</button></div></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('.ollama-quick').forEach(btn => {
+    btn.addEventListener('click', () => document.getElementById('ollama-dl-name').value = btn.textContent);
+  });
+  overlay.querySelector('.ollama-dl-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#ollama-dl-start').addEventListener('click', async () => {
+    const name = document.getElementById('ollama-dl-name').value.trim();
+    if (!name) return;
+    const btn = overlay.querySelector('#ollama-dl-start');
+    btn.disabled = true; btn.textContent = 'Downloading...';
+    const progress = document.getElementById('ollama-dl-progress');
+    progress.classList.remove('hidden');
+    try {
+      const url = (document.getElementById('url-ollama')?.value || 'http://localhost:11434').replace(/\/+$/, '');
+      const r = await fetchWithTimeout(url + '/api/pull', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, stream: true })
+      }, 600000);
+      const reader = r.body.getReader(), decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line) continue;
+          try {
+            const p = JSON.parse(line);
+            const bar = progress.querySelector('.ollama-dl-bar');
+            const txt = progress.querySelector('.ollama-dl-text');
+            if (p.total) {
+              const pct = Math.min(100, Math.round((p.completed || 0) / p.total * 100));
+              bar.style.width = pct + '%';
+              txt.textContent = p.status + ' (' + pct + '%)';
+            } else {
+              txt.textContent = p.status || '';
+            }
+          } catch {}
+        }
+      }
+      document.getElementById('model-ollama').value = name;
+      progress.querySelector('.ollama-dl-bar').style.width = '100%';
+      progress.querySelector('.ollama-dl-text').textContent = 'Done!';
+      setTimeout(() => overlay.remove(), 1500);
+    } catch (err) {
+      progress.querySelector('.ollama-dl-text').textContent = 'Error: ' + err.message;
+      btn.disabled = false; btn.textContent = 'Retry';
+    }
+  });
+}
 
 document.getElementById('chat-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';

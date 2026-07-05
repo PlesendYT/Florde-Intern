@@ -14,6 +14,139 @@ function addAuditEntry(type, text) {
 const CLOUD_TIMEOUT = 900000;
 const OLLAMA_TIMEOUT = 1800000;
 
+// Timeout state
+let _timeoutTimer = null;
+let _timeoutEl = null;
+let _requestAborter = null;
+
+// Backoff state
+let _backoffTimer = null;
+let _backoffStep = null;
+
+function clearRequestTimeout() {
+  if (_timeoutTimer) { clearTimeout(_timeoutTimer); _timeoutTimer = null; }
+  if (_timeoutEl) { _timeoutEl.remove(); _timeoutEl = null; }
+}
+
+function startRequestTimeout(minutes, onTimeout) {
+  clearRequestTimeout();
+  if (!minutes || minutes <= 0) minutes = 30;
+  const totalMs = minutes * 60 * 1000;
+  _timeoutTimer = setTimeout(onTimeout, totalMs);
+  // show countdown when < 5 min remaining
+  const chat = document.getElementById('chat-messages');
+  if (!chat) return;
+  _timeoutEl = document.createElement('div');
+  _timeoutEl.className = 'chat-activity timeout-countdown';
+  _timeoutEl.textContent = 'Timeout: ' + minutes + 'm';
+  chat.appendChild(_timeoutEl);
+  const start = Date.now();
+  const iv = setInterval(() => {
+    const remaining = totalMs - (Date.now() - start);
+    if (remaining <= 0) { clearInterval(iv); return; }
+    const secs = Math.ceil(remaining / 1000);
+    const mins = Math.floor(secs / 60);
+    const secStr = (secs % 60).toString().padStart(2, '0');
+    if (secs < 300 && _timeoutEl) {
+      _timeoutEl.textContent = 'Timeout: ' + mins + ':' + secStr;
+    } else if (secs >= 300 && _timeoutEl) {
+      _timeoutEl.textContent = 'Timeout: ' + minutes + 'm';
+      clearInterval(iv);
+    }
+  }, 1000);
+}
+
+function resetRequestTimeout(minutes, onTimeout) {
+  clearRequestTimeout();
+  startRequestTimeout(minutes, onTimeout);
+}
+
+function cancelRequestWithTimeout(msg) {
+  clearRequestTimeout();
+  if (_requestAborter) { _requestAborter.abort(); _requestAborter = null; }
+  if (_backoffTimer) { clearTimeout(_backoffTimer); _backoffTimer = null; }
+  if (_backoffStep) _backoffStep = null;
+  const chat = document.getElementById('chat-messages');
+  if (!chat) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg system timeout-msg';
+  div.textContent = msg || 'Request cancelled due to timeout.';
+  chat.appendChild(div);
+}
+
+// Shell risk assessment
+function assessShellRisk(command) {
+  const patterns = {
+    critical: [
+      /\brm\s+-rf\s+\/\s*$/mi, /\bformat\b/i, /\bdd\s+if=\/dev\/zero/i,
+      /\bmkfs\b/i, /grub-install|fdisk|mbr/i, /:\(\)\s*\{|fork\s+bomb/i,
+      /chmod\s+777\s+\//i, /mv\s+\/\s+\/dev\/null/i,
+    ],
+    high: [
+      /\bsudo\b/i, /\brm\s+-rf\b/i, /\bcurl\b.*\|\s*(?:bash|sh)\b/i,
+      /\bwget\b.*\|\s*(?:bash|sh)\b/i, /\bchmod\s+-R\s+777\b/i,
+      /\bnmap\b/i, /\bapt\s+(?:install|remove|purge)\b/i,
+      /\bpip\s+install\b/i, /\bnpm\s+(?:install|publish|delete)\s+-g\b/i,
+    ],
+    medium: [
+      /\bnpm\s+(?:install|publish)\b/i, /\bgit\s+push\b/i,
+      /\bpip\s+install\b/i, /\bchmod\b/i, /\bkill\b/i,
+      /\bsystemctl\b/i, /\bservice\b/i,
+    ],
+    low: [
+      /\bmkdir\b/i, /\btouch\b/i, /\becho\s+>/, /\bmv\b/i, /\bcp\b/i,
+      /\bcd\b/i, /\bnano\b/i, /\bvi\b/i, /\bcode\b/i,
+    ],
+    safe: [
+      /\bls\b/i, /\bpwd\b/i, /\bcat\b/i, /\bhead\b/i, /\btail\b/i,
+      /\bgrep\b/i, /\bfind\b/i, /\bwhich\b/i, /\bwhoami\b/i, /\bdate\b/i,
+      /\bwc\b/i, /\bsort\b/i, /\buniq\b/i, /\bless\b/i, /\bmore\b/i,
+      /\bps\b/i, /\bdf\b/i, /\bdu\b/i,
+    ],
+  };
+  for (const [level, regexps] of Object.entries(patterns)) {
+    for (const re of regexps) {
+      if (re.test(command)) return level;
+    }
+  }
+  return 'safe';
+}
+
+// 429 backoff
+function getBackoffDelay(step) {
+  return Math.min(1000 * Math.pow(2, step), 60000);
+}
+
+// API key validation
+async function validateApiKey(providerId, key, url, model) {
+  const prov = providers[providerId];
+  if (!prov) return { status: 'invalid', message: 'Provider not configured' };
+  try {
+    const testMsg = [{ role: 'user', content: 'Say yes' }];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 180000);
+    const r = await fetchWithTimeout(
+      (url || prov.baseUrl || '').replace(/\/+$/, '') + '/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        body: JSON.stringify({ model: model || prov.model || 'default', messages: testMsg, max_tokens: 5 }),
+      },
+      180000
+    );
+    clearTimeout(timer);
+    if (r.status === 429 || r.status === 402) return { status: 'limited', message: 'Valid but rate limited (' + r.status + ')' };
+    if (r.status === 401 || r.status === 403) return { status: 'invalid', message: 'Invalid API key (' + r.status + ')' };
+    if (!r.ok) return { status: 'invalid', message: 'HTTP ' + r.status };
+    const data = await r.json();
+    if (data.choices && data.choices.length > 0) return { status: 'valid', message: 'Valid' };
+    return { status: 'invalid', message: 'Unexpected response' };
+  } catch (err) {
+    if (err.name === 'AbortError') return { status: 'limited', message: 'Request timed out (valid but slow)' };
+    return { status: 'invalid', message: err.message };
+  }
+}
+
 function getActiveTools() {
   const baseTools = [
     { type: 'function', function: { name: 'read_file', description: 'Read a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
@@ -31,6 +164,11 @@ function getActiveTools() {
 window.__updateTools = function() {
   if (typeof pluginRegistry !== 'undefined' && pluginRegistry._loaded) {
     if (document.getElementById('marketplace-list')) renderPluginMarketplace();
+  }
+  // Force tool refresh on next AI request by clearing any cached tool state
+  if (typeof prov !== 'undefined' && prov) {
+    prov.supportsTools = undefined;
+    detectToolSupport(prov).then(s => { prov.supportsTools = s; });
   }
 };
 
@@ -826,7 +964,35 @@ const PermissionManager = {
     localStorage.setItem('florde-settings', JSON.stringify(settings));
   },
 
+  _getAutoExceptions() {
+    const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    return s.autoExceptions || {};
+  },
+
+  _isToolExcepted(toolName, args) {
+    const ex = this._getAutoExceptions();
+    if (ex.shell && toolName === 'exec_command') return true;
+    if (ex.outside && args && (args.path || '').startsWith('..')) return true;
+    if (ex.git && toolName === 'exec_command' && /git\b/i.test(args?.command || '')) return true;
+    if (ex.terminal && toolName === 'exec_command') return true;
+    return false;
+  },
+
   async checkTool(toolName, args) {
+    const autoAccept = JSON.parse(localStorage.getItem('florde-settings') || '{}').autoAccept === true;
+    if (autoAccept && !this._isToolExcepted(toolName, args)) {
+      // auto-accept write/read/edit/create operations, for shell check risk
+      if (toolName === 'exec_command' && args?.command) {
+        const risk = assessShellRisk(args.command);
+        if (risk === 'critical') {
+          return new Promise((resolve) => showCriticalWarning(args.command, resolve));
+        }
+        if (risk === 'high') {
+          return new Promise((resolve) => showPermissionPrompt(toolName, args, resolve));
+        }
+      }
+      return true;
+    }
     const level = this.getPermission(toolName);
     if (level === 'allow') return true;
     if (level === 'block') {
@@ -834,6 +1000,12 @@ const PermissionManager = {
       return false;
     }
     if (level === 'ask') {
+      // if sandbox access denied, show permission box in chat
+      if (args && args.path && typeof args.path === 'string' && args.path.includes('..')) {
+        return new Promise((resolve) => {
+          showSandboxDeniedUI(toolName, args, resolve);
+        });
+      }
       return new Promise((resolve) => {
         showPermissionPrompt(toolName, args, resolve);
       });
@@ -865,6 +1037,120 @@ function showPermissionPrompt(toolName, args, callback) {
   overlay.querySelector('.btn-allow-always').onclick = () => { PermissionManager.setPermission(toolName, 'allow'); overlay.remove(); callback(true); };
   overlay.querySelector('.btn-block-once').onclick = () => { overlay.remove(); callback(false); };
   overlay.querySelector('.btn-block-always').onclick = () => { PermissionManager.setPermission(toolName, 'block'); overlay.remove(); callback(false); };
+}
+
+function showSandboxDeniedUI(toolName, args, callback) {
+  const existing = document.querySelector('.permission-prompt-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'permission-prompt-overlay';
+  const path = args.path || args.command || args.query || 'unknown';
+  overlay.innerHTML = '<div class="permission-prompt" style="border-color:#ef4444;">' +
+    '<h3>\u{1F512} Sandbox Access Denied</h3>' +
+    '<p>The agent wants to access <strong>' + escapeHtml(path) + '</strong></p>' +
+    '<pre>' + escapeHtml(JSON.stringify(args, null, 2)) + '</pre>' +
+    '<div class="permission-actions">' +
+      '<button class="btn-allow-once" style="background:#ef4444;">Allow Once</button>' +
+      '<button class="btn-allow-always" style="background:#ef4444;">Always Allow</button>' +
+      '<button class="btn-block-once">Deny Once</button>' +
+      '<button class="btn-block-always">Always Block</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('.btn-allow-once').onclick = () => { overlay.remove(); callback(true); };
+  overlay.querySelector('.btn-allow-always').onclick = () => { PermissionManager.setPermission(toolName, 'allow'); overlay.remove(); callback(true); };
+  overlay.querySelector('.btn-block-once').onclick = () => { overlay.remove(); callback(false); };
+  overlay.querySelector('.btn-block-always').onclick = () => { PermissionManager.setPermission(toolName, 'block'); overlay.remove(); callback(false); };
+}
+
+function showCriticalWarning(command, callback) {
+  const existing = document.querySelector('.permission-prompt-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'permission-prompt-overlay';
+  overlay.innerHTML = '<div class="critical-warning" style="max-width:500px;margin:auto;">' +
+    '<h4>\u26A0\uFE0F Critical Command Detected</h4>' +
+    '<p><strong>Command:</strong> <code>' + escapeHtml(command) + '</code></p>' +
+    '<p>This command can damage your system. Hold the button for 10 seconds to confirm.</p>' +
+    '<div class="critical-actions">' +
+      '<button class="hold-btn" id="critical-hold-btn"><span class="hold-progress" style="width:0%"></span>Hold 10s to Confirm</button>' +
+      '<button class="btn btn-secondary" id="critical-cancel-btn">Cancel</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+
+  const holdBtn = document.getElementById('critical-hold-btn');
+  const cancelBtn = document.getElementById('critical-cancel-btn');
+  let holdTimer = null;
+  let holdSeconds = 0;
+
+  holdBtn.addEventListener('mousedown', () => {
+    if (holdTimer) return;
+    holdSeconds = 0;
+    holdBtn.querySelector('.hold-progress').style.width = '0%';
+    holdTimer = setInterval(() => {
+      holdSeconds++;
+      const pct = (holdSeconds / 10) * 100;
+      holdBtn.querySelector('.hold-progress').style.width = pct + '%';
+      holdBtn.textContent = 'Hold ' + (10 - holdSeconds) + 's';
+      if (holdSeconds >= 10) {
+        clearInterval(holdTimer); holdTimer = null;
+        holdBtn.textContent = 'Confirm Execution';
+        holdBtn.style.background = '#dc2626';
+        holdBtn.onclick = () => { overlay.remove(); callback(true); };
+      }
+    }, 1000);
+  });
+  holdBtn.addEventListener('mouseup', () => {
+    if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
+    holdBtn.querySelector('.hold-progress').style.width = '0%';
+    holdBtn.textContent = 'Hold 10s to Confirm';
+    holdBtn.onclick = null;
+    holdBtn.style.background = '';
+  });
+  holdBtn.addEventListener('mouseleave', () => {
+    if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
+    holdBtn.querySelector('.hold-progress').style.width = '0%';
+    holdBtn.textContent = 'Hold 10s to Confirm';
+    holdBtn.onclick = null;
+    holdBtn.style.background = '';
+  });
+  cancelBtn.addEventListener('click', () => { overlay.remove(); callback(false); });
+}
+
+function showExpandableShellView(command, result) {
+  const el = document.createElement('div');
+  el.className = 'shell-detail';
+  const lines = (result || '').split('\n').length;
+  el.innerHTML = '<div class="shell-detail-header">' +
+    '<span>\u25B6</span> <code>' + escapeHtml(command.slice(0, 80)) + '</code>' +
+    '<span style="margin-left:auto;color:var(--text3);font-size:0.7rem;">' + lines + ' lines</span>' +
+    '</div>' +
+    '<div class="shell-detail-body" style="display:none;">' +
+    '<pre>' + escapeHtml(result || '') + '</pre>' +
+    '<div class="shell-detail-actions">' +
+    '<button class="shell-action-copy">Copy</button>' +
+    '<button class="shell-action-ask">Ask Florde What This Does</button>' +
+    '</div></div>';
+  const header = el.querySelector('.shell-detail-header');
+  const body = el.querySelector('.shell-detail-body');
+  header.addEventListener('click', () => {
+    const expanded = body.style.display !== 'none';
+    body.style.display = expanded ? 'none' : 'block';
+    header.querySelector('span:first-child').textContent = expanded ? '\u25B6' : '\u25BC';
+  });
+  el.querySelector('.shell-action-copy').addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(result || '');
+  });
+  el.querySelector('.shell-action-ask').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    document.getElementById('chat-input').value = 'What does this command do and what were the results?\n```\n' + command + '\n```\n\nResults:\n```\n' + (result || '') + '\n```';
+  });
+  return el;
 }
 
 // ==================== KEYCHAIN AUTO-FILL ====================
@@ -1178,6 +1464,16 @@ async function loadSettings() {
     if (editor) editor.updateOptions({ fontSize: parseInt(s.editorFontSize) });
   }
   updateProviderDropdown();
+  if (s.timeout !== undefined) document.getElementById('settings-timeout').value = s.timeout;
+  if (s.autoAccept !== undefined) {
+    document.getElementById('auto-accept').checked = s.autoAccept;
+    document.getElementById('auto-exceptions-area').classList.toggle('hidden', !s.autoAccept);
+  }
+  const ex = s.autoExceptions || {};
+  document.getElementById('exc-shell').checked = ex.shell || false;
+  document.getElementById('exc-outside').checked = ex.outside || false;
+  document.getElementById('exc-git').checked = ex.git || false;
+  document.getElementById('exc-terminal').checked = ex.terminal || false;
   } catch (err) {
     console.error('loadSettings error:', err);
   }
@@ -2391,6 +2687,11 @@ function sanitizePath(filePath) {
 }
 
 async function confirmFileAction(action, path) {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  if (s.autoAccept === true) {
+    const ex = s.autoExceptions || {};
+    if (!ex.shell && !ex.outside) return true;
+  }
   return new Promise((resolve) => {
     const modal = document.getElementById('question-modal');
     document.getElementById('question-text').textContent =
@@ -2462,8 +2763,14 @@ async function executeToolCall(name, args) {
       const execDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : sandboxDir;
       if (!execDir) throw new Error('AI Sandbox not configured');
       logToTerminal('AI executing: ' + args.command + ' in ' + execDir, 'command');
+      const risk = assessShellRisk(args.command);
+      logToTerminal('Shell risk level: ' + risk, risk === 'critical' || risk === 'high' ? 'warn' : 'info');
       const execResult = await window.electronAPI.sandboxExec(execDir, args.command);
       const outputText = typeof execResult === 'string' ? execResult : (execResult && execResult.output ? execResult.output : '');
+      // Insert expandable shell view into the current AI message
+      const shellView = showExpandableShellView(args.command, outputText);
+      const aiMsg = document.querySelector('.chat-msg.ai:last-child');
+      if (aiMsg) aiMsg.appendChild(shellView);
       logToTerminal('Command output: ' + outputText.substring(0, 500), 'info');
       return outputText;
 
@@ -2617,6 +2924,18 @@ async function sendMessage(text) {
   logToTerminal('Sending request to ' + provider + '...', 'info');
 
   try {
+    const timeoutMinutes = parseInt(document.getElementById('settings-timeout')?.value) || 30;
+    let _timedOut = false;
+    const onTimeout = () => {
+      _timedOut = true;
+      if (_requestAborter) _requestAborter.abort();
+      stopAnim();
+      cancelRequestWithTimeout('Request cancelled after ' + timeoutMinutes + ' minutes.');
+      logToTerminal('Request timed out after ' + timeoutMinutes + ' minutes', 'error');
+    };
+    startRequestTimeout(timeoutMinutes, onTimeout);
+    _backoffStep = null;
+
     const systemMsg = { role: 'system', content: buildSystemPrompt() };
     const MAX_MSG_CHARS = 100000;
     let messages = [systemMsg, ...chatHistory.map(m => ({ role: m.role, content: m.content }))];
@@ -2630,6 +2949,29 @@ async function sendMessage(text) {
     }
     const prov = providers[provider];
 
+    async function fetchWithBackoff(fn) {
+      while (true) {
+        if (_timedOut) throw new Error('Timed out');
+        try {
+          const result = await fn();
+          _backoffStep = null;
+          return result;
+        } catch (err) {
+          if (_timedOut) throw err;
+          const is429 = /429|rate.?limit/i.test(err.message || '');
+          if (is429) {
+            _backoffStep = (_backoffStep || 0) + 1;
+            const delay = getBackoffDelay(_backoffStep - 1);
+            setActivity('Rate Limited — Retry in ' + Math.ceil(delay / 1000) + 's');
+            logToTerminal('Rate limited, retrying in ' + (delay / 1000) + 's (step ' + _backoffStep + ')', 'warn');
+            await new Promise(r => { _backoffTimer = setTimeout(r, delay); });
+            continue;
+          }
+          throw err;
+        }
+      }
+    }
+
     let finalContent = '';
 
     const supportsTools = prov ? (prov.supportsTools ? true : await checkToolSupport(prov, provider)) : false;
@@ -2638,8 +2980,10 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        const response = await prov.sendWithTools(messages, getActiveTools());
+        const response = await fetchWithBackoff(() => prov.sendWithTools(messages, getActiveTools()));
+        if (_timedOut) return;
         stopAnim();
+        resetRequestTimeout(timeoutMinutes, onTimeout);
 
         if (response.tool_calls && response.tool_calls.length > 0) {
           messages.push({ role: 'assistant', content: response.content || null, tool_calls: response.tool_calls });
@@ -2660,6 +3004,7 @@ async function sendMessage(text) {
             }
             messages.push(getToolResultMsg(toolCall.id, name, result));
             startAnim('*Running tools', ' (' + toolNames + ')*');
+            resetRequestTimeout(timeoutMinutes, onTimeout);
           }
           stopAnim();
           toolRounds++;
@@ -2673,6 +3018,7 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        clearRequestTimeout();
         return;
       }
     } else {
@@ -2680,10 +3026,13 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        finalContent = await prov.sendMessage(messages, (chunk) => {
+        finalContent = await fetchWithBackoff(() => prov.sendMessage(messages, (chunk) => {
           stopAnim(chunk);
-        });
+          resetRequestTimeout(timeoutMinutes, onTimeout);
+        }));
+        if (_timedOut) return;
         stopAnim(finalContent);
+        resetRequestTimeout(timeoutMinutes, onTimeout);
 
         const textCalls = parseTextToolCalls(finalContent);
         if (textCalls.length > 0) {
@@ -2708,6 +3057,7 @@ async function sendMessage(text) {
             const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
             displayContent = displayContent.replace(bracketStr, '');
             startAnim('*Running tools', ' (' + toolNames + ')*');
+            resetRequestTimeout(timeoutMinutes, onTimeout);
           }
           stopAnim();
           toolRounds++;
@@ -2722,10 +3072,12 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        clearRequestTimeout();
         return;
       }
     }
 
+    clearRequestTimeout();
     const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
     if (responseContent) {
       renderResponse(responseContent);
@@ -2744,9 +3096,10 @@ async function sendMessage(text) {
     showNotification('ready', 'Florde Is Ready \u2014 AI response received', '\u2713');
   } catch (err) {
     stopAnim();
+    clearRequestTimeout();
     const msg = err.message || 'Unknown error';
     let displayMsg = msg;
-    if (err.name === 'AbortError') displayMsg = 'Request timed out after 15 minutes. Check your network and try again.';
+    if (err.name === 'AbortError') displayMsg = 'Request cancelled (timeout or aborted). Check your network and try again.';
     else if (/40[13]/.test(msg)) displayMsg = msg + ' \u2014 Check your API key in settings.';
     else if (/429/.test(msg)) displayMsg = msg + ' \u2014 Rate limited. Wait a moment and retry.';
     else if (/Failed to fetch/.test(msg)) displayMsg = 'Network error \u2014 check your connection and the API endpoint URL in settings.';
@@ -3227,6 +3580,72 @@ document.getElementById('editor-font-size')?.addEventListener('input', (e) => {
   if (editor) editor.updateOptions({ fontSize: parseInt(e.target.value) });
   saveSettingsToDisk({ editorFontSize: e.target.value });
 });
+
+// Auto-accept toggle
+document.getElementById('auto-accept')?.addEventListener('change', (e) => {
+  const checked = e.target.checked;
+  document.getElementById('auto-exceptions-area').classList.toggle('hidden', !checked);
+  saveSettingsToDisk({ autoAccept: checked });
+});
+
+// Auto-exception checkboxes
+['shell', 'outside', 'git', 'terminal'].forEach(key => {
+  document.getElementById('exc-' + key)?.addEventListener('change', () => {
+    const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const ex = s.autoExceptions || {};
+    ex[key] = document.getElementById('exc-' + key).checked;
+    saveSettingsToDisk({ autoExceptions: ex });
+  });
+});
+
+// Timeout input
+document.getElementById('settings-timeout')?.addEventListener('change', (e) => {
+  saveSettingsToDisk({ timeout: parseInt(e.target.value) || 30 });
+});
+
+// Dynamic validate buttons for each provider
+function addValidateButtons() {
+  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  for (const id of providerIds) {
+    const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
+    if (!body) continue;
+    const keyWrap = body.querySelector('.key-input-wrap');
+    if (!keyWrap || keyWrap.querySelector('.btn-validate')) continue;
+    const needsKey = id !== 'ollama' && id !== 'lmstudio' && id !== 'localai';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-secondary btn-validate';
+    btn.style.cssText = 'margin-left:0.3rem;font-size:0.7rem;';
+    btn.textContent = '\u2713';
+    btn.title = 'Validate ' + (needsKey ? 'API Key' : 'connection');
+    btn.dataset.provider = id;
+    keyWrap.appendChild(btn);
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      btn.disabled = true; btn.textContent = '...';
+      const keyInput = document.getElementById('key-' + id);
+      const urlInput = document.getElementById('url-' + id);
+      const modelInput = document.getElementById('model-' + id);
+      const key = keyInput ? keyInput.value : '';
+      const url = urlInput ? urlInput.value : '';
+      const model = modelInput ? modelInput.value : '';
+      const statusSpan = document.getElementById('status-' + id);
+      const result = await validateApiKey(id, key, url, model);
+      btn.textContent = '\u2713';
+      btn.disabled = false;
+      if (result.status === 'valid') {
+        if (statusSpan) { statusSpan.textContent = '\u2713'; statusSpan.style.color = '#22c55e'; statusSpan.title = 'Valid'; }
+        showNotification('success', id + ' key is valid', '\u2713');
+      } else if (result.status === 'limited') {
+        if (statusSpan) { statusSpan.textContent = '\u26A0'; statusSpan.style.color = '#facc15'; statusSpan.title = result.message; }
+        showNotification('warning', id + ': ' + result.message, '\u26A0');
+      } else {
+        if (statusSpan) { statusSpan.textContent = '\u2717'; statusSpan.style.color = '#ef4444'; statusSpan.title = result.message; }
+        showNotification('error', id + ': ' + result.message, '\u2717');
+      }
+    });
+  }
+}
+addValidateButtons();
 
 // ==================== OPEN FILE FROM TREE ====================
 

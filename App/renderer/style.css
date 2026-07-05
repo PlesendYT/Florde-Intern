@@ -501,6 +501,38 @@ body {
 .ollama-dl-progress { margin: 0.5rem 0; }
 .ollama-dl-bar { height: 4px; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.3s; }
 .ollama-dl-text { font-size: 0.75rem; color: var(--text3); margin-top: 0.2rem; display: block; }
+
+/* ==================== RISK COLORS ==================== */
+.risk-safe { color: #22c55e; }
+.risk-low { color: #86efac; }
+.risk-medium { color: #facc15; }
+.risk-high { color: #f97316; }
+.risk-critical { color: #ef4444; }
+.risk-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 3px; text-transform: uppercase; }
+.risk-tag.risk-safe { background: #14532d; color: #22c55e; }
+.risk-tag.risk-low { background: #14532d; color: #86efac; }
+.risk-tag.risk-medium { background: #713f12; color: #facc15; }
+.risk-tag.risk-high { background: #7c2d12; color: #f97316; }
+.risk-tag.risk-critical { background: #7f1d1d; color: #ef4444; }
+.permission-box { border: 1px solid #ef4444; background: rgba(239,68,68,0.08); border-radius: 6px; padding: 0.5rem 0.8rem; margin: 0.3rem 0; font-size: 0.8rem; }
+.permission-box .perm-icon { color: #ef4444; margin-right: 0.4rem; }
+.permission-box .perm-actions { margin-top: 0.4rem; display: flex; gap: 0.4rem; }
+.permission-box .perm-actions button { font-size: 0.75rem; padding: 0.2rem 0.6rem; }
+.shell-detail { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; margin: 0.3rem 0; overflow: hidden; }
+.shell-detail-header { display: flex; align-items: center; gap: 0.4rem; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.75rem; color: var(--text2); }
+.shell-detail-header:hover { background: var(--hover); }
+.shell-detail-body { padding: 0.5rem 0.6rem; font-size: 0.75rem; border-top: 1px solid var(--border); }
+.shell-detail-body pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-family: var(--mono); }
+.shell-detail-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.shell-detail-actions button { font-size: 0.7rem; padding: 0.15rem 0.5rem; }
+.critical-warning { border: 2px solid #ef4444; background: rgba(239,68,68,0.12); border-radius: 8px; padding: 0.8rem; margin: 0.5rem 0; }
+.critical-warning h4 { color: #ef4444; margin: 0 0 0.4rem; font-size: 0.85rem; }
+.critical-warning p { font-size: 0.78rem; color: var(--text2); margin: 0.2rem 0; }
+.critical-warning .critical-actions { margin-top: 0.6rem; display: flex; gap: 0.4rem; align-items: center; }
+.hold-btn { background: #ef4444; color: #fff; border: none; padding: 0.4rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; position: relative; overflow: hidden; }
+.hold-btn:disabled { opacity: 0.6; cursor: default; }
+.hold-btn .hold-progress { position: absolute; left: 0; top: 0; height: 100%; background: rgba(255,255,255,0.2); transition: width 0.1s; }
+.valid-icon { font-size: 0.9rem; margin-left: 0.3rem; cursor: help; }
 .btn-continue { display: block; margin: 4px 0 8px auto; padding: 4px 12px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
 .btn-continue:hover { background: var(--hover); color: var(--accent); }
 .btn-continue:disabled { opacity: 0.5; cursor: default; }

@@ -293,6 +293,19 @@
             <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
             Launch Florde on Windows startup
           </label>
+          <label style="margin-top:0.8rem;">Timeout (minutes)</label>
+          <input type="number" id="settings-timeout" value="30" min="1" max="360" />
+          <label style="margin-top:0.8rem;">
+            <input type="checkbox" id="auto-accept" style="width:auto;margin-right:0.5rem;" />
+            Auto Accept (automatisch Bestätigungen erteilen)
+          </label>
+          <div id="auto-exceptions-area" class="hidden" style="margin-top:0.5rem;padding:0.5rem;background:var(--bg3);border-radius:6px;">
+            <p style="margin:0 0 0.4rem;font-size:0.8rem;color:var(--text3);">Auto-Exceptions (immer Fragen):</p>
+            <label><input type="checkbox" id="exc-shell" style="width:auto;margin-right:0.3rem;" /> Shell execution</label>
+            <label><input type="checkbox" id="exc-outside" style="width:auto;margin-right:0.3rem;" /> Outside project access</label>
+            <label><input type="checkbox" id="exc-git" style="width:auto;margin-right:0.3rem;" /> Git operations</label>
+            <label><input type="checkbox" id="exc-terminal" style="width:auto;margin-right:0.3rem;" /> Terminal operations</label>
+          </div>
         </div>
       </div>
 

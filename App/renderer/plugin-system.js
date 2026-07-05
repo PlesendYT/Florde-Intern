@@ -13,7 +13,7 @@ class PluginRegistry {
     for (const p of stored) {
       if (this.plugins.has(p.id)) {
         const existing = this.plugins.get(p.id);
-        this.plugins.set(p.id, { ...existing, enabled: p.enabled, installed: p.installed });
+        this.plugins.set(p.id, { ...existing, enabled: p.enabled === true, installed: p.installed === true });
       } else {
         this.plugins.set(p.id, p);
       }
@@ -70,7 +70,7 @@ class PluginRegistry {
   getActiveTools() {
     const tools = [];
     for (const p of this.plugins.values()) {
-      if (!p.enabled || !p.tools) continue;
+      if (p.enabled !== true || !p.tools) continue;
       for (const t of p.tools) {
         const existing = tools.findIndex(x => x.function.name === t.function.name);
         if (existing >= 0) tools[existing] = t;
@@ -83,7 +83,7 @@ class PluginRegistry {
   getActivePromptExtensions() {
     const exts = [];
     for (const p of this.plugins.values()) {
-      if (p.enabled && p.promptExtension) exts.push(p.promptExtension);
+      if (p.enabled === true && p.promptExtension) exts.push(p.promptExtension);
     }
     return exts;
   }

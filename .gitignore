@@ -8,6 +8,8 @@ App/dist/
 App_Installer/*.exe
 Website/App_Download/*.exe
 *.exe
+App/build-output/
+App/installer.nsh
 
 # Environment files
 .env
@@ -30,5 +32,21 @@ Desktop.ini
 *.log
 npm-debug.log*
 App/*.log
+
+# Config generated files
+config/icon/icon.ico
+config/icon/icon.png
+
+# Editor generated
+App/renderer/fuse.js
+App/renderer/git/
+App/renderer/terminal/
+App/renderer/tools/
+
+# Scripts
+build.bat
+dev_run.bat
+run.bat
+delete_all_data.bat
 
 

@@ -1,25 +1,32 @@
-const { app, BrowserWindow, ipcMain, dialog, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, net, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
 
 let mainWindow;
-const settingsPath = path.join(app.getPath('userData'), 'settings.json');
-const projectsDir = path.join(app.getPath('userData'), 'projects');
-const sandboxDir = path.join(app.getPath('userData'), 'sandbox');
+let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
+function getSettingsPath() { if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json'); return _settingsPath; }
+function getProjectsDir() { if (!_projectsDir) _projectsDir = path.join(app.getPath('userData'), 'projects'); return _projectsDir; }
+function getSandboxDir() { if (!_sandboxDir) _sandboxDir = path.join(app.getPath('userData'), 'sandbox'); return _sandboxDir; }
+function getPluginsPath() { if (!_pluginsPath) _pluginsPath = path.join(app.getPath('userData'), 'plugins.json'); return _pluginsPath; }
 
 function createWindow() {
+  Menu.setApplicationMenu(null);
+  const isMac = process.platform === 'darwin';
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 600,
     backgroundColor: '#0a0a0f',
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    titleBarOverlay: isMac ? undefined : { color: '#12121a', symbolColor: '#e0e0e0', height: 36 },
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false,
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -28,19 +35,31 @@ function createWindow() {
   }
 }
 
-if (!fs.existsSync(projectsDir)) fs.mkdirSync(projectsDir, { recursive: true });
-if (!fs.existsSync(sandboxDir)) fs.mkdirSync(sandboxDir, { recursive: true });
+app.whenReady().then(() => {
+  if (!fs.existsSync(getProjectsDir())) fs.mkdirSync(getProjectsDir(), { recursive: true });
+  if (!fs.existsSync(getSandboxDir())) fs.mkdirSync(getSandboxDir(), { recursive: true });
+});
+
+// ==================== NOTIFICATIONS ====================
+
+const { Notification } = require('electron');
+
+ipcMain.handle('show-notification', (event, title, body) => {
+  const n = new Notification({ title, body, icon: path.join(__dirname, '..', 'config', 'icon', 'icon.png') });
+  n.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
+  n.show();
+});
 
 // ==================== SETTINGS ====================
 
 ipcMain.handle('get-settings', () => {
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
   } catch { return {}; }
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+  fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
   return true;
 });
 
@@ -48,22 +67,22 @@ ipcMain.handle('save-settings', (event, settings) => {
 
 function getProjectRoot(name) {
   if (!name) return null;
-  const metaPath = path.join(projectsDir, name, 'meta.json');
+  const metaPath = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(metaPath)) return null;
   const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
   if (meta.type === 'local') return meta.path;
-  return path.join(projectsDir, name);
+  return path.join(getProjectsDir(), name);
 }
 
 function getProjectMeta(name) {
-  const p = path.join(projectsDir, name, 'meta.json');
+  const p = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(p)) return null;
   return JSON.parse(fs.readFileSync(p, 'utf-8'));
 }
 
 ipcMain.handle('list-projects', () => {
-  if (!fs.existsSync(projectsDir)) return [];
-  return fs.readdirSync(projectsDir, { withFileTypes: true })
+  if (!fs.existsSync(getProjectsDir())) return [];
+  return fs.readdirSync(getProjectsDir(), { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => {
       const meta = getProjectMeta(d.name);
@@ -75,7 +94,7 @@ ipcMain.handle('list-projects', () => {
 });
 
 ipcMain.handle('create-sandbox-project', (event, name) => {
-  const dir = path.join(projectsDir, name);
+  const dir = path.join(getProjectsDir(), name);
   if (fs.existsSync(dir)) return false;
   fs.mkdirSync(dir, { recursive: true });
   const meta = { name, type: 'sandbox', createdAt: Date.now() };
@@ -85,7 +104,7 @@ ipcMain.handle('create-sandbox-project', (event, name) => {
 });
 
 ipcMain.handle('create-local-project', async (event, name, folderPath) => {
-  const dir = path.join(projectsDir, name);
+  const dir = path.join(getProjectsDir(), name);
   if (fs.existsSync(dir)) return { ok: false, error: 'exists' };
   if (!fs.existsSync(folderPath)) return { ok: false, error: 'path not found' };
   fs.mkdirSync(dir, { recursive: true });
@@ -96,23 +115,29 @@ ipcMain.handle('create-local-project', async (event, name, folderPath) => {
 });
 
 ipcMain.handle('delete-project', (event, name) => {
-  const dir = path.join(projectsDir, name);
+  const dir = path.join(getProjectsDir(), name);
   if (fs.existsSync(dir)) { fs.rmSync(dir, { recursive: true }); return true; }
   return false;
 });
 
 ipcMain.handle('load-session', (event, name) => {
-  const p = path.join(projectsDir, name, 'session.json');
+  const p = path.join(getProjectsDir(), name, 'session.json');
   if (!fs.existsSync(p)) return { history: [] };
   return JSON.parse(fs.readFileSync(p, 'utf-8'));
 });
 
 ipcMain.handle('save-session', (event, name, data) => {
-  fs.writeFileSync(path.join(projectsDir, name, 'session.json'), JSON.stringify(data, null, 2), 'utf-8');
+  fs.writeFileSync(path.join(getProjectsDir(), name, 'session.json'), JSON.stringify(data, null, 2), 'utf-8');
   return true;
 });
 
 ipcMain.handle('get-project-root', (event, name) => getProjectRoot(name));
+
+function resolveSafe(root, filePath) {
+  const resolved = path.resolve(root, filePath);
+  if (!resolved.startsWith(path.resolve(root))) return null;
+  return resolved;
+}
 
 // ==================== FILE OPERATIONS ====================
 
@@ -135,15 +160,16 @@ ipcMain.handle('project-list-files', (event, name) => {
 ipcMain.handle('project-read-file', (event, name, filePath) => {
   const root = getProjectRoot(name);
   if (!root) return null;
-  const full = path.join(root, filePath);
-  if (!fs.existsSync(full)) return null;
+  const full = resolveSafe(root, filePath);
+  if (!full || !fs.existsSync(full)) return null;
   return fs.readFileSync(full, 'utf-8');
 });
 
 ipcMain.handle('project-write-file', (event, name, filePath, content) => {
   const root = getProjectRoot(name);
   if (!root) return false;
-  const full = path.join(root, filePath);
+  const full = resolveSafe(root, filePath);
+  if (!full) return false;
   const dir = path.dirname(full);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(full, content, 'utf-8');
@@ -153,7 +179,8 @@ ipcMain.handle('project-write-file', (event, name, filePath, content) => {
 ipcMain.handle('project-delete-file', (event, name, filePath) => {
   const root = getProjectRoot(name);
   if (!root) return false;
-  const full = path.join(root, filePath);
+  const full = resolveSafe(root, filePath);
+  if (!full) return false;
   if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
   return false;
 });
@@ -161,9 +188,9 @@ ipcMain.handle('project-delete-file', (event, name, filePath) => {
 ipcMain.handle('project-rename-file', (event, name, oldPath, newPath) => {
   const root = getProjectRoot(name);
   if (!root) return false;
-  const from = path.join(root, oldPath);
-  const to = path.join(root, newPath);
-  if (!fs.existsSync(from)) return false;
+  const from = resolveSafe(root, oldPath);
+  const to = resolveSafe(root, newPath);
+  if (!from || !to || !fs.existsSync(from)) return false;
   const dir = path.dirname(to);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.renameSync(from, to);
@@ -212,7 +239,11 @@ ipcMain.handle('export-zip', async (event, name) => {
   });
   if (result.canceled || !result.filePath) return false;
   try {
-    execSync(`powershell -NoProfile -Command "Compress-Archive -Path '${root}\\*' -DestinationPath '${result.filePath}' -Force"`, { timeout: 30000 });
+    const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
+    const psScript = `param([string]$$src,[string]$$dst)\nCompress-Archive -Path "$$src\\*" -DestinationPath "$$dst" -Force`;
+    fs.writeFileSync(tmpScript, psScript, 'utf-8');
+    execSync(`powershell -NoProfile -File "${tmpScript}" "${root}" "${result.filePath}"`, { timeout: 30000 });
+    fs.rmSync(tmpScript, { force: true });
     return true;
   } catch (e) {
     console.error('ZIP export failed:', e.message);
@@ -222,7 +253,7 @@ ipcMain.handle('export-zip', async (event, name) => {
 
 // ==================== SANDBOX ====================
 
-ipcMain.handle('get-sandbox-dir', () => sandboxDir);
+ipcMain.handle('get-sandbox-dir', () => getSandboxDir());
 
 ipcMain.handle('sandbox-list-files', (event, sandboxPath) => {
   if (!sandboxPath || !fs.existsSync(sandboxPath)) return [];
@@ -240,13 +271,14 @@ ipcMain.handle('sandbox-list-files', (event, sandboxPath) => {
 });
 
 ipcMain.handle('sandbox-read-file', (event, sandboxPath, filePath) => {
-  const full = path.join(sandboxPath, filePath);
-  if (!fs.existsSync(full)) return null;
+  const full = resolveSafe(sandboxPath, filePath);
+  if (!full || !fs.existsSync(full)) return null;
   return fs.readFileSync(full, 'utf-8');
 });
 
 ipcMain.handle('sandbox-write-file', (event, sandboxPath, filePath, content) => {
-  const full = path.join(sandboxPath, filePath);
+  const full = resolveSafe(sandboxPath, filePath);
+  if (!full) return false;
   const dir = path.dirname(full);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(full, content, 'utf-8');
@@ -254,14 +286,17 @@ ipcMain.handle('sandbox-write-file', (event, sandboxPath, filePath, content) => 
 });
 
 ipcMain.handle('sandbox-delete-file', (event, sandboxPath, filePath) => {
-  const full = path.join(sandboxPath, filePath);
+  const full = resolveSafe(sandboxPath, filePath);
+  if (!full) return false;
   if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
   return false;
 });
 
 ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
+  const allowed = getSandboxDir();
+  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
   try {
-    const output = execSync(command, { cwd: sandboxPath, timeout: 30000, encoding: 'utf-8' });
+    const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
     return { ok: true, output };
   } catch (e) {
     return { ok: false, output: e.stderr || e.message, code: e.status };
@@ -301,16 +336,22 @@ ipcMain.handle('set-auto-start', (event, enable) => {
 
 // ==================== PLUGINS ====================
 
-const pluginsPath = path.join(app.getPath('userData'), 'plugins.json');
-
 ipcMain.handle('get-plugins', () => {
-  try { return JSON.parse(fs.readFileSync(pluginsPath, 'utf-8')); }
+  try { return JSON.parse(fs.readFileSync(getPluginsPath(), 'utf-8')); }
   catch { return []; }
 });
 
 ipcMain.handle('save-plugins', (event, data) => {
-  fs.writeFileSync(pluginsPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.writeFileSync(getPluginsPath(), JSON.stringify(data, null, 2), 'utf-8');
   return true;
+});
+
+ipcMain.handle('ollama-list', async () => {
+  try {
+    const out = execSync('ollama list', { timeout: 10000, encoding: 'utf-8' });
+    const models = out.split('\n').slice(1).filter(Boolean).map(l => l.split(/\s+/)[0]).filter(Boolean);
+    return models;
+  } catch { return []; }
 });
 
 ipcMain.handle('web-search', async (event, query, numResults = 5) => {
@@ -341,6 +382,208 @@ ipcMain.handle('web-search', async (event, query, numResults = 5) => {
   } catch (err) {
     return JSON.stringify({ error: err.message });
   }
+});
+
+// ==================== GIT ====================
+
+ipcMain.handle('git-status', (event, repoPath) => {
+  try {
+    const out = execSync('git status --porcelain', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return out.trim();
+  } catch { return ''; }
+});
+
+ipcMain.handle('git-diff', (event, repoPath) => {
+  try {
+    const out = execSync('git diff --stat', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return out.trim();
+  } catch { return ''; }
+});
+
+ipcMain.handle('git-commit', (event, repoPath, name, description) => {
+  try {
+    execSync('git add -A', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    const msg = name + (description ? '\n\n' + description : '');
+    execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.stderr || e.message };
+  }
+});
+
+function gitExec(repoPath, cmd, timeout = 15000) {
+  try { return execSync(cmd, { cwd: repoPath, timeout, encoding: 'utf-8' }).trim(); }
+  catch (e) { return { error: e.stderr || e.message }; }
+}
+
+ipcMain.handle('git-branch-list', (event, repoPath) => {
+  const local = gitExec(repoPath, 'git branch');
+  if (local.error) return { local: [], remote: [], current: '' };
+  const remote = gitExec(repoPath, 'git branch -r');
+  const currentLine = (typeof local === 'string' ? local : '').split('\n').find(l => l.startsWith('*'));
+  return {
+    local: (typeof local === 'string' ? local : '').split('\n').map(l => l.replace('*', '').trim()).filter(Boolean),
+    remote: (typeof remote === 'string' && !remote.error ? remote : '').split('\n').map(l => l.trim()).filter(Boolean),
+    current: currentLine ? currentLine.replace('*', '').trim() : ''
+  };
+});
+
+ipcMain.handle('git-branch-create', (event, repoPath, name) => {
+  try {
+    execSync(`git checkout -b "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.stderr || e.message }; }
+});
+
+ipcMain.handle('git-branch-delete', (event, repoPath, name) => {
+  try {
+    execSync(`git branch -d "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.stderr || e.message }; }
+});
+
+ipcMain.handle('git-checkout', (event, repoPath, name) => {
+  try {
+    execSync(`git checkout "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.stderr || e.message }; }
+});
+
+ipcMain.handle('git-log', (event, repoPath, limit = 50) => {
+  const out = gitExec(repoPath, `git log --oneline --decorate -${limit} --pretty=format:"%H|%h|%an|%ae|%ad|%s" --date=short`);
+  if (out.error) return [];
+  return out.split('\n').filter(Boolean).map(line => {
+    const parts = line.split('|');
+    return { hash: parts[0] || '', shortHash: parts[1] || '', author: parts[2] || '', email: parts[3] || '', date: parts[4] || '', message: parts.slice(5).join('|') || '' };
+  });
+});
+
+ipcMain.handle('git-blame', (event, repoPath, filePath) => {
+  const out = gitExec(repoPath, `git blame --line-porcelain "${filePath}"`);
+  if (out.error) return [];
+  const lines = [];
+  const current = {};
+  for (const line of out.split('\n')) {
+    if (line.startsWith('\t')) { current.content = line.slice(1); lines.push({ ...current }); continue; }
+    const parts = line.split(' ');
+    if (parts[0] === 'author') current.author = parts.slice(1).join(' ');
+    else if (parts[0] === 'author-mail') current.email = parts[1]?.replace(/[<>]/g, '') || '';
+    else if (parts[0] === 'author-time') current.time = parts[1] || '';
+    else if (parts[0].length === 40) current.commit = parts[0];
+  }
+  return lines;
+});
+
+ipcMain.handle('git-diff-file', (event, repoPath, filePath) => {
+  return gitExec(repoPath, `git diff HEAD -- "${filePath}"`);
+});
+
+ipcMain.handle('git-push', (event, repoPath, remote = 'origin', branch) => {
+  try {
+    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD');
+    execSync(`git push "${remote}" "${b}"`, { cwd: repoPath, timeout: 30000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.stderr || e.message }; }
+});
+
+ipcMain.handle('git-pull', (event, repoPath, remote = 'origin', branch) => {
+  try {
+    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD');
+    execSync(`git pull "${remote}" "${b}"`, { cwd: repoPath, timeout: 30000, encoding: 'utf-8' });
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.stderr || e.message }; }
+});
+
+ipcMain.handle('open-external', (event, url) => {
+  shell.openExternal(url);
+});
+
+// ==================== TERMINAL ====================
+
+const { spawn } = require('node-pty');
+let terminalProcesses = {};
+let terminalIdCounter = 0;
+
+ipcMain.handle('terminal:create', (event, { projectPath }) => {
+  const id = ++terminalIdCounter;
+  const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
+  const pty = spawn(shell, [], {
+    name: 'xterm-color', cols: 80, rows: 24,
+    cwd: projectPath || process.cwd(),
+    env: process.env
+  });
+  pty.onData(data => {
+    if (event.sender && !event.sender.isDestroyed()) {
+      event.sender.send('terminal:data', { id, data });
+    }
+  });
+  pty.onExit(() => {
+    delete terminalProcesses[id];
+    if (event.sender && !event.sender.isDestroyed()) {
+      event.sender.send('terminal:exit', { id });
+    }
+  });
+  terminalProcesses[id] = pty;
+  return id;
+});
+
+ipcMain.handle('terminal:resize', (event, { id, cols, rows }) => {
+  if (terminalProcesses[id]) terminalProcesses[id].resize(cols, rows);
+});
+
+ipcMain.handle('terminal:write', (event, { id, data }) => {
+  if (terminalProcesses[id]) terminalProcesses[id].write(data);
+});
+
+ipcMain.handle('terminal:kill', (event, { id }) => {
+  if (terminalProcesses[id]) {
+    terminalProcesses[id].kill();
+    delete terminalProcesses[id];
+  }
+});
+
+// ==================== KEYCHAIN ====================
+
+ipcMain.handle('keychain:store', (event, { key, value }) => {
+  const { safeStorage } = require('electron');
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('OS keychain not available on this system');
+  }
+  const encrypted = safeStorage.encryptString(value);
+  const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
+  let keychain = {};
+  try { keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8')); } catch (e) {}
+  keychain[key] = encrypted.toString('base64');
+  fs.writeFileSync(keychainPath, JSON.stringify(keychain));
+});
+
+ipcMain.handle('keychain:retrieve', (event, { key }) => {
+  const { safeStorage } = require('electron');
+  if (!safeStorage.isEncryptionAvailable()) return null;
+  const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
+  try {
+    const keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8'));
+    if (!keychain[key]) return null;
+    const encrypted = Buffer.from(keychain[key], 'base64');
+    return safeStorage.decryptString(encrypted);
+  } catch (e) { return null; }
+});
+
+ipcMain.handle('keychain:delete', (event, { key }) => {
+  const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
+  try {
+    const keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8'));
+    delete keychain[key];
+    fs.writeFileSync(keychainPath, JSON.stringify(keychain));
+  } catch (e) {}
+});
+
+ipcMain.handle('keychain:list', () => {
+  const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
+  try {
+    const keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8'));
+    return Object.keys(keychain);
+  } catch (e) { return []; }
 });
 
 // ==================== APP ====================

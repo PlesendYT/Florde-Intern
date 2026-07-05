@@ -1,5 +1,5 @@
 class OllamaProvider {
-  constructor(baseUrl = 'http://localhost:11434', model = 'codellama') {
+  constructor(baseUrl = 'http://localhost:11434', model = 'qwen2.5-coder') {
     this.baseUrl = baseUrl;
     this.model = model;
   }

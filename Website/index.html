@@ -12,7 +12,9 @@
     <div class="nav-links">
       <a href="#how-it-works">How It Works</a>
       <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
       <a href="#pricing">Pricing</a>
+      <a href="#install">Install</a>
       <a href="#" id="btn-signin" class="btn-nav">Sign In</a>
       <a href="#" id="btn-signup" class="btn-nav btn-nav-primary">Sign Up</a>
     </div>
@@ -81,59 +83,54 @@
     </div>
   </section>
 
-  <section id="pricing">
-    <h2>Choose Your Plan</h2>
-    <div class="pricing-grid">
-      <div class="pricing-card">
-        <h3>Free</h3>
-        <p class="price">€0</p>
-        <p class="price-period">forever free</p>
-        <ul>
-          <li>Basic code generation</li>
-          <li>50 requests / month</li>
-          <li>Community support</li>
-        </ul>
-        <button class="btn btn-secondary btn-download-top">Download</button>
+  <section id="privacy">
+    <h2>Your Privacy, Built In</h2>
+    <p class="section-sub">Florde is designed from the ground up to keep your code and data under your control.</p>
+    <div class="privacy-grid">
+      <div class="privacy-card">
+        <div class="privacy-icon">&#x1F6E1;</div>
+        <h3>Zero-Cloud-Storage</h3>
+        <p>Your code never touches our servers. All data — projects, chat history, settings — stays in a local SQLite database or JSON files inside the app directory on your machine.</p>
       </div>
-      <div class="pricing-card">
-        <h3>Starter</h3>
-        <p class="price">€19</p>
-        <p class="price-period">per month</p>
-        <ul>
-          <li>Unlimited code generation</li>
-          <li>Project templates</li>
-          <li>Code Explained Mode</li>
-          <li>Email support</li>
-        </ul>
-        <button class="btn btn-primary buy-btn" data-plan="starter">Subscribe</button>
+      <div class="privacy-card">
+        <div class="privacy-icon">&#x1F512;</div>
+        <h3>Encrypted API Communication</h3>
+        <p>When using cloud AI models (Claude, GPT, Gemini), your requests go directly from your client to the provider. No proxy, no middleman, no data leakage.</p>
       </div>
-      <div class="pricing-card featured">
-        <h3>Pro</h3>
-        <p class="price">€49</p>
-        <p class="price-period">per month</p>
-        <ul>
-          <li>Everything in Starter</li>
-          <li>Fix-It AI Debug Assistant</li>
-          <li>All project templates</li>
-          <li>Priority support</li>
-        </ul>
-        <button class="btn btn-primary buy-btn" data-plan="pro">Subscribe</button>
-      </div>
-      <div class="pricing-card">
-        <h3>Founder</h3>
-        <p class="price">€199</p>
-        <p class="price-period">per month</p>
-        <ul>
-          <li>Everything in Pro</li>
-          <li>Unlimited requests</li>
-          <li>Lifetime early access pricing</li>
-          <li>Feature voting priority</li>
-          <li>Direct support</li>
-        </ul>
-        <button class="btn btn-primary buy-btn" data-plan="founder">Subscribe</button>
+      <div class="privacy-card">
+        <div class="privacy-icon">&#x1F9E0;</div>
+        <h3>Local RAG</h3>
+        <p>Your project's context — file structure, codebase index — is built locally. No code is ever uploaded for indexing. Ollama support means fully offline AI is always an option.</p>
       </div>
     </div>
   </section>
+
+  <!-- Download Overlay -->
+  <div id="download-modal" class="auth-modal hidden">
+    <div class="auth-modal-content download-modal-content">
+      <button class="auth-close" id="btn-close-download">&times;</button>
+      <h2>Download Florde</h2>
+      <p class="section-sub" id="download-detected-os">Select your operating system</p>
+      <div class="download-modal-grid">
+        <button class="download-option" data-os="windows">
+          <svg class="dl-icon" viewBox="0 0 448 512"><path fill="#00adef" d="M0 32h199.2v199.2H0V32zM248.8 32H448v199.2H248.8V32zM0 280.8h199.2V480H0V280.8zM248.8 280.8H448V480H248.8V280.8z"/></svg>
+          <span class="dl-os-name">Windows</span>
+          <span class="dl-os-desc">.exe Installer</span>
+        </button>
+        <button class="download-option" data-os="macos">
+          <svg class="dl-icon" viewBox="0 0 24 24"><path fill="#999" d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+          <span class="dl-os-name">macOS</span>
+          <span class="dl-os-desc">.dmg</span>
+        </button>
+        <button class="download-option" data-os="linux">
+          <svg class="dl-icon" viewBox="0 0 24 24"><path fill="#f8c630" d="M1.846 0A1.841 1.841 0 000 1.846v18.463c0 1.022.823 1.845 1.846 1.845h20.308A1.841 1.841 0 0024 20.31V1.846A1.841 1.841 0 0022.154 0H1.846zm0 .924h20.308c.512 0 .922.41.922.922v18.463c0 .511-.41.921-.922.921H1.846a.919.919 0 01-.922-.921V1.846c0-.512.41-.922.922-.922zm0 .922v18.463h20.308V1.846H1.846zm1.845 2.14l3.235 1.758v.836L3.69 8.477V7.385l2.243-1.207v-.033L3.69 5.076v-1.09zM7.846 9.23h3.693v.924H7.846V9.23zM0 21.736v.418C0 23.177.823 24 1.846 24h20.308A1.841 1.841 0 0024 22.154v-.418a2.334 2.334 0 01-1.846.918H1.846A2.334 2.334 0 010 21.736Z"/></svg>
+          <span class="dl-os-name">Linux</span>
+          <span class="dl-os-desc">.deb / .AppImage</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
 
   <!-- Sign In Modal -->
   <div id="signin-modal" class="auth-modal hidden">
@@ -168,6 +165,146 @@
       </form>
     </div>
   </div>
+
+  <!-- Pricing Section -->
+  <section id="pricing" class="section">
+    <div class="container">
+      <h2 class="section-title">Simple, Transparent Pricing</h2>
+      <p class="section-subtitle">Choose the plan that fits your workflow</p>
+
+      <div class="pricing-toggle">
+        <span class="toggle-label active" data-period="monthly">Monthly</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="pricing-period-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label" data-period="yearly">Yearly <span class="badge">Save 20%</span></span>
+      </div>
+
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="pricing-price"><span class="price-amount" data-monthly="$0" data-yearly="$0">$0</span></div>
+          <p class="pricing-desc">For getting started</p>
+          <ul class="pricing-features">
+            <li>Local models (Ollama)</li>
+            <li>Up to 3 projects</li>
+            <li>Basic code editing</li>
+            <li>Community support</li>
+          </ul>
+          <a href="#" class="btn btn-secondary">Get Started</a>
+        </div>
+
+        <div class="pricing-card featured">
+          <div class="pricing-badge">Most Popular</div>
+          <h3>Pro</h3>
+          <div class="pricing-price">
+            <span class="price-amount" data-monthly="$9" data-yearly="$7">$9</span>
+            <span class="price-period" data-monthly="/month" data-yearly="/month (billed yearly)">/month</span>
+          </div>
+          <p class="pricing-desc">For serious developers</p>
+          <ul class="pricing-features">
+            <li>All providers (OpenAI, Claude, Gemini, etc.)</li>
+            <li>Unlimited projects</li>
+            <li>Git integration</li>
+            <li>Plugin marketplace</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="#" class="btn btn-primary">Get Pro</a>
+        </div>
+
+        <div class="pricing-card">
+          <h3>Enterprise</h3>
+          <div class="pricing-price"><span class="price-amount" data-monthly="$29" data-yearly="$24">$29</span><span class="price-period" data-monthly="/month" data-yearly="/month (billed yearly)">/month</span></div>
+          <p class="pricing-desc">For teams and organizations</p>
+          <ul class="pricing-features">
+            <li>Everything in Pro</li>
+            <li>Team workspaces</li>
+            <li>Admin dashboard</li>
+            <li>SSO / SAML</li>
+            <li>Dedicated support</li>
+          </ul>
+          <a href="#" class="btn btn-secondary">Contact Sales</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation Guide Section -->
+  <section id="install" class="section">
+    <div class="container">
+      <h2 class="section-title">Installation Guide</h2>
+      <p class="section-subtitle">Get Florde running on your system in minutes</p>
+
+      <div class="install-tabs">
+        <button class="install-tab active" data-os="windows">Windows</button>
+        <button class="install-tab" data-os="macos">macOS</button>
+        <button class="install-tab" data-os="linux">Linux</button>
+      </div>
+
+      <div class="install-content active" data-os="windows">
+        <div class="install-step">
+          <h3>1. Download the Installer</h3>
+          <p>Download the latest Windows installer (.exe) below.</p>
+          <a href="#" class="btn btn-primary btn-download">Download for Windows</a>
+        </div>
+        <div class="install-step">
+          <h3>2. Run the Installer</h3>
+          <p>Double-click the downloaded file and follow the setup wizard. Florde will be installed to your Program Files directory.</p>
+        </div>
+        <div class="install-step">
+          <h3>3. System Requirements</h3>
+          <ul>
+            <li>Windows 10 or later (64-bit)</li>
+            <li>4GB RAM minimum (8GB recommended)</li>
+            <li>500MB disk space</li>
+            <li>Internet connection for cloud providers</li>
+            <li>Ollama (optional) — for fully offline AI</li>
+          </ul>
+        </div>
+        <div class="install-step">
+          <h3>4. Troubleshooting</h3>
+          <div class="faq-item">
+            <h4>"Windows protected your PC" warning</h4>
+            <p>Click "More info" then "Run anyway". The app is not yet code-signed. This will be added soon.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="install-content" data-os="macos">
+        <div class="install-step">
+          <h3>1. Download the DMG</h3>
+          <p>Download the latest macOS package (.dmg) below.</p>
+          <a href="#" class="btn btn-primary btn-download">Download for macOS</a>
+        </div>
+        <div class="install-step">
+          <h3>2. Install</h3>
+          <p>Open the .dmg file and drag Florde to your Applications folder.</p>
+        </div>
+        <div class="install-step">
+          <h3>3. Open Florde</h3>
+          <p>The first time you open Florde, macOS may show a security warning. Go to System Preferences > Security & Privacy and click "Open Anyway" to allow Florde to run.</p>
+        </div>
+      </div>
+
+      <div class="install-content" data-os="linux">
+        <div class="install-step">
+          <h3>1. Download AppImage</h3>
+          <p>Download the latest AppImage below.</p>
+          <a href="#" class="btn btn-primary btn-download">Download for Linux</a>
+        </div>
+        <div class="install-step">
+          <h3>2. Make Executable</h3>
+          <pre><code>chmod +x Florde-*.AppImage</code></pre>
+        </div>
+        <div class="install-step">
+          <h3>3. Run</h3>
+          <pre><code>./Florde-*.AppImage</code></pre>
+          <p>Alternatively, install via your package manager (community packages available for Arch, Fedora, Ubuntu).</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <footer class="footer">
     <p>&copy; 2026 Florde. All rights reserved.</p>

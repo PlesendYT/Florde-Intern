@@ -1,0 +1,16 @@
+Email Template – Enterprise Approval
+
+Subject: Florde Enterprise – Application Approved
+
+Dear Sir or Madam,
+
+Your application for Florde Enterprise has been reviewed and approved.
+
+You now have access to Florde Enterprise features. Your access details (user code / setup information) will be provided separately or are already active in your account.
+
+If you have any questions or technical issues, our support team is available to assist you.
+
+UserCode: [CODE]
+
+Kind regards,
+Florde Team

@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="notification-container" class="notification-container"></div>
+
   <!-- Start Menu -->
   <div id="start-menu">
     <div class="start-center">
@@ -32,7 +34,7 @@
       <h2>New Sandbox Project</h2>
       <div class="settings-form">
         <label>Project Name</label>
-        <input type="text" id="new-project-name" placeholder="my-project" />
+        <input type="text" id="new-project-name" placeholder="my-project" autofocus />
         <label>Template (optional)</label>
         <select id="project-template">
           <option value="">Blank project</option>
@@ -70,35 +72,91 @@
     </div>
   </div>
 
+  <!-- Question Modal -->
+  <div id="question-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:550px;">
+      <h2 id="question-title">Florde Has a Question</h2>
+      <p id="question-text" style="color:var(--text2);margin-bottom:1.5rem;line-height:1.5;"></p>
+      <div id="question-choices" class="question-choices"></div>
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button id="btn-question-cancel" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main App -->
   <div id="app-view" class="hidden">
     <div class="titlebar">
       <span class="titlebar-text">Florde</span>
       <span id="project-name" class="titlebar-project"></span>
       <span id="project-type-badge" class="project-type-badge"></span>
+      <span id="privacy-indicator" class="privacy-indicator" title="Privacy status"></span>
       <div class="titlebar-controls">
+        <button id="btn-audit-log" title="Audit Log">&#128196;</button>
+        <button id="btn-close-all-tabs" title="Close All Tabs">&#10006;</button>
         <button id="btn-sidebar-toggle" title="Toggle Sidebar (Ctrl+B)">&#9776;</button>
         <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
+        <button id="btn-cmd-palette" title="Command Palette (Ctrl+Shift+P)">&#9889;</button>
         <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
+        <div class="dev-utils-wrapper">
+          <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
+          <div id="dev-utils-menu" class="dev-utils-menu hidden">
+            <div class="dev-utils-group">
+              <div class="dev-utils-group-label">Icons &amp; Symbols</div>
+              <a data-url="https://simpleicons.org/" class="dev-utils-link">Simple Icons</a>
+              <a data-url="https://symbl.cc/" class="dev-utils-link">SymbL</a>
+              <a data-url="https://www.w3schools.com/charsets/ref_utf_symbols.asp" class="dev-utils-link">UTF-8 Symbols</a>
+            </div>
+            <div class="dev-utils-group">
+              <div class="dev-utils-group-label">Dev Tools</div>
+              <a data-url="https://codepen.io/pen/" class="dev-utils-link">CodePen</a>
+              <a data-url="https://regex101.com/" class="dev-utils-link">Regex101</a>
+              <a data-url="https://jsonlint.com/" class="dev-utils-link">JSON Lint</a>
+              <a data-url="https://www.uuidgenerator.net/" class="dev-utils-link">UUID Generator</a>
+            </div>
+            <div class="dev-utils-footer">Online only</div>
+          </div>
+        </div>
         <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
         <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
         <button id="btn-plugins" title="Plugin Marketplace">&#9889;</button>
         <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
+        <button id="btn-git-commit-show">Git Commit</button>
         <button id="btn-back-menu">Menu</button>
       </div>
     </div>
+
+    <!-- Workspace Tab Bar -->
+    <div id="workspace-tab-bar"></div>
 
     <div class="app-body">
       <!-- Sidebar -->
       <div id="sidebar" class="sidebar hidden">
         <div class="sidebar-header">
           <span>Files</span>
-          <button id="btn-new-file" title="New File (Ctrl+N)">+</button>
-          <button id="btn-new-folder" title="New Folder">&#128193;</button>
           <button id="btn-refresh-tree" title="Refresh file tree">&#8635;</button>
         </div>
         <div id="file-tree" class="file-tree"></div>
+
+        <!-- Git Panel -->
+        <div id="git-panel" class="sidebar-section">
+          <div class="sidebar-section-header">
+            <span>Source Control</span>
+            <button id="btn-git-panel-refresh" title="Refresh" class="sidebar-btn">&#8635;</button>
+          </div>
+          <div class="git-panel-header">
+            <span class="git-branch-name">master</span>
+            <span class="git-changes-count">0 changes</span>
+          </div>
+          <div id="git-changes-list" class="git-changes-list"></div>
+          <div class="git-panel-actions">
+            <button id="btn-git-panel-commit" class="btn btn-sm btn-primary">Commit</button>
+            <button id="btn-git-panel-branches" class="btn btn-sm btn-secondary">Branches</button>
+            <button id="btn-git-panel-history" class="btn btn-sm btn-secondary">History</button>
+            <button id="btn-git-panel-sync" class="btn btn-sm btn-secondary">Sync</button>
+          </div>
+        </div>
       </div>
 
       <!-- Main Content -->
@@ -119,15 +177,23 @@
               <span>Chat</span>
               <button id="btn-send-chat" title="Send current editor to chat">&#8593; Chat</button>
               <select id="provider-select">
-                <option value="openai">OpenAI</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="mistral">Mistral</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="gemini">Gemini</option>
-                <option value="grok">Grok</option>
-                <option value="ollama">Ollama</option>
+                <option value="openai">OpenAI 🔑</option>
+                <option value="deepseek">DeepSeek 🔑</option>
+                <option value="mistral">Mistral 🔑</option>
+                <option value="anthropic">Anthropic 🔑</option>
+                <option value="gemini">Gemini 🔑</option>
+                <option value="grok">Grok 🔑</option>
+                <option value="opencode">OpenCode 🔑</option>
+                <option value="ollama">Ollama 🆓</option>
+                <option value="lmstudio">LM Studio 🆓</option>
+                <option value="localai">LocalAI 🆓</option>
+                <option value="openrouter">OpenRouter 🔑</option>
+                <option value="custom">Custom 🔑</option>
               </select>
+              <span id="model-info-badge" title="Click for model details" style="cursor:pointer;font-size:0.75rem;color:var(--text3);padding:0 0.4rem;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;"></span>
+              <button id="btn-export-chat" title="Export Chat">Export</button>
             </div>
+            <div id="chat-tab-bar"></div>
             <div id="chat-messages" class="chat-messages"></div>
             <div class="chat-input-area">
               <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
@@ -140,12 +206,16 @@
         </div>
 
         <!-- Terminal / Output Panel -->
-        <div id="terminal-panel" class="terminal-panel hidden">
-          <div class="terminal-header">
-            <span>Output</span>
-            <button id="btn-terminal-clear" class="terminal-clear">Clear</button>
+        <div id="terminal-panel" class="hidden">
+          <div id="terminal-tab-bar">
+            <div class="terminal-tab active" data-id="1">Terminal 1</div>
+            <button id="btn-new-terminal" title="New Terminal">+</button>
+            <div style="flex:1"></div>
+            <div id="terminal-output-tab" class="terminal-tab" data-panel="log">Log</div>
+            <button id="btn-terminal-clear" class="terminal-clear" title="Clear log">Clear</button>
           </div>
-          <div id="terminal-output" class="terminal-output"></div>
+          <div id="terminal-container"></div>
+          <div id="terminal-output" class="hidden"></div>
         </div>
       </div>
     </div>
@@ -163,7 +233,10 @@
     <div class="modal-content" style="max-width:700px;min-width:500px;">
       <h2>Search in Files</h2>
       <div class="settings-form">
-        <input type="text" id="search-input" placeholder="Search..." autofocus />
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="search-input" placeholder="Search..." autofocus style="flex:1;" />
+          <button id="btn-search-replace-toggle" class="btn btn-secondary btn-sm">Replace</button>
+        </div>
       </div>
       <div id="search-results" class="search-results">
         <div style="color:#666;padding:1rem;text-align:center;">Type a query and press Enter to search</div>
@@ -188,80 +261,324 @@
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:700px;min-width:550px;max-height:85vh;">
       <h2>Settings</h2>
-      <div class="settings-form">
-        <label>OpenAI API Key</label>
-        <input type="password" id="key-openai" placeholder="sk-..." />
-        <label>OpenAI Model</label>
-        <select id="model-openai">
-          <option value="gpt-5.5">GPT-5.5</option>
-          <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
-          <option value="gpt-5">GPT-5</option>
-          <option value="gpt-5-mini">GPT-5 Mini</option>
-          <option value="gpt-4.1">GPT-4.1</option>
-          <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
-          <option value="gpt-4o">GPT-4o</option>
-          <option value="gpt-4o-mini">GPT-4o Mini</option>
-          <option value="o3-pro">o3 Pro</option>
-          <option value="o3">o3</option>
-          <option value="o4-mini">o4 Mini</option>
-          <option value="o3-mini">o3 Mini</option>
-        </select>
-        <label>DeepSeek API Key</label>
-        <input type="password" id="key-deepseek" placeholder="sk-..." />
-        <label>DeepSeek Model</label>
-        <select id="model-deepseek">
-          <option value="deepseek-chat">DeepSeek Chat (V3)</option>
-          <option value="deepseek-coder">DeepSeek Coder</option>
-          <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
-        </select>
-        <label>Mistral API Key</label>
-        <input type="password" id="key-mistral" placeholder="..." />
-        <label>Mistral Model</label>
-        <select id="model-mistral">
-          <option value="mistral-large-latest">Mistral Large 3</option>
-          <option value="mistral-medium-latest">Mistral Medium 3.5</option>
-          <option value="mistral-small-latest">Mistral Small 4</option>
-          <option value="ministral-3b-latest">Ministral 3 8B</option>
-        </select>
-        <label>Anthropic API Key</label>
-        <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
-        <label>Anthropic Model</label>
-        <select id="model-anthropic">
-          <option value="claude-opus-4-8">Claude Opus 4.8</option>
-          <option value="claude-opus-4-7">Claude Opus 4.7</option>
-          <option value="claude-opus-4-6">Claude Opus 4.6</option>
-          <option value="claude-sonnet-5">Claude Sonnet 5</option>
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-        </select>
-        <label>Gemini API Key</label>
-        <input type="password" id="key-gemini" placeholder="..." />
-        <label>Gemini Model</label>
-        <select id="model-gemini">
-          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-          <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
-          <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
-          <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-          <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-        </select>
-        <label>Grok API Key</label>
-        <input type="password" id="key-grok" placeholder="xai-..." />
-        <label>Grok Model</label>
-        <select id="model-grok">
-          <option value="grok-4.3">Grok 4.3</option>
-          <option value="grok-4.20">Grok 4.20</option>
-          <option value="grok-build-0.1">Grok Build 0.1</option>
-        </select>
-        <label>Ollama Base URL</label>
-        <input type="text" id="url-ollama" value="http://localhost:11434" />
-        <label>Ollama Model</label>
-        <input type="text" id="model-ollama" value="codellama" />
-        <label style="margin-top:1rem;">
-          <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
-          Launch Florde on Windows startup
-        </label>
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="general">General</button>
+        <button class="settings-tab" data-tab="providers">AI Providers</button>
+        <button class="settings-tab" data-tab="appearance">Appearance</button>
+        <button class="settings-tab" data-tab="security">Security</button>
       </div>
+
+      <!-- General Tab -->
+      <div class="settings-tab-content active" data-tab="general">
+        <div class="settings-form">
+          <label>Language</label>
+          <select id="settings-language">
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+          <label style="margin-top:1rem;">
+            <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
+            Launch Florde on Windows startup
+          </label>
+        </div>
+      </div>
+
+      <!-- Providers Tab -->
+      <div class="settings-tab-content" data-tab="providers">
+        <div class="settings-form">
+          <div class="provider-group">
+            <div class="provider-header" data-provider="openai">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="openai" /> <span class="toggle-slider"></span></label>
+              <span>OpenAI</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="openai">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-openai" placeholder="sk-..." />
+                <span class="key-status" id="status-openai"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-openai">
+                <option value="gpt-5.5">GPT-5.5</option>
+                <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+                <option value="gpt-5">GPT-5</option>
+                <option value="gpt-5-mini">GPT-5 Mini</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="o3-pro">o3 Pro</option>
+                <option value="o3">o3</option>
+                <option value="o4-mini">o4 Mini</option>
+                <option value="o3-mini">o3 Mini</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="deepseek">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="deepseek" /> <span class="toggle-slider"></span></label>
+              <span>DeepSeek</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="deepseek">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-deepseek" placeholder="sk-..." />
+                <span class="key-status" id="status-deepseek"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-deepseek">
+                <option value="deepseek-chat">DeepSeek Chat (V3)</option>
+                <option value="deepseek-coder">DeepSeek Coder</option>
+                <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="mistral">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="mistral" /> <span class="toggle-slider"></span></label>
+              <span>Mistral</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="mistral">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-mistral" placeholder="..." />
+                <span class="key-status" id="status-mistral"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-mistral">
+                <option value="mistral-large-latest">Mistral Large 3</option>
+                <option value="mistral-medium-latest">Mistral Medium 3.5</option>
+                <option value="mistral-small-latest">Mistral Small 4</option>
+                <option value="ministral-3b-latest">Ministral 3 8B</option>
+                <option value="devstral-2.0">Devstral 2.0</option>
+                <option value="devstral-1.0">Devstral 1.0</option>
+                <option value="codestral-latest">Codestral 25.01</option>
+                <option value="codestral-mamba-latest">Codestral Mamba</option>
+                <option value="mistral-tiny-latest">Mistral Tiny</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="anthropic">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="anthropic" /> <span class="toggle-slider"></span></label>
+              <span>Anthropic</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="anthropic">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
+                <span class="key-status" id="status-anthropic"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-anthropic">
+                <option value="claude-opus-4-8">Claude Opus 4.8</option>
+                <option value="claude-opus-4-7">Claude Opus 4.7</option>
+                <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                <option value="claude-sonnet-5">Claude Sonnet 5</option>
+                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="gemini">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="gemini" /> <span class="toggle-slider"></span></label>
+              <span>Gemini</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="gemini">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-gemini" placeholder="..." />
+                <span class="key-status" id="status-gemini"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-gemini">
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="grok">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="grok" /> <span class="toggle-slider"></span></label>
+              <span>Grok</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="grok">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-grok" placeholder="xai-..." />
+                <span class="key-status" id="status-grok"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-grok">
+                <option value="grok-4.3">Grok 4.3</option>
+                <option value="grok-4.20">Grok 4.20</option>
+                <option value="grok-build-0.1">Grok Build 0.1</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="opencode">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="opencode" /> <span class="toggle-slider"></span></label>
+              <span>OpenCode</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="opencode">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-opencode" placeholder="oc-..." />
+                <span class="key-status" id="status-opencode"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-opencode">
+                <option value="opencode-default">OpenCode Default</option>
+                <option value="opencode-pro">OpenCode Pro</option>
+                <option value="opencode-max">OpenCode Max</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="ollama">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="ollama" /> <span class="toggle-slider"></span></label>
+              <span>Ollama</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="ollama">
+              <label>Base URL</label>
+              <input type="text" id="url-ollama" value="http://localhost:11434" />
+              <label>Model</label>
+              <div class="key-input-wrap">
+                <input type="text" id="model-ollama" value="qwen2.5-coder" />
+                <span class="key-status" id="status-ollama"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="lmstudio">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="lmstudio" /> <span class="toggle-slider"></span></label>
+              <span>LM Studio</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="lmstudio">
+              <label>Base URL</label>
+              <input type="text" id="url-lmstudio" value="http://localhost:1234" />
+              <label>Model</label>
+              <input type="text" id="model-lmstudio" value="local-model" />
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="localai">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="localai" /> <span class="toggle-slider"></span></label>
+              <span>LocalAI</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="localai">
+              <label>Base URL</label>
+              <input type="text" id="url-localai" value="http://localhost:8080" />
+              <label>Model</label>
+              <input type="text" id="model-localai" value="local-model" />
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="openrouter">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="openrouter" /> <span class="toggle-slider"></span></label>
+              <span>OpenRouter</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="openrouter">
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-openrouter" placeholder="sk-or-..." />
+                <span class="key-status" id="status-openrouter"></span>
+              </div>
+              <label>Model</label>
+              <select id="model-openrouter">
+                <option value="anthropic/claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                <option value="openai/gpt-4o">GPT-4o</option>
+                <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="meta-llama/llama-3.1-70b">Llama 3.1 70B</option>
+                <option value="mistralai/mistral-large">Mistral Large</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="provider-group">
+            <div class="provider-header" data-provider="custom">
+              <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="custom" /> <span class="toggle-slider"></span></label>
+              <span>Custom OpenAI-compatible</span>
+              <span class="provider-toggle">&#9660;</span>
+            </div>
+            <div class="provider-body" data-provider="custom">
+              <label>Base URL (e.g. https://api.example.com/v1/chat/completions)</label>
+              <input type="text" id="url-custom" value="https://api.example.com/v1/chat/completions" />
+              <label>API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" id="key-custom" placeholder="..." />
+                <span class="key-status" id="status-custom"></span>
+              </div>
+              <label>Model</label>
+              <input type="text" id="model-custom" value="custom-model" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Enterprise Tab -->
+      <!-- Security Tab -->
+      <div class="settings-tab-content" data-tab="security">
+        <div class="settings-form">
+          <label>API Key Storage</label>
+          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;">Keys stored in OS keychain (Windows Credential Manager)</p>
+          <button id="btn-manage-keys" class="btn btn-sm btn-secondary">Manage Stored Keys</button>
+
+          <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;">
+
+          <label>AI Tool Permissions</label>
+          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;">Standard: Ask — AI fragt vor jeder Aktion. Erlaubt AI Dateien zu lesen, zu schreiben, Befehle auszuführen und Fragen zu stellen.</p>
+          <div id="permission-list"></div>
+        </div>
+      </div>
+
+      <!-- Appearance Tab -->
+      <div class="settings-tab-content" data-tab="appearance">
+        <div class="settings-form">
+          <label>Theme</label>
+          <select id="settings-theme">
+            <option value="dark">Dark (Default)</option>
+            <option value="light">Light</option>
+            <option value="high-contrast">High Contrast</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="solarized-light">Solarized Light</option>
+          </select>
+          <label>Chat Font Size: <span id="chat-font-size-label">14px</span></label>
+          <input type="range" id="chat-font-size" min="10" max="24" value="14">
+          <label>Editor Font Size: <span id="editor-font-size-label">14px</span></label>
+          <input type="range" id="editor-font-size" min="10" max="24" value="14">
+        </div>
+      </div>
+
+      <div id="settings-validation" class="settings-validation hidden"></div>
+
       <div class="modal-actions">
         <button id="btn-save-settings" class="btn btn-primary">Save</button>
         <button id="btn-close-settings" class="btn btn-secondary">Close</button>
@@ -274,7 +591,9 @@
     <div class="modal-content" style="max-width:700px;min-width:500px;max-height:85vh;">
       <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
         <h2 style="margin-bottom:0;flex:1;">Plugin Marketplace</h2>
-        <span style="font-size:0.8rem;color:var(--text3);">&#9889; Powered by Florde</span>
+        <button id="btn-plugin-docs" class="btn btn-sm btn-secondary" style="margin-right:0.5rem;">API Docs</button>
+        <button id="btn-upload-plugin" class="btn btn-sm btn-primary" title="Install Local Plugin">+ Upload</button>
+        <span style="font-size:0.8rem;color:var(--text3);">&#9889;</span>
       </div>
       <div style="display:flex;gap:1rem;margin-bottom:1rem;">
         <input type="text" id="plugin-search" placeholder="Search plugins..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:8px;font-size:0.9rem;" />
@@ -293,6 +612,73 @@
     </div>
   </div>
 
+  <!-- Plugin API Docs Modal -->
+  <div id="plugin-docs-modal" class="modal hidden">
+    <div class="modal-content plugin-docs-content">
+      <div class="modal-header">
+        <h2 style="margin-bottom:0;">Plugin API Documentation</h2>
+        <button id="btn-close-plugin-docs" class="btn btn-sm btn-secondary" style="margin-left:auto;">&times;</button>
+      </div>
+      <div class="docs-body">
+        <div class="docs-sidebar">
+          <ul>
+            <li><a class="docs-link active" data-doc="getting-started">Getting Started</a></li>
+            <li><a class="docs-link" data-doc="manifest">Manifest.json</a></li>
+            <li><a class="docs-link" data-doc="api-hooks">API Hooks</a></li>
+            <li><a class="docs-link" data-doc="tools">Registering Tools</a></li>
+            <li><a class="docs-link" data-doc="themes">Custom Themes</a></li>
+            <li><a class="docs-link" data-doc="examples">Examples</a></li>
+          </ul>
+        </div>
+        <div class="docs-content" id="plugin-docs-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit Log Modal -->
+  <div id="audit-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:750px;min-width:550px;max-height:85vh;">
+      <h2>Daten-Audit-Log</h2>
+      <p style="color:var(--text2);margin-bottom:1rem;font-size:0.85rem;">&#128200; Was wurde an die Cloud gesendet vs. lokal verarbeitet</p>
+      <div style="display:flex;gap:1rem;margin-bottom:1rem;">
+        <div id="audit-summary" style="flex:1;display:flex;gap:1rem;"></div>
+      </div>
+      <div style="border-bottom:1px solid var(--border);margin-bottom:0.5rem;padding-bottom:0.3rem;display:flex;gap:0.5rem;">
+        <button class="audit-filter active" data-filter="all">Alle</button>
+        <button class="audit-filter" data-filter="cloud">Cloud</button>
+        <button class="audit-filter" data-filter="local">Lokal</button>
+      </div>
+      <div id="audit-list" class="audit-list" style="max-height:40vh;overflow-y:auto;"></div>
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button id="btn-audit-clear" class="btn btn-secondary" style="margin-right:auto;">Clear Log</button>
+        <button id="btn-close-audit" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic Modal for Git Dialogs -->
+  <div id="modal-container" class="modal hidden">
+    <div class="modal-content" style="max-width:600px;" id="modal-container-content"></div>
+  </div>
+
+  <!-- Git Commit Modal -->
+  <div id="git-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:550px;">
+      <h2>Git Commit</h2>
+      <div class="settings-form">
+        <label>Commit Name</label>
+        <input type="text" id="git-commit-name" placeholder="Brief summary of changes" />
+        <label>Description (optional)</label>
+        <textarea id="git-commit-desc" placeholder="Detailed description..." rows="4" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:6px;resize:vertical;"></textarea>
+        <div id="git-diff-preview" style="background:rgba(0,0,0,0.2);border-radius:6px;padding:0.5rem;font-family:monospace;font-size:0.78rem;max-height:200px;overflow-y:auto;white-space:pre-wrap;color:var(--text2);"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-git-commit" class="btn btn-primary">Commit</button>
+        <button id="btn-close-git" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Keyboard Shortcuts Modal -->
   <div id="help-modal" class="modal hidden">
     <div class="modal-content" style="max-width:500px;">
@@ -305,6 +691,8 @@
         <div class="shortcut-row"><kbd>Ctrl+Shift+Tab</kbd> <span>Previous tab</span></div>
         <div class="shortcut-row"><kbd>Ctrl+B</kbd> <span>Toggle sidebar</span></div>
         <div class="shortcut-row"><kbd>Ctrl+Shift+F</kbd> <span>Search in files</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+P</kbd> <span>Quick file open</span></div>
+        <div class="shortcut-row"><kbd>Ctrl+Shift+P</kbd> <span>Command palette</span></div>
         <div class="shortcut-row"><kbd>Ctrl+`</kbd> <span>Toggle terminal</span></div>
         <div class="shortcut-row"><kbd>Enter</kbd> <span>Send chat message</span></div>
         <div class="shortcut-row"><kbd>Shift+Enter</kbd> <span>New line in chat</span></div>
@@ -316,6 +704,8 @@
     </div>
   </div>
 
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+  <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
   <script src="plugin-system.js"></script>
   <script src="script.js"></script>

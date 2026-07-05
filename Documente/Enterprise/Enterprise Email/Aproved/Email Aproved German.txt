@@ -1,0 +1,16 @@
+E-Mail Template – Enterprise Approval
+
+Betreff: Florde Enterprise – Antrag genehmigt
+
+Sehr geehrte Damen und Herren,
+
+Ihr Antrag für Florde Enterprise wurde geprüft und genehmigt.
+
+Sie erhalten ab sofort Zugriff auf die Enterprise-Funktionen von Florde. Die notwendigen Zugangsinformationen (User Code / Setup Details) werden Ihnen separat bereitgestellt oder sind bereits in Ihrem Account aktiv.
+
+Bei Fragen oder technischen Problemen steht Ihnen unser Support zur Verfügung.
+
+UserCode: [CODE]
+
+Mit freundlichen Grüßen
+Florde Team

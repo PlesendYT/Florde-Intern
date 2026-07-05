@@ -1,0 +1,12 @@
+Email Template – Enterprise Rejection
+
+Subject: Florde Enterprise – Application Not Approved
+
+Dear Sir or Madam,
+
+Your application for Florde Enterprise has been carefully reviewed, but it has not been approved at this time.
+
+You may revise and resubmit your application or contact us for further clarification.
+
+Kind regards,
+Florde Team

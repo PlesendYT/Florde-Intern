@@ -40,4 +40,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savePlugins: (d) => ipcRenderer.invoke('save-plugins', d),
 
   webSearch: (q, n) => ipcRenderer.invoke('web-search', q, n),
+  ollamaList: () => ipcRenderer.invoke('ollama-list'),
+
+  gitStatus: (p) => ipcRenderer.invoke('git-status', p),
+  gitDiff: (p) => ipcRenderer.invoke('git-diff', p),
+  gitDiffFile: (p, f) => ipcRenderer.invoke('git-diff-file', p, f),
+  gitCommit: (p, n, d) => ipcRenderer.invoke('git-commit', p, n, d),
+  gitBranchList: (p) => ipcRenderer.invoke('git-branch-list', p),
+  gitBranchCreate: (p, n) => ipcRenderer.invoke('git-branch-create', p, n),
+  gitBranchDelete: (p, n) => ipcRenderer.invoke('git-branch-delete', p, n),
+  gitCheckout: (p, n) => ipcRenderer.invoke('git-checkout', p, n),
+  gitLog: (p, l) => ipcRenderer.invoke('git-log', p, l),
+  gitBlame: (p, f) => ipcRenderer.invoke('git-blame', p, f),
+  gitPush: (p, r, b) => ipcRenderer.invoke('git-push', p, r, b),
+  gitPull: (p, r, b) => ipcRenderer.invoke('git-pull', p, r, b),
+
+  showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body),
+
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  keychain: {
+    store: (opts) => ipcRenderer.invoke('keychain:store', opts),
+    retrieve: (opts) => ipcRenderer.invoke('keychain:retrieve', opts),
+    delete: (opts) => ipcRenderer.invoke('keychain:delete', opts),
+    list: () => ipcRenderer.invoke('keychain:list')
+  },
+
+  terminal: {
+    create: (opts) => ipcRenderer.invoke('terminal:create', opts),
+    resize: (opts) => ipcRenderer.invoke('terminal:resize', opts),
+    write: (opts) => ipcRenderer.invoke('terminal:write', opts),
+    kill: (opts) => ipcRenderer.invoke('terminal:kill', opts),
+    onData: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('terminal:data', handler);
+      return () => ipcRenderer.removeListener('terminal:data', handler);
+    },
+    onExit: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('terminal:exit', handler);
+      return () => ipcRenderer.removeListener('terminal:exit', handler);
+    }
+  },
 });

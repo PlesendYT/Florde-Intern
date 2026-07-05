@@ -29,6 +29,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sandboxWriteFile: (s, f, c) => ipcRenderer.invoke('sandbox-write-file', s, f, c),
   sandboxDeleteFile: (s, f) => ipcRenderer.invoke('sandbox-delete-file', s, f),
   sandboxExec: (s, c) => ipcRenderer.invoke('sandbox-exec', s, c),
+  downloadSandboxFile: (s) => ipcRenderer.invoke('download-sandbox-file', s),
+
+  watchProject: (n) => ipcRenderer.invoke('watch-project', n),
+  unwatchProject: (n) => ipcRenderer.invoke('unwatch-project', n),
+  onFileChanged: (callback) => {
+    const handler = (_event, project, file) => callback(project, file);
+    ipcRenderer.on('file-changed', handler);
+    return () => ipcRenderer.removeListener('file-changed', handler);
+  },
 
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   selectNewFolder: () => ipcRenderer.invoke('select-new-folder'),

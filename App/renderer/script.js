@@ -150,11 +150,11 @@ async function validateApiKey(providerId, key, url, model) {
 function getActiveTools() {
   const baseTools = [
     { type: 'function', function: { name: 'read_file', description: 'Read a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
-    { type: 'function', function: { name: 'write_file', description: 'Create or overwrite a file in the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, content: { type: 'string', description: 'Full file content' } }, required: ['path', 'content'] } } },
-    { type: 'function', function: { name: 'delete_file', description: 'Delete a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' } }, required: ['path'] } } },
+    { type: 'function', function: { name: 'write_file', description: 'Create or overwrite a file in the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, content: { type: 'string', description: 'Full file content' }, description: { type: 'string', description: 'Brief 2-5 word summary of what this file is (e.g. \"Creates React component\")' } }, required: ['path', 'content'] } } },
+    { type: 'function', function: { name: 'delete_file', description: 'Delete a file from the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, description: { type: 'string', description: 'Brief 2-5 word summary of why' } }, required: ['path'] } } },
     { type: 'function', function: { name: 'list_files', description: 'List all files in the project', parameters: { type: 'object', properties: {} } } },
     { type: 'function', function: { name: 'search_files', description: 'Search for text across all project files', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text to search for' } }, required: ['query'] } } },
-    { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' } }, required: ['command'] } } },
+    { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' }, description: { type: 'string', description: 'Brief 2-5 word summary of what this command does' } }, required: ['command'] } } },
     { type: 'function', function: { name: 'ask_question', description: 'Ask the user a question when you need clarification, confirmation, or a decision. Always provide clear choices. One choice must always be a custom free-text option.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask the user' }, choices: { type: 'array', items: { type: 'string' }, description: 'List of answer choices. Always include a free-text option like "Custom answer..."' } }, required: ['question', 'choices'] } } },
   ];
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
@@ -2005,6 +2005,10 @@ async function openProject(name) {
   document.getElementById('project-type-badge').textContent = currentProjectType === 'local' ? 'LOCAL' : 'SANDBOX';
   document.getElementById('btn-export-zip').style.display = currentProjectType === 'sandbox' ? '' : 'none';
   document.getElementById('btn-save-all').style.display = currentProjectType === 'sandbox' ? '' : 'none';
+  // Start file watcher for live sync
+  if (window.electronAPI.watchProject) {
+    window.electronAPI.watchProject(name);
+  }
 
   if (files.length > 0) {
     for (const f of files) await openTab(f, false);
@@ -2686,7 +2690,7 @@ function sanitizePath(filePath) {
   return normalized || '_';
 }
 
-async function confirmFileAction(action, path) {
+async function confirmFileAction(action, path, description) {
   const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
   if (s.autoAccept === true) {
     const ex = s.autoExceptions || {};
@@ -2694,8 +2698,9 @@ async function confirmFileAction(action, path) {
   }
   return new Promise((resolve) => {
     const modal = document.getElementById('question-modal');
+    const desc = description ? '\n\u2192 ' + description + '\n' : '\n';
     document.getElementById('question-text').textContent =
-      'Florde wants to ' + action + ': ' + path + '\n\nAllow this action?';
+      'Florde wants to ' + action + ': ' + path + desc + '\nAllow this action?';
     const choicesDiv = document.getElementById('question-choices');
     choicesDiv.innerHTML = '';
     const btnAllow = document.createElement('button');
@@ -2734,8 +2739,16 @@ async function executeToolCall(name, args) {
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Write_File: ' + sanitizePath(args.path));
       logToTerminal('Write_File: ' + sanitizePath(args.path), 'info');
-      if (!await confirmFileAction('write', sanitizePath(args.path))) return 'Action cancelled by user';
+      if (!await confirmFileAction('write', sanitizePath(args.path), args.description)) return 'Action cancelled by user';
       await window.electronAPI.projectWriteFile(project, sanitizePath(args.path), args.content);
+      // Live editor sync: reload if open in a tab
+      const wfIdx = openTabs.indexOf(sanitizePath(args.path));
+      if (wfIdx >= 0) {
+        tabContents[sanitizePath(args.path)] = args.content;
+        if (wfIdx === activeTabIndex && editor) {
+          editor.setValue(args.content);
+        }
+      }
       renderFileTree();
       return 'File written: ' + sanitizePath(args.path);
 
@@ -2743,7 +2756,7 @@ async function executeToolCall(name, args) {
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Delete_File: ' + sanitizePath(args.path));
       logToTerminal('Delete_File: ' + sanitizePath(args.path), 'info');
-      if (!await confirmFileAction('delete', sanitizePath(args.path))) return 'Action cancelled by user';
+      if (!await confirmFileAction('delete', sanitizePath(args.path), args.description)) return 'Action cancelled by user';
       await window.electronAPI.projectDeleteFile(project, sanitizePath(args.path));
       renderFileTree();
       return 'File deleted: ' + sanitizePath(args.path);
@@ -3810,6 +3823,28 @@ ChatManager.init();
 pluginRegistry.init().then(() => {
   window.__updateTools();
 });
+// File watcher for external changes
+if (window.electronAPI.onFileChanged) {
+  window.electronAPI.onFileChanged((project, file) => {
+    if (project !== currentProject) return;
+    const idx = openTabs.indexOf(file);
+    if (idx < 0) return;
+    // Only reload if no unsaved changes, otherwise show badge
+    if (!tabDirty[file]) {
+      window.electronAPI.projectReadFile(project, file).then(content => {
+        if (content !== null) {
+          tabContents[file] = content;
+          if (idx === activeTabIndex && editor) {
+            editor.setValue(content);
+          }
+        }
+      });
+    } else {
+      // Show badge that file changed externally
+      logToTerminal('File changed externally: ' + file + ' (has unsaved edits)', 'warn');
+    }
+  });
+}
 initDragDrop();
 
 // ==================== TOOLS INIT ====================

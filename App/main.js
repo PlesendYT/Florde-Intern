@@ -303,6 +303,56 @@ ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
   }
 });
 
+// ==================== FILE WATCHER ====================
+
+const _watchers = new Map();
+
+ipcMain.handle('watch-project', (event, projectName) => {
+  const root = getProjectRoot(projectName);
+  if (!root || !fs.existsSync(root)) return false;
+  if (_watchers.has(projectName)) return true;
+  try {
+    const watcher = fs.watch(root, { recursive: true }, (eventType, filename) => {
+      if (filename && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('file-changed', projectName, filename.replace(/\\/g, '/'));
+      }
+    });
+    _watchers.set(projectName, watcher);
+    return true;
+  } catch (e) {
+    console.error('Watch error:', e.message);
+    return false;
+  }
+});
+
+ipcMain.handle('unwatch-project', (event, projectName) => {
+  const watcher = _watchers.get(projectName);
+  if (watcher) {
+    watcher.close();
+    _watchers.delete(projectName);
+  }
+  return true;
+});
+
+// ==================== SANDBOX FILE DOWNLOAD ====================
+
+ipcMain.handle('download-sandbox-file', async (event, sourcePath) => {
+  const sandbox = getSandboxDir();
+  const full = resolveSafe(sandbox, sourcePath);
+  if (!full || !fs.existsSync(full)) return { ok: false, error: 'File not found' };
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: path.basename(sourcePath),
+    filters: [{ name: 'All Files', extensions: ['*'] }],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
+  try {
+    fs.copyFileSync(full, result.filePath);
+    return { ok: true, path: result.filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // ==================== DIALOGS ====================
 
 ipcMain.handle('select-folder', async () => {

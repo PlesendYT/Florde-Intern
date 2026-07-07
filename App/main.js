@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, net, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, net, Menu, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -27,6 +27,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
+      webviewTag: false,
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -41,8 +42,6 @@ app.whenReady().then(() => {
 });
 
 // ==================== NOTIFICATIONS ====================
-
-const { Notification } = require('electron');
 
 ipcMain.handle('show-notification', (event, title, body) => {
   const n = new Notification({ title, body, icon: path.join(__dirname, '..', 'config', 'icon', 'icon.png') });
@@ -634,6 +633,84 @@ ipcMain.handle('keychain:list', () => {
     const keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8'));
     return Object.keys(keychain);
   } catch (e) { return []; }
+});
+
+// ==================== BROWSER WINDOW ====================
+
+let browserWindow = null;
+
+function createBrowserWindow(url) {
+  if (browserWindow && !browserWindow.isDestroyed()) {
+    browserWindow.show();
+    browserWindow.focus();
+    if (url) browserWindow.loadURL(url);
+    return;
+  }
+  browserWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 400,
+    title: 'Florde Browser',
+    backgroundColor: '#0a0a0f',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: false,
+    },
+  });
+  browserWindow.on('closed', () => {
+    browserWindow = null;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('browser-closed');
+    }
+  });
+  browserWindow.webContents.session.on('will-download', (event, item) => {
+    const filePath = dialog.showSaveDialogSync(browserWindow, {
+      defaultPath: item.getFilename(),
+      filters: [{ name: 'All Files', extensions: ['*'] }]
+    });
+    if (filePath) { item.setSavePath(filePath); } else { item.cancel(); }
+  });
+  if (url) browserWindow.loadURL(url);
+}
+
+ipcMain.handle('browser:open', (event, url) => {
+  createBrowserWindow(url);
+});
+ipcMain.handle('browser:navigate', (event, url) => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.loadURL(url);
+});
+ipcMain.handle('browser:evaluate', async (event, js) => {
+  if (!browserWindow || browserWindow.isDestroyed()) throw new Error('Browser window not open. Use browser_open first.');
+  try {
+    return await Promise.race([
+      browserWindow.webContents.executeJavaScript(js),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Evaluation timeout (15s)')), 15000))
+    ]);
+  } catch (err) {
+    throw new Error('Browser JS error: ' + err.message);
+  }
+});
+ipcMain.handle('browser:capture-page', async () => {
+  if (!browserWindow || browserWindow.isDestroyed()) throw new Error('Browser window not open');
+  const img = await browserWindow.webContents.capturePage();
+  return img.toDataURL();
+});
+ipcMain.handle('browser:go-back', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.goBack();
+});
+ipcMain.handle('browser:go-forward', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.goForward();
+});
+ipcMain.handle('browser:reload', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.reload();
+});
+ipcMain.handle('browser:close', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.close();
+});
+ipcMain.handle('browser:is-open', () => {
+  return browserWindow !== null && !browserWindow.isDestroyed();
 });
 
 // ==================== APP ====================

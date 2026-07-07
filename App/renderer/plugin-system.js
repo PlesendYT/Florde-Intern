@@ -164,6 +164,9 @@ pluginRegistry.registerBuiltin({
 });
 
 pluginRegistry.registerTool('web_search', async (args) => {
+  if (typeof window._aiSources !== 'undefined') {
+    window._aiSources.push({ type: 'search', query: args.query });
+  }
   try {
     const result = await window.electronAPI.webSearch(args.query, args.numResults || 5);
     return typeof result === 'string' ? result : JSON.stringify(result);
@@ -179,6 +182,9 @@ pluginRegistry.registerTool('web_search', async (args) => {
 });
 
 pluginRegistry.registerTool('web_fetch', async (args) => {
+  if (typeof window._aiSources !== 'undefined') {
+    window._aiSources.push({ type: 'fetch', url: args.url });
+  }
   try {
     const r = await fetchWithTimeout(args.url, {}, 30000);
     const text = await r.text();

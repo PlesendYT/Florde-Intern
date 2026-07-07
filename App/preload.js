@@ -68,6 +68,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  browser: {
+    open: (url) => ipcRenderer.invoke('browser:open', url),
+    navigate: (url) => ipcRenderer.invoke('browser:navigate', url),
+    evaluate: (js) => ipcRenderer.invoke('browser:evaluate', js),
+    capturePage: () => ipcRenderer.invoke('browser:capture-page'),
+    goBack: () => ipcRenderer.invoke('browser:go-back'),
+    goForward: () => ipcRenderer.invoke('browser:go-forward'),
+    reload: () => ipcRenderer.invoke('browser:reload'),
+    close: () => ipcRenderer.invoke('browser:close'),
+    isOpen: () => ipcRenderer.invoke('browser:is-open'),
+    onClosed: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('browser-closed', handler);
+      return () => ipcRenderer.removeListener('browser-closed', handler);
+    }
+  },
+
   keychain: {
     store: (opts) => ipcRenderer.invoke('keychain:store', opts),
     retrieve: (opts) => ipcRenderer.invoke('keychain:retrieve', opts),

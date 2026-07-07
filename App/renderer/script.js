@@ -18,6 +18,10 @@ const OLLAMA_TIMEOUT = 1800000;
 let _timeoutTimer = null;
 let _timeoutEl = null;
 let _requestAborter = null;
+let _isRequestActive = false;
+let _stoppedByUser = false;
+let _chatSummary = '';
+const SUMMARY_THRESHOLD = 60000; // chars — if history exceeds this, summarize
 
 // Backoff state
 let _backoffTimer = null;
@@ -156,6 +160,17 @@ function getActiveTools() {
     { type: 'function', function: { name: 'search_files', description: 'Search for text across all project files', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text to search for' } }, required: ['query'] } } },
     { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' }, description: { type: 'string', description: 'Brief 2-5 word summary of what this command does' } }, required: ['command'] } } },
     { type: 'function', function: { name: 'ask_question', description: 'Ask the user a question when you need clarification, confirmation, or a decision. Always provide clear choices. One choice must always be a custom free-text option.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask the user' }, choices: { type: 'array', items: { type: 'string' }, description: 'List of answer choices. Always include a free-text option like "Custom answer..."' } }, required: ['question', 'choices'] } } },
+    { type: 'function', function: { name: 'rename_file', description: 'Rename a file and optionally update all imports/references across the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Current file path relative to project root' }, new_path: { type: 'string', description: 'New file path relative to project root' }, update_imports: { type: 'boolean', description: 'Whether to auto-update imports referencing the old path in all project files' } }, required: ['path', 'new_path'] } } },
+    { type: 'function', function: { name: 'take_screenshot', description: 'Capture a screenshot of your screen or a specific window. Useful for visual debugging of web apps. The screenshot becomes visible to vision-capable AI models.', parameters: { type: 'object', properties: { description: { type: 'string', description: 'What to capture (optional hint for the user)' } }, required: [] } } },
+    { type: 'function', function: { name: 'schedule_task', description: 'Schedule a background task plan that the AI will continue in the next conversation turn. Use when a task is too large to complete in one round and requires multiple conversation turns.', parameters: { type: 'object', properties: { plan: { type: 'string', description: 'Overall plan for the task' }, steps: { type: 'array', items: { type: 'string' }, description: 'Step-by-step breakdown of remaining work' }, context: { type: 'string', description: 'Key context the AI needs to remember when resuming' } }, required: ['plan', 'steps'] } } },
+    { type: 'function', function: { name: 'browser_open', description: 'Open a URL in the embedded browser panel. The browser panel will appear automatically.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'The URL to open' } }, required: ['url'] } } },
+    { type: 'function', function: { name: 'browser_click', description: 'Click an element on the current browser page by CSS selector.', parameters: { type: 'object', properties: { selector: { type: 'string', description: 'CSS selector for the element' } }, required: ['selector'] } } },
+    { type: 'function', function: { name: 'browser_type', description: 'Type text into an input field on the current browser page.', parameters: { type: 'object', properties: { selector: { type: 'string', description: 'CSS selector for the input element' }, text: { type: 'string', description: 'Text to type' } }, required: ['selector', 'text'] } } },
+    { type: 'function', function: { name: 'browser_screenshot', description: 'Take a screenshot of the current browser page and attach it to the chat as an image.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'browser_back', description: 'Go back to the previous page in browser history.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'browser_forward', description: 'Go forward to the next page in browser history.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'browser_reload', description: 'Reload the current browser page.', parameters: { type: 'object', properties: {} } } },
+    { type: 'function', function: { name: 'browser_evaluate', description: 'Execute custom JavaScript code in the browser page context and return the result.', parameters: { type: 'object', properties: { code: { type: 'string', description: 'JavaScript code to execute' } }, required: ['code'] } } },
   ];
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
   return [...baseTools, ...pluginTools];
@@ -200,6 +215,11 @@ function askUserQuestion(question, choices) {
     document.getElementById('question-text').textContent = question;
     const choicesDiv = document.getElementById('question-choices');
     choicesDiv.innerHTML = '';
+    const customContainer = document.getElementById('custom-answer-container');
+    const customInput = document.getElementById('custom-answer-input');
+    const submitBtn = document.getElementById('btn-submit-custom');
+    customContainer.style.display = 'none';
+    customInput.value = '';
     const allChoices = [...choices];
     if (!allChoices.some(c => c.toLowerCase().includes('custom'))) {
       allChoices.push('Custom answer...');
@@ -210,11 +230,9 @@ function askUserQuestion(question, choices) {
       btn.textContent = c;
       btn.addEventListener('click', () => {
         if (c === 'Custom answer...') {
-          const answer = prompt('Your answer:');
-          if (answer !== null) {
-            modal.classList.add('hidden');
-            resolve(answer);
-          }
+          choicesDiv.querySelectorAll('.question-choice').forEach(b => b.style.display = 'none');
+          customContainer.style.display = 'block';
+          customInput.focus();
         } else {
           modal.classList.add('hidden');
           resolve(c);
@@ -222,6 +240,13 @@ function askUserQuestion(question, choices) {
       });
       choicesDiv.appendChild(btn);
     });
+    submitBtn.onclick = () => {
+      const val = customInput.value.trim();
+      if (val) {
+        modal.classList.add('hidden');
+        resolve(val);
+      }
+    };
     document.getElementById('btn-question-cancel').addEventListener('click', () => {
       modal.classList.add('hidden');
       resolve('[User cancelled]');
@@ -235,6 +260,9 @@ function askUserQuestion(question, choices) {
 function fetchWithTimeout(url, options, timeoutMs = 60000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (_requestAborter) {
+    _requestAborter.signal.addEventListener('abort', () => { controller.abort(); }, { once: true });
+  }
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
@@ -313,7 +341,7 @@ class MistralProvider extends OpenAIProvider {
 }
 
 class OpenCodeProvider extends OpenAIProvider {
-  constructor(apiKey, model = 'opencode-default') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://api.opencode.ai/v1/chat/completions'; }
+  constructor(apiKey, model = 'big-pickle') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://opencode.ai/zen/v1/chat/completions'; }
   async _post(url, body, timeoutMs = 120000) {
     const r = await fetchWithTimeout(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
@@ -321,6 +349,18 @@ class OpenCodeProvider extends OpenAIProvider {
     }, timeoutMs);
     if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode API error: ${r.status} ${detail.error?.message || r.statusText}`); }
     return r;
+  }
+  async sendWithTools(messages, tools) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message || { content: '', role: 'assistant' }; }
+    catch { throw new Error('OpenCode API: invalid JSON response'); }
+  }
+  async sendPlain(messages) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message?.content || ''; }
+    catch { throw new Error('OpenCode API: invalid JSON response'); }
   }
 }
 
@@ -349,6 +389,10 @@ class OllamaProvider {
     }).join('\n') + '\nAssistant: ';
   }
   async _chatOrGenerate(chatBody, onChunk) {
+    if (this._pendingImages) {
+      chatBody.images = this._pendingImages;
+      delete this._pendingImages;
+    }
     if (this._useChat) {
       try {
         const r = await this._post('/api/chat', chatBody, OLLAMA_TIMEOUT);
@@ -774,6 +818,12 @@ document.addEventListener('keydown', (e) => {
 
 let providers = {};
 let capabilityCache = JSON.parse(localStorage.getItem('florde-capability-cache') || '{}');
+// Clear stale cache so tool support is properly detected
+for (const key of Object.keys(capabilityCache)) {
+  if (key.startsWith('ollama:') || key.startsWith('opencode:')) {
+    delete capabilityCache[key];
+  }
+}
 let chatHistory = [];
 const MAX_CHAT_HISTORY = 50;
 function trimChatHistory() {
@@ -949,7 +999,7 @@ const PermissionManager = {
   init() {
     const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
     this._rules = settings.permissions || {};
-    const allTools = ['read_file', 'write_file', 'delete_file', 'list_files', 'search_files', 'exec_command', 'ask_question'];
+    const allTools = ['read_file', 'write_file', 'delete_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate'];
     allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
   },
 
@@ -979,6 +1029,8 @@ const PermissionManager = {
   },
 
   async checkTool(toolName, args) {
+    // ask_question is always allowed — it's a user interaction, not a file operation
+    if (toolName === 'ask_question') return true;
     const autoAccept = JSON.parse(localStorage.getItem('florde-settings') || '{}').autoAccept === true;
     if (autoAccept && !this._isToolExcepted(toolName, args)) {
       // auto-accept write/read/edit/create operations, for shell check risk
@@ -1020,10 +1072,13 @@ function showPermissionPrompt(toolName, args, callback) {
 
   const overlay = document.createElement('div');
   overlay.className = 'permission-prompt-overlay';
+  const act = formatToolActivity(toolName, args);
+  showNotification('warning', 'Action Required: ' + act, '\u{1F512}');
+  const desc = args.description ? '<p style="color:var(--text2);font-size:0.85rem;margin-top:0.5rem;">' + escapeHtml(args.description) + '</p>' : '';
   overlay.innerHTML = '<div class="permission-prompt">' +
-    '<h3>Permission Required</h3>' +
-    '<p>The AI wants to use <strong>' + toolName + '</strong></p>' +
-    '<pre>' + escapeHtml(JSON.stringify(args, null, 2)) + '</pre>' +
+    '<h3>\u{1F512} AI Action Required</h3>' +
+    '<p>The AI wants to <strong>' + act + '</strong></p>' +
+    desc +
     '<div class="permission-actions">' +
       '<button class="btn-allow-once">Allow Once</button>' +
       '<button class="btn-allow-always">Always Allow</button>' +
@@ -1237,10 +1292,9 @@ async function showKeychainManager() {
 
 // ==================== SYSTEM PROMPT ====================
 
-function buildSystemPrompt() {
+function buildSystemPrompt(hasTools) {
   const provider = document.getElementById('provider-select').value;
   const prov = providers[provider];
-  const hasTools = prov && (prov.supportsTools || (prov._toolSupportTested && prov._toolSupportResult));
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
   const pluginToolDescriptions = pluginTools
     .filter(t => t.function && t.function.name)
@@ -1249,6 +1303,8 @@ function buildSystemPrompt() {
   const pluginSection = pluginToolDescriptions ? '\n\nPlugin tools:\n' + pluginToolDescriptions : '';
   const promptExt = getPluginPromptExtensions();
   const promptExtSection = promptExt ? '\n\n' + promptExt : '';
+  const customInstr = localStorage.getItem('florde-custom-instructions') || '';
+  const customSection = customInstr ? '\n\nUser Custom Instructions:\n' + customInstr : '';
 
   const toolList = `- read_file(path): Read file content
 - write_file(path, content): Create or overwrite files
@@ -1267,8 +1323,8 @@ ${currentProjectType === 'local' ? 'Notes: This is a local project. Shell comman
 
 Zero-Cloud-Storage: All user data, code, and chat history stays in the local database/JSON files.
 Encrypted API Communication: Cloud model connections go directly from client to provider - no proxy server.
-Local RAG: Project context is built locally. Embeddings are generated via local models.
-${promptExtSection}`;
+  Local RAG: Project context is built locally. Embeddings are generated via local models.
+  ${promptExtSection}${customSection}`;
 
   if (hasTools) {
     return basePrompt + `
@@ -1286,31 +1342,32 @@ RULES:
 6. Explain what you're doing at each step
 7. Only modify files inside the project — do not access files outside
 8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
-9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.`;
+9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.
+10. Use web_fetch/web_search sparingly (max 1-2 calls). Fetch all needed URLs at once, then synthesize your response immediately. Do NOT fetch more URLs after you have the information.`;
   }
 
   return basePrompt + `
 
 
-You have access to tools. To use a tool, write one of these in your response:
-[read_file: {"path": "..."}]
-[write_file: {"path": "...", "content": "..."}]
-[delete_file: {"path": "..."}]
-[list_files: {}]
-[search_files: {"query": "..."}]
-[exec_command: {"command": "..."}]
-[ask_question: {"question": "...", "choices": ["a", "b"]}]
+CRITICAL — You MUST use tools to write code. Never just show code in chat.
 
-Available tools:
+When you write code, you MUST use the write_file tool — do NOT just show the code in chat.
+
+To call a tool, embed one of these formats in your response:
+
+Bracket format: [write_file: {"path": "src/main.js", "content": "console.log('hello');"}]
+JSON format: { "tool": "write_file", "arguments": { "path": "src/main.js", "content": "console.log('hello');" } }
+
+Available tools — use these instead of showing code:
 ${toolList}${pluginSection}
 
 The app will parse these tool calls from your text, execute them, and return the results. You can use multiple tool calls in a single response.
 
 RULES:
-1. Always start by listing files to understand the project structure (use [list_files: {}])
-2. Read files before making changes (use [read_file: {"path": "..."}])
-3. Use [write_file: {"path": "...", "content": "..."}] to create or modify files — never just show the code
-4. Use [exec_command: {"command": "..."}] to install dependencies, run the project, etc.
+1. Always start by listing files to understand the project structure — use [list_files: {}] or {"tool": "list_files", "arguments": {}}
+2. Read files before making changes — use [read_file: {"path": "..."}] or {"tool": "read_file", "arguments": {"path": "..."}}
+3. You MUST use write_file to create or modify files — never just show the code in chat
+4. Use exec_command to install dependencies, run the project, etc.
 5. After making changes, verify with exec_command if appropriate
 6. Explain what you're doing at each step
 7. Only modify files inside the project — do not access files outside
@@ -1353,6 +1410,37 @@ function parseTextToolCalls(text) {
       } catch (e) {}
     }
   }
+  // JSON format: { "tool": "name", "arguments": { ... } }
+  const jsonRe = /\{\s*"tool"\s*:\s*"/g;
+  let jm;
+  while ((jm = jsonRe.exec(text)) !== null) {
+    const startIdx = jm.index;
+    let depth = 0;
+    let endIdx = startIdx;
+    for (let i = startIdx; i < text.length; i++) {
+      if (text[i] === '{') depth++;
+      if (text[i] === '}') depth--;
+      if (depth === 0) { endIdx = i + 1; break; }
+    }
+    if (endIdx > startIdx) {
+      try {
+        const obj = JSON.parse(text.slice(startIdx, endIdx));
+        if (obj.tool && typeof obj.tool === 'string') {
+          const args = obj.arguments || {};
+          for (const k of Object.keys(obj)) {
+            if (k !== 'tool' && k !== 'arguments') args[k] = obj[k];
+          }
+          const rawJson = text.slice(startIdx, endIdx);
+          calls.push({
+            function: { name: obj.tool, arguments: JSON.stringify(args) },
+            id: 'json_' + Date.now() + '_' + calls.length,
+            args,
+            _raw: rawJson
+          });
+        }
+      } catch (e) {}
+    }
+  }
   return calls;
 }
 
@@ -1382,7 +1470,7 @@ async function loadSettings() {
     anthropic: [AnthropicProvider, 'key', 'model', 'claude-sonnet-4-6'],
     gemini: [GeminiProvider, 'key', 'model', 'gemini-2.5-flash'],
     grok: [GrokProvider, 'key', 'model', 'grok-4.3'],
-    opencode: [OpenCodeProvider, 'key', 'model', 'opencode-default'],
+    opencode: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
     openrouter: [OpenRouterProvider, 'key', 'model', 'openai/gpt-4o'],
     custom: [CustomProvider, 'key', 'model', 'custom-model'],
     ollama: [OllamaProvider, 'url', 'model', 'qwen2.5-coder'],
@@ -1424,6 +1512,8 @@ async function loadSettings() {
   else document.getElementById('see-thoughts').checked = true;
   if (s.instantMode !== undefined) document.getElementById('instant-mode').checked = s.instantMode;
   else document.getElementById('instant-mode').checked = false;
+  if (s.detailedActivity !== undefined) document.getElementById('detailed-activity').checked = s.detailedActivity;
+  else document.getElementById('detailed-activity').checked = false;
   if (s.theme) { currentTheme = s.theme; document.getElementById('settings-theme').value = s.theme; applyTheme(); }
   // Add temperature sliders to each provider body
   const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
@@ -1474,6 +1564,8 @@ async function loadSettings() {
   document.getElementById('exc-outside').checked = ex.outside || false;
   document.getElementById('exc-git').checked = ex.git || false;
   document.getElementById('exc-terminal').checked = ex.terminal || false;
+  const ci = document.getElementById('custom-instructions');
+  if (ci && s.customInstructions !== undefined) ci.value = s.customInstructions;
   } catch (err) {
     console.error('loadSettings error:', err);
   }
@@ -1594,6 +1686,7 @@ async function validateAndSaveSettings() {
   settings.language = document.getElementById('settings-language').value;
   settings.seeThoughts = document.getElementById('see-thoughts').checked;
   settings.instantMode = document.getElementById('instant-mode').checked;
+  settings.detailedActivity = document.getElementById('detailed-activity').checked;
 
   localStorage.setItem('florde-capability-cache', JSON.stringify(capabilityCache));
   await saveSettingsToDisk(settings);
@@ -2013,15 +2106,6 @@ async function openProject(name) {
   if (files.length > 0) {
     for (const f of files) await openTab(f, false);
     if (openTabs.length > 0) switchTab(0);
-  } else {
-    const defaultContent = '# Welcome to Florde!\n# Start coding or describe what you want to build in the chat.';
-    const defaultName = 'welcome.py';
-    tabContents[defaultName] = defaultContent;
-    tabLanguages[defaultName] = 'python';
-    tabDirty[defaultName] = false;
-    openTabs.push(defaultName);
-    activeTabIndex = 0;
-    switchTab(0);
   }
 
   showAppView();
@@ -2265,7 +2349,6 @@ async function switchTab(index) {
 }
 
 async function closeTab(index) {
-  if (openTabs.length <= 1) return;
   const name = openTabs[index];
   if (tabDirty[name] && !confirm(`"${name}" has unsaved changes. Close anyway?`)) return;
   if (currentProjectType === 'local') await saveCurrentFile();
@@ -2397,10 +2480,166 @@ function renderTreeNode(node, parent, path) {
 document.getElementById('btn-close-all-tabs').addEventListener('click', closeAllTabs);
 
 document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.toggle('hidden');
+  const sb = document.getElementById('sidebar');
+  const resizer = document.getElementById('sidebar-resizer');
+  sb.classList.toggle('hidden');
+  if (resizer) resizer.classList.toggle('hidden');
+  localStorage.setItem('florde-sidebar-hidden', sb.classList.contains('hidden') ? '1' : '0');
 });
 
 document.getElementById('btn-refresh-tree').addEventListener('click', () => { renderFileTree(); logToTerminal('File tree refreshed', 'info'); });
+
+// === Sidebar Drag Resize ===
+(function() {
+  const resizer = document.getElementById('sidebar-resizer');
+  const sidebar = document.getElementById('sidebar');
+  let startX, startW;
+  resizer.addEventListener('mousedown', (e) => {
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (me) => {
+      const w = Math.max(180, startW + (me.clientX - startX));
+      sidebar.style.width = w + 'px';
+      document.documentElement.style.setProperty('--sidebar-width', w + 'px');
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem('florde-sidebar-width', sidebar.offsetWidth + '');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+})();
+
+// === Sidebar Search Close ===
+document.getElementById('btn-sidebar-search-close')?.addEventListener('click', () => {
+  document.getElementById('sidebar-search').classList.add('hidden');
+});
+
+// === Terminal Minimize ===
+document.getElementById('btn-terminal-minimize')?.addEventListener('click', () => {
+  document.getElementById('terminal-panel').classList.toggle('hidden');
+});
+
+// === File Tree Context Menu ===
+let _contextFile = null;
+let _contextIsDir = false;
+
+document.addEventListener('contextmenu', (e) => {
+  const treeItem = e.target.closest('.tree-item');
+  if (!treeItem) { hideContextMenu(); return; }
+  e.preventDefault();
+  const nameEl = treeItem.querySelector('.name');
+  _contextFile = nameEl ? nameEl.textContent : '';
+  _contextIsDir = treeItem.closest('.tree-dir') !== null;
+
+  const parent = treeItem.closest('.tree-dir') ? treeItem.closest('.tree-dir').querySelector('.tree-children')?.parentNode : null;
+  if (_contextIsDir) {
+    _contextFile = treeItem.querySelector('.name')?.textContent || '';
+    let path = '';
+    let cur = treeItem.closest('.tree-dir');
+    while (cur) {
+      const s = cur.querySelector('summary .name');
+      if (s) path = s.textContent + '/' + path;
+      cur = cur.parentElement?.closest('.tree-dir');
+    }
+    _contextFile = path + _contextFile + '/';
+  } else {
+    let path = '';
+    let cur = treeItem.closest('.tree-dir');
+    while (cur) {
+      const s = cur.querySelector('summary .name');
+      if (s) path = s.textContent + '/' + path;
+      cur = cur.parentElement?.closest('.tree-dir');
+    }
+    _contextFile = path + _contextFile;
+  }
+
+  const menu = document.getElementById('file-tree-context-menu');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.classList.remove('hidden');
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#file-tree-context-menu')) hideContextMenu();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideContextMenu();
+});
+
+document.getElementById('file-tree-context-menu').addEventListener('click', async (e) => {
+  const item = e.target.closest('.context-menu-item');
+  if (!item || !_contextFile) return;
+  const action = item.dataset.action;
+  hideContextMenu();
+
+  const file = _contextFile;
+  if (action === 'copy-path') {
+    try {
+      await navigator.clipboard.writeText(file);
+      logToTerminal('Copied: ' + file, 'info');
+    } catch {}
+    return;
+  }
+
+  if (action === 'rename') {
+    const newName = prompt('Rename "' + file + '" to:', file);
+    if (!newName || newName === file) return;
+    try {
+      await window.electronAPI.projectRenameFile(currentProject, file, newName);
+      const idx = openTabs.indexOf(file);
+      if (idx >= 0) {
+        tabContents[newName] = tabContents[file];
+        tabLanguages[newName] = tabLanguages[file];
+        tabDirty[newName] = tabDirty[file];
+        delete tabContents[file]; delete tabLanguages[file]; delete tabDirty[file];
+        openTabs[idx] = newName;
+        if (activeTabIndex === idx) document.getElementById('file-name').textContent = newName;
+      }
+      await renderFileTree();
+      logToTerminal('Renamed: ' + file + ' → ' + newName, 'success');
+    } catch (err) {
+      logToTerminal('Rename failed: ' + err.message, 'error');
+    }
+    return;
+  }
+
+  if (action === 'delete') {
+    if (!confirm('Delete "' + file + '"? This cannot be undone.')) return;
+    try {
+      await window.electronAPI.projectDeleteFile(currentProject, file);
+      const idx = openTabs.indexOf(file);
+      if (idx >= 0) {
+        const disposable = modelDisposables.get(file);
+        if (disposable) { disposable.dispose(); modelDisposables.delete(file); }
+        const model = monaco.editor.getModels().find(m => m.uri.path === '/' + file);
+        if (model) model.dispose();
+        openTabs.splice(idx, 1);
+        if (idx <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
+        if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
+        switchTab(activeTabIndex);
+      }
+      await renderFileTree();
+      logToTerminal('Deleted: ' + file, 'success');
+    } catch (err) {
+      logToTerminal('Delete failed: ' + err.message, 'error');
+    }
+    return;
+  }
+});
+
+function hideContextMenu() {
+  document.getElementById('file-tree-context-menu').classList.add('hidden');
+  _contextFile = null;
+}
 
 function updateStatusBar() {
   if (!editor) return;
@@ -2436,7 +2675,16 @@ function renderChat() {
     if (msg._question) continue;
     const label = msg.role === 'user' ? 'You' : 'Florde AI';
     const modelHint = msg.role === 'assistant' && msg.model ? ` \u00B7 ${msg.model}` : '';
-    div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" data-content="${encodeURIComponent(msg.content)}">Copy</button></div>` + formatMessageContent(msg.content);
+    let msgHtml = '';
+    if (msg._images && msg._images.length > 0) {
+      msgHtml += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px;">';
+      for (const img of msg._images) {
+        msgHtml += `<img src="${img.dataUrl}" class="chat-image" style="max-height:120px;border-radius:6px;" onclick="this.classList.toggle('full')">`;
+      }
+      msgHtml += '</div>';
+    }
+    msgHtml += formatMessageContent(msg.content);
+    div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" data-content="${encodeURIComponent(msg.content)}">Copy</button></div>` + msgHtml;
     container.appendChild(div);
     if (msg.role === 'assistant' && msg.content) {
       const continueBtn = document.createElement('button');
@@ -2523,6 +2771,95 @@ document.addEventListener('click', (e) => {
   if (codeBtn) { e.stopPropagation(); copyMessageText(decodeURIComponent(codeBtn.dataset.content), codeBtn); }
 });
 
+// ==================== IMAGE ATTACHMENTS ====================
+
+let _attachedImages = [];
+
+function renderImagePreview() {
+  const container = document.getElementById('chat-image-preview');
+  container.innerHTML = '';
+  if (_attachedImages.length === 0) { container.classList.add('hidden'); return; }
+  container.classList.remove('hidden');
+  for (const img of _attachedImages) {
+    const wrapper = document.createElement('span');
+    wrapper.style.cssText = 'position:relative;display:inline-block;';
+    const el = document.createElement('img');
+    el.src = img.dataUrl;
+    el.title = 'Click to remove';
+    el.addEventListener('click', () => removeImage(img.id));
+    const del = document.createElement('span');
+    del.className = 'remove-img';
+    del.textContent = '×';
+    del.addEventListener('click', () => removeImage(img.id));
+    wrapper.appendChild(el);
+    wrapper.appendChild(del);
+    container.appendChild(wrapper);
+  }
+}
+
+function addImage(dataUrl, mimeType) {
+  _attachedImages.push({ id: Date.now() + '_' + Math.random().toString(36).slice(2, 6), dataUrl, mimeType });
+  renderImagePreview();
+}
+
+function removeImage(id) {
+  _attachedImages = _attachedImages.filter(i => i.id !== id);
+  renderImagePreview();
+}
+
+document.getElementById('btn-attach-image').addEventListener('click', () => {
+  document.getElementById('chat-image-input').click();
+});
+
+document.getElementById('btn-agentic-mode').addEventListener('click', () => {
+  const btn = document.getElementById('btn-agentic-mode');
+  const isPlan = btn.classList.contains('agentic-plan');
+  btn.classList.toggle('agentic-plan', !isPlan);
+  btn.classList.toggle('agentic-build', isPlan);
+  btn.textContent = isPlan ? 'Build' : 'Plan';
+  btn.title = isPlan ? 'Build mode: AI executes directly' : 'Plan mode: AI plans first, you approve';
+});
+
+document.getElementById('chat-image-input').addEventListener('change', (e) => {
+  for (const file of e.target.files) {
+    if (!file.type.startsWith('image/')) continue;
+    const reader = new FileReader();
+    reader.onload = (ev) => addImage(ev.target.result, file.type);
+    reader.readAsDataURL(file);
+  }
+  e.target.value = '';
+});
+
+const _chatInput = document.getElementById('chat-input');
+_chatInput.addEventListener('paste', (e) => {
+  for (const item of (e.clipboardData?.items || [])) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (!file) continue;
+      const reader = new FileReader();
+      reader.onload = (ev) => addImage(ev.target.result, file.type);
+      reader.readAsDataURL(file);
+    }
+  }
+});
+
+function buildVisionMessages(baseMessages, images) {
+  if (!images || images.length === 0) return baseMessages;
+  const provider = document.getElementById('provider-select').value;
+  const caps = getKnownCapabilities(provider, providers[provider]?.model);
+  if (!caps || !caps.vision) return baseMessages;
+
+  return baseMessages.map(m => {
+    if (m.role !== 'user' || typeof m.content !== 'string') return m;
+    const parts = [{ type: 'text', text: m.content }];
+    for (const img of images) {
+      parts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+    }
+    return { ...m, content: parts };
+  });
+}
+
 function formatMessageContent(content) {
   const seeThoughts = document.getElementById('see-thoughts')?.checked !== false;
   let html = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -2589,7 +2926,41 @@ document.getElementById('chat-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
-document.getElementById('btn-send').addEventListener('click', sendMessage);
+// Stop button state
+
+function toggleSendStop() {
+  if (_isRequestActive) {
+    _stoppedByUser = true;
+    _isRequestActive = false;
+    resetSendButton();
+    if (_requestAborter) { _requestAborter.abort(); _requestAborter = null; }
+    if (typeof BrowserPanel !== 'undefined' && BrowserPanel.abortAll) BrowserPanel.abortAll();
+    return;
+  }
+  sendMessage();
+}
+
+function resetSendButton() {
+  const btn = document.getElementById('btn-send');
+  if (btn) { btn.textContent = 'Send'; btn.classList.remove('is-stopping'); }
+}
+
+function updatePendingTaskBadge() {
+  const badge = document.getElementById('pending-task-badge');
+  if (!badge) return;
+  const task = localStorage.getItem('florde-pending-task');
+  if (task) {
+    badge.classList.remove('hidden');
+    badge.title = 'Pending task: ' + (JSON.parse(task).plan || '').slice(0, 80);
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+// Check for pending tasks on load
+updatePendingTaskBadge();
+
+document.getElementById('btn-send').addEventListener('click', toggleSendStop);
 
 // ==================== AUDIT LOG ====================
 
@@ -2690,33 +3061,6 @@ function sanitizePath(filePath) {
   return normalized || '_';
 }
 
-async function confirmFileAction(action, path, description) {
-  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
-  if (s.autoAccept === true) {
-    const ex = s.autoExceptions || {};
-    if (!ex.shell && !ex.outside) return true;
-  }
-  return new Promise((resolve) => {
-    const modal = document.getElementById('question-modal');
-    const desc = description ? '\n\u2192 ' + description + '\n' : '\n';
-    document.getElementById('question-text').textContent =
-      'Florde wants to ' + action + ': ' + path + desc + '\nAllow this action?';
-    const choicesDiv = document.getElementById('question-choices');
-    choicesDiv.innerHTML = '';
-    const btnAllow = document.createElement('button');
-    btnAllow.className = 'question-choice';
-    btnAllow.textContent = 'Allow';
-    btnAllow.addEventListener('click', () => { modal.classList.add('hidden'); resolve(true); });
-    const btnDeny = document.createElement('button');
-    btnDeny.className = 'question-choice';
-    btnDeny.textContent = 'Deny';
-    btnDeny.addEventListener('click', () => { modal.classList.add('hidden'); resolve(false); });
-    choicesDiv.appendChild(btnAllow);
-    choicesDiv.appendChild(btnDeny);
-    modal.classList.remove('hidden');
-  });
-}
-
 async function executeToolCall(name, args) {
   const project = currentProject;
   const type = currentProjectType;
@@ -2726,7 +3070,9 @@ async function executeToolCall(name, args) {
     return 'Permission denied: ' + name + ' is blocked';
   }
 
-  if (typeof setActivity === 'function') setActivity(name + '(' + (args.path || args.command || args.query || '...') + ')');
+  if (typeof setActivity === 'function') {
+    setActivity(formatToolActivity(name, args));
+  }
 
   switch (name) {
     case 'read_file':
@@ -2737,26 +3083,60 @@ async function executeToolCall(name, args) {
 
     case 'write_file':
       if (!project) throw new Error('No project open');
+      // Support batch write via {files: {"path": "content", ...}}
+      if (args.files && typeof args.files === 'object') {
+        const written = [];
+        for (const [filePath, content] of Object.entries(args.files)) {
+          const sp = sanitizePath(filePath);
+          await window.electronAPI.projectWriteFile(project, sp, content);
+          const wfIdx = openTabs.indexOf(sp);
+          if (wfIdx >= 0) {
+            tabContents[sp] = content;
+            tabDirty[sp] = false;
+            if (wfIdx === activeTabIndex && editor) {
+              editor.setValue(content);
+            }
+          }
+          written.push(sp);
+        }
+        addAuditEntry('local', 'Batch_Write: ' + written.join(', '));
+        logToTerminal('Batch_Write: ' + written.join(', '), 'info');
+        // Auto git commit
+        try {
+          const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
+          if (gitDir) {
+            await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: batch write ' + written.length + ' files" 2>nul');
+          }
+        } catch {}
+        renderFileTree();
+        return 'Batch written ' + written.length + ' files: ' + written.join(', ');
+      }
       addAuditEntry('local', 'Write_File: ' + sanitizePath(args.path));
       logToTerminal('Write_File: ' + sanitizePath(args.path), 'info');
-      if (!await confirmFileAction('write', sanitizePath(args.path), args.description)) return 'Action cancelled by user';
       await window.electronAPI.projectWriteFile(project, sanitizePath(args.path), args.content);
       // Live editor sync: reload if open in a tab
       const wfIdx = openTabs.indexOf(sanitizePath(args.path));
       if (wfIdx >= 0) {
         tabContents[sanitizePath(args.path)] = args.content;
+        tabDirty[sanitizePath(args.path)] = false;
         if (wfIdx === activeTabIndex && editor) {
           editor.setValue(args.content);
         }
       }
       renderFileTree();
+      // Auto git commit if in a git repo
+      try {
+        const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
+        if (gitDir) {
+          await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'update ' + sanitizePath(args.path)).replace(/"/g, "'") + '" 2>nul');
+        }
+      } catch {}
       return 'File written: ' + sanitizePath(args.path);
 
     case 'delete_file':
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Delete_File: ' + sanitizePath(args.path));
       logToTerminal('Delete_File: ' + sanitizePath(args.path), 'info');
-      if (!await confirmFileAction('delete', sanitizePath(args.path), args.description)) return 'Action cancelled by user';
       await window.electronAPI.projectDeleteFile(project, sanitizePath(args.path));
       renderFileTree();
       return 'File deleted: ' + sanitizePath(args.path);
@@ -2764,6 +3144,7 @@ async function executeToolCall(name, args) {
     case 'list_files':
       if (!project) throw new Error('No project open');
       const files = await window.electronAPI.projectListFiles(project);
+      renderFileTree();
       return JSON.stringify(files);
 
     case 'search_files':
@@ -2790,6 +3171,153 @@ async function executeToolCall(name, args) {
     case 'ask_question':
       showNotification('question', 'Florde Has a Question \u2014 Check the question dialog', '\u2753');
       return await askUserQuestion(args.question, args.choices);
+
+    case 'rename_file':
+      if (!project) throw new Error('No project open');
+      const oldPath = sanitizePath(args.path);
+      const newPath = sanitizePath(args.new_path);
+      addAuditEntry('local', 'Rename_File: ' + oldPath + ' -> ' + newPath);
+      logToTerminal('Rename_File: ' + oldPath + ' -> ' + newPath, 'info');
+      // Read old content
+      const oldContent = await window.electronAPI.projectReadFile(project, oldPath);
+      // Write to new path
+      await window.electronAPI.projectWriteFile(project, newPath, oldContent);
+      // Delete old path
+      await window.electronAPI.projectDeleteFile(project, oldPath);
+      // Update imports if requested
+      if (args.update_imports !== false) {
+        const oldFilename = oldPath.split('/').pop();
+        const newFilename = newPath.split('/').pop();
+        const oldBasename = oldFilename.replace(/\.[^.]+$/, '');
+        const newBasename = newFilename.replace(/\.[^.]+$/, '');
+        const results = await window.electronAPI.searchInFiles(project, oldBasename);
+        if (results && results.length > 0) {
+          const seenFiles = new Set();
+          let updatedCount = 0;
+          for (const match of results) {
+            if (match.file === oldPath || match.file === newPath) continue;
+            if (seenFiles.has(match.file)) continue;
+            seenFiles.add(match.file);
+            try {
+              let content = await window.electronAPI.projectReadFile(project, match.file);
+              const original = content;
+              content = content.replace(new RegExp(oldBasename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newBasename);
+              content = content.replace(new RegExp(oldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newPath);
+              if (content !== original) {
+                await window.electronAPI.projectWriteFile(project, match.file, content);
+                updatedCount++;
+              }
+            } catch {}
+          }
+          if (updatedCount > 0) logToTerminal('Updated imports in ' + updatedCount + ' files', 'info');
+        }
+      }
+      // Sync editor tabs
+      const renameIdx = openTabs.indexOf(oldPath);
+      if (renameIdx >= 0) {
+        openTabs[renameIdx] = newPath;
+        tabContents[newPath] = tabContents[oldPath];
+        tabDirty[newPath] = tabDirty[oldPath];
+        delete tabContents[oldPath];
+        delete tabDirty[oldPath];
+        if (renameIdx === activeTabIndex && editor) {
+          editor.setValue(tabContents[newPath]);
+        }
+        renderTabs();
+      }
+      return 'Renamed ' + oldPath + ' to ' + newPath;
+
+    case 'take_screenshot':
+      addAuditEntry('local', 'Take_Screenshot');
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const track = stream.getVideoTracks()[0];
+        const bitmap = await createImageBitmap(track);
+        track.stop();
+        stream.getTracks().forEach(t => t.stop());
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(bitmap.width, 1920);
+        canvas.height = bitmap.height * (canvas.width / bitmap.width);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        // Attach to chat history as user image so vision-capable models can see it
+        const imgEntry = { role: 'user', content: '[Screenshot attached]', _images: [{ dataUrl }] };
+        chatHistory.push(imgEntry);
+        renderChat();
+        logToTerminal('Screenshot captured (' + Math.round(dataUrl.length / 1024) + 'KB) and attached to chat', 'info');
+        return 'Screenshot captured and attached as image. It will be visible to vision-capable models in the next request.';
+      } catch (err) {
+        throw new Error('Screenshot failed: ' + err.message);
+      }
+
+    case 'schedule_task':
+      addAuditEntry('local', 'Schedule_Task: ' + (args.plan || '').slice(0, 80));
+      logToTerminal('Schedule_Task: ' + (args.plan || '').slice(0, 120), 'info');
+      localStorage.setItem('florde-pending-task', JSON.stringify({
+        plan: args.plan,
+        steps: args.steps,
+        context: args.context || '',
+        created: Date.now()
+      }));
+      updatePendingTaskBadge();
+      showNotification('info', 'Task scheduled — AI will continue on next request', '\uD83D\uDCCB');
+      return 'Task scheduled: "' + (args.plan || '').slice(0, 100) + '". The user will be prompted to continue this task on their next request.';
+
+    case 'browser_open':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      BrowserPanel.show();
+      await BrowserPanel.navigate(args.url);
+      return 'Opened: ' + args.url;
+    case 'browser_click':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      BrowserPanel.show();
+      await BrowserPanel.evaluate(`document.querySelector('${args.selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').click()`);
+      return 'Clicked: ' + args.selector;
+    case 'browser_type':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      BrowserPanel.show();
+      const escapedText = args.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+      await BrowserPanel.evaluate(`
+        (() => {
+          const el = document.querySelector('${args.selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}');
+          if (!el) throw new Error('Element not found: ${args.selector.replace(/'/g, "\\'")}');
+          el.value = '${escapedText}';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        })()
+      `);
+      return 'Typed into: ' + args.selector;
+    case 'browser_screenshot':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      const dataUrl = await BrowserPanel.screenshot();
+      if (!dataUrl) return 'Screenshot: page is blank (about:blank)';
+      // Attach as user image message
+      const chatMessages = document.getElementById('chat-messages');
+      const imgDiv = document.createElement('div');
+      imgDiv.className = 'message user-message';
+      imgDiv.innerHTML = '<div class="message-content"><img src="' + dataUrl + '" style="max-width:100%;border-radius:6px;" /></div>';
+      chatMessages.appendChild(imgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return 'Screenshot taken and attached to chat.';
+    case 'browser_back':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      await BrowserPanel.back();
+      return 'Navigated back';
+    case 'browser_forward':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      await BrowserPanel.forward();
+      return 'Navigated forward';
+    case 'browser_reload':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      await BrowserPanel.reload();
+      return 'Page reloaded';
+    case 'browser_evaluate':
+      if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
+      BrowserPanel.show();
+      const result = await BrowserPanel.evaluate(args.code);
+      return 'Result: ' + (typeof result === 'object' ? JSON.stringify(result) : String(result));
 
     default:
       if (typeof pluginRegistry !== 'undefined' && pluginRegistry.toolHandlers.has(name)) {
@@ -2828,8 +3356,8 @@ function getKnownCapabilities(providerId, model) {
     anthropic: { tool_calling: true, streaming: true, json_mode: false, vision: true, thinking: m.includes('sonnet') || m.includes('opus'), images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     gemini: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: true, function_calling: true, custom_temperature: false, seed: false, context_caching: false },
     grok: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
-    opencode: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('max'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
-    ollama: { tool_calling: false, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: true, context_caching: false },
+    opencode: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('big-pickle') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    ollama: { tool_calling: false, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
     lmstudio: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     localai: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     openrouter: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('gpt') || m.includes('claude'), thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
@@ -2850,21 +3378,126 @@ async function detectCapabilities(provider, providerId) {
   return known;
 }
 
+function showPlanModal(plan) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('plan-modal');
+    const content = document.getElementById('plan-content');
+    content.textContent = plan;
+    modal.classList.remove('hidden');
+    const execute = document.getElementById('btn-plan-execute');
+    const cancel = document.getElementById('btn-plan-cancel');
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      execute.removeEventListener('click', onExecute);
+      cancel.removeEventListener('click', onCancel);
+    };
+    const onExecute = () => { cleanup(); resolve(true); };
+    const onCancel = () => { cleanup(); resolve(false); };
+    execute.addEventListener('click', onExecute);
+    cancel.addEventListener('click', onCancel);
+  });
+}
+
+function formatToolArg(name, args) {
+  const detailed = document.getElementById('detailed-activity')?.checked;
+  let arg = (args && (args.path || args.command || args.query)) || '';
+  if (!arg) return name + '()';
+  if (!detailed && args.path) arg = args.path.split('/').pop() || args.path;
+  return name + '(' + arg + ')';
+}
+
+const TOOL_LABELS = {
+  read_file: 'Read File',
+  write_file: 'Write File',
+  delete_file: 'Delete File',
+  list_files: 'List Files',
+  search_files: 'Search Files',
+  exec_command: 'Execute Command',
+  ask_question: 'Ask Question',
+  rename_file: 'Rename File',
+  take_screenshot: 'Take Screenshot',
+  schedule_task: 'Schedule Task',
+  browser_open: 'Browser Open',
+  browser_click: 'Browser Click',
+  browser_type: 'Browser Type',
+  browser_screenshot: 'Browser Screenshot',
+  browser_back: 'Browser Back',
+  browser_forward: 'Browser Forward',
+  browser_reload: 'Browser Reload',
+  browser_evaluate: 'Browser JS',
+  web_search: 'Web Search',
+  web_fetch: 'Web Fetch'
+};
+
+function formatToolActivity(name, args) {
+  const label = TOOL_LABELS[name] || name;
+  const detailed = document.getElementById('detailed-activity')?.checked;
+  let arg = (args && (args.path || args.command || args.question || args.query || (args.code && args.code.slice(0, 40)))) || '';
+  if (!arg) return label;
+  if (!detailed && args.path) arg = args.path.split('/').pop() || args.path;
+  return label + ' ' + arg;
+}
+
+async function summarizeChat() {
+  const totalChars = chatHistory.reduce((s, m) => s + (m.content || '').length, 0);
+  if (totalChars < SUMMARY_THRESHOLD) return;
+  const providerId = document.getElementById('provider-select')?.value;
+  const prov = providerId ? providers[providerId] : null;
+  if (!prov || !prov.sendPlain) return;
+  const recentMsgs = chatHistory.slice(-5);
+  const olderMsgs = chatHistory.slice(0, -5).filter(m => m.role !== 'system').slice(-20);
+  if (olderMsgs.length === 0) return;
+  const summaryPrompt = 'Summarize the following conversation concisely (2-4 sentences) covering key decisions, files changed, and topics discussed:\n\n' +
+    olderMsgs.map(m => m.role + ': ' + m.content.slice(0, 2000)).join('\n\n');
+  try {
+    const summary = await prov.sendPlain([
+      { role: 'system', content: 'You are a summarization assistant. Output only the summary, nothing else.' },
+      { role: 'user', content: summaryPrompt }
+    ]);
+    if (summary && summary.length > 20) _chatSummary = summary.trim();
+  } catch {}
+}
+
 async function sendMessage(text) {
   const input = document.getElementById('chat-input');
   if (!text) text = input.value.trim();
   if (!text) return;
 
+  // Reset sources tracking for this request
+  window._aiSources = [];
+
+  // Inject pending task if any
+  const pendingTaskRaw = localStorage.getItem('florde-pending-task');
+  if (pendingTaskRaw) {
+    try {
+      const task = JSON.parse(pendingTaskRaw);
+      const taskPreamble = '[Continuing scheduled task: ' + task.plan + ']\nContext: ' + (task.context || '') + '\nRemaining steps: ' + (task.steps || []).join(', ') + '\n\n---\n';
+      text = taskPreamble + text;
+      localStorage.removeItem('florde-pending-task');
+      updatePendingTaskBadge();
+    } catch {}
+  }
+
   const provider = document.getElementById('provider-select').value;
   if (!providers[provider]) { logToTerminal('Please configure API key for ' + provider + ' in Settings', 'error'); return; }
+
+  // Toggle button to Stop mode
+  _isRequestActive = true;
+  const sendBtn = document.getElementById('btn-send');
+  sendBtn.textContent = 'Stop';
+  sendBtn.classList.add('is-stopping');
+  _requestAborter = new AbortController();
 
   const isCloud = provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'localai';
   addAuditEntry(isCloud ? 'cloud' : 'local', 'Nachricht gesendet an ' + provider);
   updatePrivacyIndicator();
 
-  chatHistory.push({ role: 'user', content: text });
+  const userImages = _attachedImages.length > 0 ? [..._attachedImages] : undefined;
+  chatHistory.push({ role: 'user', content: text, _images: userImages });
   trimChatHistory();
   if (input) input.value = '';
+  _attachedImages = [];
+  renderImagePreview();
   renderChat();
 
   const msgDiv = document.createElement('div');
@@ -2919,6 +3552,28 @@ async function sendMessage(text) {
     step();
   }
 
+  // === Agentic Mode: generate plan first ===
+  if (document.getElementById('btn-agentic-mode')?.classList.contains('agentic-plan')) {
+    const planPrompt = 'Create a concise step-by-step plan for this request. List specific files, commands, and order of operations:\n\n' + text;
+    const planMessages = [
+      { role: 'system', content: 'You are a planning AI. Output only the plan with clear steps.' },
+      { role: 'user', content: planPrompt }
+    ];
+    let plan = '';
+    startAnim('*Planning*');
+    try {
+      plan = await providers[provider].sendPlain(planMessages);
+    } catch (err) {
+      logToTerminal('Plan generation failed, proceeding without plan: ' + err.message, 'warn');
+    }
+    stopAnim(plan);
+    if (plan) {
+      const approved = await showPlanModal(plan);
+      if (!approved) return;
+      chatHistory.push({ role: 'system', content: 'Approved execution plan:\n' + plan });
+    }
+  }
+
   startAnim('*Thinking*');
 
   let activityEl = null;
@@ -2945,13 +3600,24 @@ async function sendMessage(text) {
       stopAnim();
       cancelRequestWithTimeout('Request cancelled after ' + timeoutMinutes + ' minutes.');
       logToTerminal('Request timed out after ' + timeoutMinutes + ' minutes', 'error');
+      _isRequestActive = false;
+      resetSendButton();
     };
     startRequestTimeout(timeoutMinutes, onTimeout);
     _backoffStep = null;
-
-    const systemMsg = { role: 'system', content: buildSystemPrompt() };
+    const prov = providers[provider];
+    const supportsTools = prov ? (prov.supportsTools ? true : await checkToolSupport(prov, provider)) : false;
+    const systemMsg = { role: 'system', content: buildSystemPrompt(supportsTools) };
     const MAX_MSG_CHARS = 100000;
+    const allImages = chatHistory.filter(m => m._images).flatMap(m => m._images);
     let messages = [systemMsg, ...chatHistory.map(m => ({ role: m.role, content: m.content }))];
+    if (allImages.length > 0) {
+      if (provider === 'ollama') {
+        prov._pendingImages = allImages.map(i => i.dataUrl.replace(/^data:image\/\w+;base64,/, ''));
+      } else {
+        messages = buildVisionMessages(messages, allImages);
+      }
+    }
     let totalChars = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
       totalChars += (messages[i].content || '').length;
@@ -2960,8 +3626,19 @@ async function sendMessage(text) {
         break;
       }
     }
-    const prov = providers[provider];
-
+    // Inject chat summary if history is long
+    if (_chatSummary && totalChars > SUMMARY_THRESHOLD) {
+      const summaryMsg = { role: 'system', content: 'Previous conversation summary:\n' + _chatSummary };
+      const alreadyHas = messages.some(m => m.content && m.content.includes(_chatSummary.slice(0, 40)));
+      if (!alreadyHas) {
+        messages.splice(1, 0, summaryMsg);
+        // Trim old messages that were summarized — keep only the summary + last 15 messages
+        const summaryIdx = messages.indexOf(summaryMsg);
+        if (messages.length > 20) {
+          messages = [messages[0], summaryMsg, ...messages.slice(-15)];
+        }
+      }
+    }
     async function fetchWithBackoff(fn) {
       while (true) {
         if (_timedOut) throw new Error('Timed out');
@@ -2987,7 +3664,21 @@ async function sendMessage(text) {
 
     let finalContent = '';
 
-    const supportsTools = prov ? (prov.supportsTools ? true : await checkToolSupport(prov, provider)) : false;
+    const _toolCallHistory = [];
+
+    function _detectToolLoop(name, args) {
+      const sig = name + ':' + JSON.stringify(args).slice(0, 100);
+      _toolCallHistory.push(sig);
+      const count = _toolCallHistory.filter(s => s === sig).length;
+      if (count >= 3) return 'Loop detected: ' + name + ' called ' + count + ' times with the same arguments. Stop using this tool and synthesize your response.';
+      if (_toolCallHistory.length >= 5) {
+        const recent = _toolCallHistory.slice(-5);
+        const unique = new Set(recent);
+        if (unique.size <= 2) return 'Loop detected: you are repeating the same ' + name + ' tool calls. Stop and synthesize your response immediately.';
+      }
+      return null;
+    }
+
     if (supportsTools) {
       let toolRounds = 0;
       const maxRounds = 15;
@@ -3008,7 +3699,13 @@ async function sendMessage(text) {
           for (const toolCall of response.tool_calls) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
             const name = toolCall.function.name;
-            stopAnim('*' + name + '(...)*');
+            const loopMsg = _detectToolLoop(name, args);
+            if (loopMsg) {
+              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
+              logToTerminal(loopMsg, 'warn');
+              continue;
+            }
+            stopAnim('*' + formatToolActivity(name, args) + '*');
             let result;
             try {
               result = await executeToolCall(name, args);
@@ -3059,7 +3756,16 @@ async function sendMessage(text) {
           for (const toolCall of textCalls) {
             const args = toolCall.args;
             const name = toolCall.function.name;
-            stopAnim('*' + name + '(...)*');
+            const loopMsg = _detectToolLoop(name, args);
+            if (loopMsg) {
+              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
+              const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
+              displayContent = displayContent.replace(bracketStr, '');
+              if (toolCall._raw) displayContent = displayContent.replace(toolCall._raw, '');
+              logToTerminal(loopMsg, 'warn');
+              continue;
+            }
+            stopAnim('*' + formatToolActivity(name, args) + '*');
             let result;
             try {
               result = await executeToolCall(name, args);
@@ -3069,6 +3775,9 @@ async function sendMessage(text) {
             messages.push(getToolResultMsg(toolCall.id, name, result));
             const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
             displayContent = displayContent.replace(bracketStr, '');
+            if (toolCall._raw) {
+              displayContent = displayContent.replace(toolCall._raw, '');
+            }
             startAnim('*Running tools', ' (' + toolNames + ')*');
             resetRequestTimeout(timeoutMinutes, onTimeout);
           }
@@ -3097,6 +3806,23 @@ async function sendMessage(text) {
       chatHistory.push({ role: 'assistant', content: responseContent, model: provider });
       trimChatHistory();
       processAIResponse(responseContent);
+      // Render sources box if any web_search/web_fetch was used
+      if (window._aiSources && window._aiSources.length > 0) {
+        const chatContainer = document.getElementById('chat-messages');
+        const sourcesDiv = document.createElement('div');
+        sourcesDiv.className = 'sources-box';
+        let sourcesHtml = '<details class="sources-details"><summary>&#x1F4E1; Sources (' + window._aiSources.length + ')</summary>';
+        for (const s of window._aiSources) {
+          if (s.type === 'search') sourcesHtml += '<div class="source-item source-search">&#x1F50D; Search: "' + escapeHtml(s.query) + '"</div>';
+          else sourcesHtml += '<div class="source-item source-fetch">&#x1F4C4; <a href="' + escapeHtml(s.url) + '" target="_blank">' + escapeHtml(s.url) + '</a></div>';
+        }
+        sourcesHtml += '</details>';
+        sourcesDiv.innerHTML = sourcesHtml;
+        chatContainer.appendChild(sourcesDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+      // Background summary for long conversations — fire-and-forget
+      if (chatHistory.length > 15 || totalChars > 30000) summarizeChat();
       const chatContainer = document.getElementById('chat-messages');
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
@@ -3112,24 +3838,53 @@ async function sendMessage(text) {
     clearRequestTimeout();
     const msg = err.message || 'Unknown error';
     let displayMsg = msg;
-    if (err.name === 'AbortError') displayMsg = 'Request cancelled (timeout or aborted). Check your network and try again.';
+    if (_stoppedByUser) {
+      _stoppedByUser = false;
+      displayMsg = 'Request stopped by user.';
+    } else if (err.name === 'AbortError') displayMsg = 'Request cancelled (timeout or aborted). Check your network and try again.';
     else if (/40[13]/.test(msg)) displayMsg = msg + ' \u2014 Check your API key in settings.';
     else if (/429/.test(msg)) displayMsg = msg + ' \u2014 Rate limited. Wait a moment and retry.';
     else if (/Failed to fetch/.test(msg)) displayMsg = 'Network error \u2014 check your connection and the API endpoint URL in settings.';
     contentDiv.textContent = 'Error: ' + displayMsg;
     logToTerminal('AI request failed: ' + displayMsg, 'error');
+  } finally {
+    _isRequestActive = false;
+    _requestAborter = null;
+    resetSendButton();
   }
 }
 
-function processAIResponse(content) {
+async function processAIResponse(content) {
   const fileBlocks = content.match(/```file:([^\n]+)\n([\s\S]*?)```/g);
   if (!fileBlocks) return;
-  const changes = fileBlocks.map(b => {
-    const m = b.match(/```file:([^\n]+)\n([\s\S]*?)```/);
-    return { file: m[1], code: m[2] };
-  });
-  if (changes.length > 0) {
-    showDiffView(changes);
+  if (!currentProject) {
+    logToTerminal('AI included file blocks but no project is open', 'warn');
+    return;
+  }
+  let written = 0;
+  for (const block of fileBlocks) {
+    const m = block.match(/```file:([^\n]+)\n([\s\S]*?)```/);
+    if (!m) continue;
+    const file = m[1].trim();
+    const code = m[2];
+    try {
+      await window.electronAPI.projectWriteFile(currentProject, file, code);
+      written++;
+      const idx = openTabs.indexOf(file);
+      if (idx >= 0) {
+        tabContents[file] = code;
+        tabDirty[file] = false;
+        if (idx === activeTabIndex && editor) {
+          editor.setValue(code);
+        }
+      }
+    } catch (e) {
+      logToTerminal('Failed to write file: ' + file + ' - ' + e.message, 'error');
+    }
+  }
+  if (written > 0) {
+    logToTerminal('Auto-written ' + written + ' file(s) to project', 'success');
+    try { await renderFileTree(); } catch {}
   }
 }
 
@@ -3291,8 +4046,15 @@ document.getElementById('search-input').addEventListener('keydown', async (e) =>
     container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">Searching...</div>';
     const results = await window.electronAPI.searchInFiles(currentProject, query);
     container.innerHTML = '';
+    // Also show in sidebar
+    const sidebarSearch = document.getElementById('sidebar-search');
+    const sidebarResults = document.getElementById('sidebar-search-results');
+    if (sidebarSearch) sidebarSearch.classList.remove('hidden');
+    if (sidebarResults) sidebarResults.innerHTML = '';
     if (results.length === 0) {
-      container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">No results found</div>';
+      const msg = '<div style="color:var(--text3);padding:1rem;text-align:center;">No results found</div>';
+      container.innerHTML = msg;
+      if (sidebarResults) sidebarResults.innerHTML = msg;
       return;
     }
     for (const r of results) {
@@ -3300,7 +4062,7 @@ document.getElementById('search-input').addEventListener('keydown', async (e) =>
       item.className = 'search-result-item';
       const highlighted = r.text.replace(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), m => `<mark>${m}</mark>`);
       item.innerHTML = `<div><span class="search-result-file">${r.file}</span><span class="search-result-line">:${r.line}</span></div><div class="search-result-text">${highlighted}</div>`;
-      item.addEventListener('click', () => {
+      const clickHandler = () => {
         document.getElementById('search-modal').classList.add('hidden');
         const existing = openTabs.indexOf(r.file);
         if (existing >= 0) switchTab(existing);
@@ -3316,8 +4078,15 @@ document.getElementById('search-input').addEventListener('keydown', async (e) =>
             }
           });
         }
-      });
+      };
+      item.addEventListener('click', clickHandler);
       container.appendChild(item);
+      // Clone for sidebar
+      if (sidebarResults) {
+        const sbItem = item.cloneNode(true);
+        sbItem.addEventListener('click', clickHandler);
+        sidebarResults.appendChild(sbItem);
+      }
     }
   }
 });
@@ -3413,6 +4182,7 @@ document.addEventListener('keydown', (e) => {
     }
   }
   else if (ctrl && e.key === '`') { e.preventDefault(); document.getElementById('btn-terminal-toggle').click(); }
+  else if (ctrl && e.shiftKey && e.key === 'B') { e.preventDefault(); document.getElementById('btn-browser-toggle').click(); }
   else if (ctrl && e.key === 'p') { e.preventDefault(); if (currentProject) showQuickOpen(); }
   else if (e.key === '?' && !ctrl && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
     e.preventDefault();
@@ -3609,6 +4379,17 @@ document.getElementById('auto-accept')?.addEventListener('change', (e) => {
     ex[key] = document.getElementById('exc-' + key).checked;
     saveSettingsToDisk({ autoExceptions: ex });
   });
+});
+
+// Custom instructions textarea
+const ciForm = document.querySelector('.settings-tab-content[data-tab="general"] .settings-form');
+if (ciForm) {
+  const ciHtml = '<label style="margin-top:1rem;">Custom Instructions (given to AI on every request)</label><textarea id="custom-instructions" style="width:100%;min-height:80px;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;padding:0.5rem;font-size:0.85rem;resize:vertical;box-sizing:border-box;" placeholder="e.g. User prefers TypeScript, project is Minesweeper"></textarea>';
+  ciForm.insertAdjacentHTML('beforeend', ciHtml);
+}
+document.getElementById('custom-instructions')?.addEventListener('input', (e) => {
+  saveSettingsToDisk({ customInstructions: e.target.value });
+  localStorage.setItem('florde-custom-instructions', e.target.value);
 });
 
 // Timeout input
@@ -3834,8 +4615,10 @@ if (window.electronAPI.onFileChanged) {
       window.electronAPI.projectReadFile(project, file).then(content => {
         if (content !== null) {
           tabContents[file] = content;
+          tabDirty[file] = false;
           if (idx === activeTabIndex && editor) {
             editor.setValue(content);
+            tabDirty[file] = false;
           }
         }
       });
@@ -3986,6 +4769,51 @@ const TerminalManager = {
   }
 };
 
+const BrowserPanel = {
+  show() {
+    document.getElementById('btn-browser-toggle')?.classList.add('active');
+  },
+
+  hide() {
+    document.getElementById('btn-browser-toggle')?.classList.remove('active');
+  },
+
+  isOpen() {
+    return window.electronAPI.browser.isOpen();
+  },
+
+  async navigate(url) {
+    if (!url.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//)) {
+      url = 'https://' + url;
+    }
+    this.show();
+    await window.electronAPI.browser.open(url);
+  },
+
+  async evaluate(js) {
+    const isOpen = await window.electronAPI.browser.isOpen();
+    if (!isOpen) throw new Error('No page loaded in browser. Use browser_open first.');
+    return await window.electronAPI.browser.evaluate(js);
+  },
+
+  async screenshot() {
+    const isOpen = await window.electronAPI.browser.isOpen();
+    if (!isOpen) return null;
+    try {
+      return await window.electronAPI.browser.capturePage();
+    } catch (err) {
+      console.error('Screenshot error:', err);
+      return null;
+    }
+  },
+
+  async back() { await window.electronAPI.browser.goBack(); },
+  async forward() { await window.electronAPI.browser.goForward(); },
+  async reload() { await window.electronAPI.browser.reload(); },
+  async close() { await window.electronAPI.browser.close(); },
+  abortAll() { window.electronAPI.browser.close().catch(() => {}); },
+};
+
 function initXtermTerminal() {
   TerminalManager.init().then(() => {
     const termTabs = document.querySelectorAll('#terminal-tab-bar .terminal-tab[data-id]');
@@ -4033,6 +4861,33 @@ initEditorTools();
 initGitPanel();
 initXtermTerminal();
 
+// === Browser Panel Toggle ===
+document.getElementById('btn-browser-toggle').addEventListener('click', async () => {
+  const isOpen = await window.electronAPI.browser.isOpen();
+  if (isOpen) {
+    await BrowserPanel.close();
+    BrowserPanel.hide();
+  } else {
+    BrowserPanel.show();
+    await BrowserPanel.navigate('about:blank');
+  }
+});
+
+// Restore sidebar state
+(function() {
+  const sb = document.getElementById('sidebar');
+  const resizer = document.getElementById('sidebar-resizer');
+  const savedWidth = localStorage.getItem('florde-sidebar-width');
+  if (savedWidth) {
+    sb.style.width = savedWidth + 'px';
+    document.documentElement.style.setProperty('--sidebar-width', savedWidth + 'px');
+  }
+  if (localStorage.getItem('florde-sidebar-hidden') === '1') {
+    sb.classList.add('hidden');
+    if (resizer) resizer.classList.add('hidden');
+  }
+})();
+
 showStartMenu();
 
 require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
@@ -4053,6 +4908,7 @@ require(['vs/editor/editor.main'], () => {
     wordWrap: 'on',
     tabSize: 2,
     bracketPairColorization: { enabled: true },
+    readOnly: true,
   });
 
   if (activeName) {

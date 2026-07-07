@@ -78,6 +78,12 @@
       <h2 id="question-title">Florde Has a Question</h2>
       <p id="question-text" style="color:var(--text2);margin-bottom:1.5rem;line-height:1.5;"></p>
       <div id="question-choices" class="question-choices"></div>
+      <div id="custom-answer-container" style="display:none;margin-top:0.75rem;">
+        <input id="custom-answer-input" type="text" placeholder="Your answer..."
+          style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter')document.getElementById('btn-submit-custom').click()">
+        <button id="btn-submit-custom" class="btn btn-primary" style="margin-top:0.5rem;width:100%;">Submit</button>
+      </div>
       <div class="modal-actions" style="margin-top:1rem;">
         <button id="btn-question-cancel" class="btn btn-secondary">Cancel</button>
       </div>
@@ -100,6 +106,7 @@
         <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
         <button id="btn-cmd-palette" title="Command Palette (Ctrl+Shift+P)">&#9889;</button>
         <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
+        <button id="btn-browser-toggle" title="Toggle Browser (Ctrl+Shift+B)">&#127760;</button>
         <div class="dev-utils-wrapper">
           <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
           <div id="dev-utils-menu" class="dev-utils-menu hidden">
@@ -135,12 +142,27 @@
 
     <div class="app-body">
       <!-- Sidebar -->
-      <div id="sidebar" class="sidebar hidden">
+      <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
           <span>Files</span>
           <button id="btn-refresh-tree" title="Refresh file tree">&#8635;</button>
         </div>
         <div id="file-tree" class="file-tree"></div>
+        <div id="file-tree-context-menu" class="context-menu hidden">
+          <div class="context-menu-item" data-action="rename">Rename</div>
+          <div class="context-menu-item" data-action="delete">Delete</div>
+          <div class="context-menu-separator"></div>
+          <div class="context-menu-item" data-action="copy-path">Copy Path</div>
+        </div>
+
+        <!-- Search Results in Sidebar -->
+        <div id="sidebar-search" class="sidebar-section hidden">
+          <div class="sidebar-section-header">
+            <span>Search Results</span>
+            <button id="btn-sidebar-search-close" title="Close" class="sidebar-btn">&#10006;</button>
+          </div>
+          <div id="sidebar-search-results" class="git-changes-list"></div>
+        </div>
 
         <!-- Git Panel -->
         <div id="git-panel" class="sidebar-section">
@@ -161,6 +183,8 @@
           </div>
         </div>
       </div>
+      <!-- Sidebar Resize Handle (inside sidebar, positioned on right edge) -->
+      <div id="sidebar-resizer" class="sidebar-resizer"></div>
 
       <!-- Main Content -->
       <div class="main-area">
@@ -198,11 +222,18 @@
             </div>
             <div id="chat-tab-bar"></div>
             <div id="chat-messages" class="chat-messages"></div>
-            <div class="chat-input-area">
-              <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
-              <div class="chat-input-footer">
-                <span id="token-count" class="token-count">0 tokens</span>
+             <div class="chat-input-area">
+              <div id="chat-image-preview" class="chat-image-preview hidden"></div>
+              <div class="chat-input-row">
+                <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
                 <button id="btn-send">Send</button>
+              </div>
+              <div class="chat-input-footer">
+                <button id="btn-agentic-mode" class="agentic-btn agentic-build" title="Build mode: AI executes directly">Build</button>
+                <button id="btn-attach-image" title="Attach image" class="btn-icon">&#128247;</button>
+                <input type="file" id="chat-image-input" accept="image/*" multiple hidden>
+                <span id="token-count" class="token-count">0 tokens</span>
+                <span id="pending-task-badge" class="pending-task-badge hidden" title="Pending task scheduled — will be resumed on next message">&#x1F4CB; Task</span>
               </div>
             </div>
           </div>
@@ -216,6 +247,7 @@
             <div style="flex:1"></div>
             <div id="terminal-output-tab" class="terminal-tab" data-panel="log">Log</div>
             <button id="btn-terminal-clear" class="terminal-clear" title="Clear log">Clear</button>
+            <button id="btn-terminal-minimize" class="terminal-clear" title="Minimize terminal">&#8212;</button>
           </div>
           <div id="terminal-container"></div>
           <div id="terminal-output" class="hidden"></div>
@@ -262,6 +294,19 @@
     </div>
   </div>
 
+  <!-- Plan Modal -->
+  <div id="plan-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:800px;min-width:500px;max-height:80vh;display:flex;flex-direction:column;">
+      <h2>AI Execution Plan</h2>
+      <p style="font-size:0.85rem;color:var(--text2);margin-bottom:0.5rem;">Review the plan below. Approve to execute step by step, or cancel to refine.</p>
+      <div id="plan-content" style="flex:1;overflow-y:auto;padding:0.5rem;background:var(--bg3);border-radius:6px;font-size:0.85rem;line-height:1.6;white-space:pre-wrap;"></div>
+      <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:flex-end;">
+        <button id="btn-plan-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="btn-plan-execute" class="btn btn-primary">Execute Plan</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content" style="max-width:700px;min-width:550px;max-height:85vh;">
@@ -286,9 +331,13 @@
             See Thoughts (zeigt AI-Überlegungen in Echtzeit)
           </label>
           <label>
-            <input type="checkbox" id="instant-mode" style="width:auto;margin-right:0.5rem;" />
-            Instant Mode (Antwort erscheint komplett auf einmal)
-          </label>
+             <input type="checkbox" id="instant-mode" style="width:auto;margin-right:0.5rem;" />
+             Instant Mode (Antwort erscheint komplett auf einmal)
+           </label>
+           <label>
+             <input type="checkbox" id="detailed-activity" style="width:auto;margin-right:0.5rem;" />
+             Detailed Activity (zeigt vollen Dateipfad in Tool-Aktivität)
+           </label>
           <label>
             <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
             Launch Florde on Windows startup
@@ -470,11 +519,16 @@
                 <span class="key-status" id="status-opencode"></span>
               </div>
               <label>Model</label>
-              <select id="model-opencode">
-                <option value="opencode-default">OpenCode Default</option>
-                <option value="opencode-pro">OpenCode Pro</option>
-                <option value="opencode-max">OpenCode Max</option>
-              </select>
+                <select id="model-opencode">
+                  <option value="big-pickle">Big Pickle</option>
+                  <option value="deepseek-v4-flash-free">DeepSeek V4 Flash Free</option>
+                  <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                  <option value="grok-build-0.1">Grok Build 0.1</option>
+                  <option value="nemotron-3-ultra-free">Nemotron 3 Ultra Free</option>
+                  <option value="kimi-k2.7-code">Kimi K2.7 Code</option>
+                  <option value="mimo-v2.5-free">MiMo V2.5 Free</option>
+                  <option value="north-mini-code-free">North Mini Code Free</option>
+                </select>
             </div>
           </div>
 

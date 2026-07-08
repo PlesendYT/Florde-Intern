@@ -174,7 +174,22 @@ function getActiveTools() {
   ];
   const appTools = _getAppToolDefs();
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
-  return [...baseTools, ...appTools, ...pluginTools];
+  const mcpTools = [];
+  for (const [id, client] of _mcpClients) {
+    if (client._connected) {
+      for (const tool of client._tools) {
+        mcpTools.push({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema
+          }
+        });
+      }
+    }
+  }
+  return [...baseTools, ...appTools, ...pluginTools, ...mcpTools];
 }
 
 window.__updateTools = function() {
@@ -3452,6 +3467,18 @@ async function executeToolCall(name, args) {
       if (typeof pluginRegistry !== 'undefined' && pluginRegistry.toolHandlers.has(name)) {
         return await pluginRegistry.executeTool(name, args);
       }
+      // MCP tools
+      if (name.startsWith('mcp_')) {
+        for (const [id, client] of _mcpClients) {
+          if (!client._connected) continue;
+          const tool = client._tools.find(t => t.name === name);
+          if (tool) {
+            const result = await client.callTool(tool._originalName, args);
+            return JSON.stringify(result.content || result);
+          }
+        }
+        throw new Error('MCP tool not found: ' + name);
+      }
       throw new Error('Unknown tool: ' + name);
   }
 }
@@ -4477,6 +4504,9 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     document.querySelector('.settings-tab-content[data-tab="' + tab.dataset.tab + '"]').classList.add('active');
     if (tab.dataset.tab === 'security') {
       renderPermissionList();
+    }
+    if (tab.dataset.tab === 'mcp') {
+      renderMcpServers();
     }
   });
 });
@@ -5549,6 +5579,116 @@ async function initConnectedApps() {
     window._connectedAppIds = Object.keys(connected);
   } catch {}
 }
+
+// ==================== MCP Manager ====================
+const _mcpClients = new Map();
+
+function loadMcpConfig() {
+  try { return JSON.parse(localStorage.getItem('florde-mcp-servers') || '[]'); } catch { return []; }
+}
+
+function saveMcpConfig(configs) {
+  localStorage.setItem('florde-mcp-servers', JSON.stringify(configs));
+}
+
+async function renderMcpServers() {
+  const list = document.getElementById('mcp-server-list');
+  if (!list) return;
+  const configs = loadMcpConfig();
+  list.innerHTML = configs.map((cfg, i) => {
+    const client = _mcpClients.get(cfg.id);
+    const status = client && client._connected ? 'connected' : 'disconnected';
+    const tools = client ? client._tools : [];
+    return '<div class="mcp-server-card" data-index="' + i + '">' +
+      '<div class="mcp-server-header">' +
+        '<span class="mcp-server-name">' + escapeHtml(cfg.name || cfg.id) + '</span>' +
+        '<span class="mcp-server-status ' + status + '">' + status + '</span>' +
+      '</div>' +
+      (tools.length > 0 ? '<div class="mcp-server-tools">Tools: ' + tools.map(t => t._originalName).join(', ') + '</div>' : '') +
+      '<div class="mcp-server-config">' +
+        '<textarea class="mcp-config-editor" data-id="' + cfg.id + '">' + escapeHtml(JSON.stringify(cfg, null, 2)) + '</textarea>' +
+      '</div>' +
+      '<div class="mcp-server-actions">' +
+        '<button class="btn btn-sm btn-primary mcp-connect" data-id="' + cfg.id + '">' + (status === 'connected' ? 'Reconnect' : 'Connect') + '</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-disconnect" data-id="' + cfg.id + '">Disconnect</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-remove" data-id="' + cfg.id + '">Remove</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  list.querySelectorAll('.mcp-connect').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const cfg = loadMcpConfig().find(c => c.id === id);
+      if (!cfg) return;
+      try {
+        if (_mcpClients.has(id)) await _mcpClients.get(id).disconnect();
+        const client = new McpClient(cfg);
+        await client.connect();
+        _mcpClients.set(id, client);
+        renderMcpServers();
+        showNotification('success', 'MCP server "' + cfg.name + '" connected', '\uD83D\uDD0C');
+      } catch (err) {
+        showNotification('error', 'MCP connect failed: ' + err.message, '\u274C');
+        renderMcpServers();
+      }
+    });
+  });
+  list.querySelectorAll('.mcp-disconnect').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      if (_mcpClients.has(id)) await _mcpClients.get(id).disconnect();
+      _mcpClients.delete(id);
+      renderMcpServers();
+    });
+  });
+  list.querySelectorAll('.mcp-remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.closest('.mcp-server-card')?.dataset?.index);
+      if (isNaN(idx)) return;
+      const configs = loadMcpConfig();
+      const removed = configs.splice(idx, 1)[0];
+      saveMcpConfig(configs);
+      if (_mcpClients.has(removed.id)) _mcpClients.get(removed.id).disconnect();
+      _mcpClients.delete(removed.id);
+      renderMcpServers();
+    });
+  });
+  list.querySelectorAll('.mcp-config-editor').forEach(editor => {
+    editor.addEventListener('change', () => {
+      const id = editor.dataset.id;
+      try {
+        const cfg = JSON.parse(editor.value);
+        const configs = loadMcpConfig();
+        const idx = configs.findIndex(c => c.id === id);
+        if (idx >= 0) configs[idx] = cfg;
+        saveMcpConfig(configs);
+        if (_mcpClients.has(id)) {
+          _mcpClients.get(id).disconnect();
+          _mcpClients.delete(id);
+        }
+        renderMcpServers();
+      } catch {}
+    });
+  });
+}
+
+document.getElementById('btn-add-mcp-server')?.addEventListener('click', () => {
+  const configs = loadMcpConfig();
+  const id = 'mcp-' + Date.now();
+  configs.push({
+    id, name: 'New Server',
+    transport: 'stdio',
+    command: '',
+    args: [],
+    env: {}
+  });
+  saveMcpConfig(configs);
+  renderMcpServers();
+});
+
+window.addEventListener('beforeunload', () => {
+  for (const client of _mcpClients.values()) client.disconnect();
+});
 
 initEditorTools();
 initGitPanel();

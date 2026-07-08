@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const { spawn } = require('child_process');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -67,6 +68,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body),
 
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  __mcpSpawn: { spawn },
 
   browser: {
     open: (url) => ipcRenderer.invoke('browser:open', url),

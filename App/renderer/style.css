@@ -559,6 +559,19 @@ body {
 .agent-step-actions { display: flex; gap: 0.3rem; padding: 0.2rem 0.5rem; }
 .agent-continue, .agent-skip { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
 
+.mcp-server-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 0.8rem; margin-bottom: 0.5rem; }
+.mcp-server-header { display: flex; align-items: center; justify-content: space-between; }
+.mcp-server-name { font-weight: 600; }
+.mcp-server-status { font-size: 0.75rem; padding: 0.15rem 0.4rem; border-radius: 3px; }
+.mcp-server-status.connected { background: rgba(34,197,94,0.2); color: #22c55e; }
+.mcp-server-status.error { background: rgba(239,68,68,0.15); color: #ef4444; }
+.mcp-server-status.disconnected { background: var(--bg2); color: var(--text3); }
+.mcp-server-tools { font-size: 0.8rem; color: var(--text3); margin-top: 0.3rem; }
+.mcp-server-config { font-size: 0.8rem; color: var(--text2); margin: 0.5rem 0; }
+.mcp-server-config textarea { width: 100%; min-height: 80px; font-family: monospace; font-size: 0.8rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 0.4rem; color: var(--text); }
+.mcp-server-actions { display: flex; gap: 0.3rem; margin-top: 0.3rem; }
+.mcp-server-actions button { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+
 /* ==================== RISK COLORS ==================== */
 .risk-safe { color: #22c55e; }
 .risk-low { color: #86efac; }

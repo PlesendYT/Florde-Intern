@@ -324,6 +324,7 @@
         <button class="settings-tab" data-tab="apps">Connected Apps</button>
         <button class="settings-tab" data-tab="appearance">Appearance</button>
         <button class="settings-tab" data-tab="security">Security</button>
+        <button class="settings-tab" data-tab="mcp">MCP Servers</button>
       </div>
 
       <!-- General Tab -->
@@ -691,6 +692,17 @@
         </div>
       </div>
 
+      <!-- MCP Servers Tab -->
+      <div class="settings-tab-content" data-tab="mcp">
+        <h3 style="margin-bottom:0.5rem;">MCP Servers</h3>
+        <p style="font-size:0.85rem;color:var(--text3);margin-bottom:1rem;">
+          MCP servers provide additional tools to the AI (databases, APIs, file systems).
+          Configure servers using the standard MCP JSON format.
+        </p>
+        <div id="mcp-server-list"></div>
+        <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Add Server</button>
+      </div>
+
       <div id="settings-validation" class="settings-validation hidden"></div>
 
       <div class="modal-actions">
@@ -822,6 +834,7 @@
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
   <script src="plugin-system.js"></script>
+  <script src="mcp-client.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

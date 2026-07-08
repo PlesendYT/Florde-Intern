@@ -1467,7 +1467,12 @@ const MODEL_META = {
   'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true },
   'deepseek-v4-flash-free': { context: 128000, costIn: 0, costOut: 0, free: true },
   'deepseek-v4-pro': { context: 128000, costIn: 2, costOut: 8, free: false },
+  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true },
+  'kimi-k2.7-code': { context: 131072, costIn: 0, costOut: 0, free: true },
+  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true },
+  'north-mini-code-free': { context: 128000, costIn: 0, costOut: 0, free: true },
   'qwen2.5-coder': { context: 131072, costIn: 0, costOut: 0, free: true, local: true },
+  'local-model': { context: 131072, costIn: 0, costOut: 0, free: true, local: true },
 };
 
 // ==================== SETTINGS ====================
@@ -1530,7 +1535,7 @@ async function loadSettings() {
   if (s.opencodeModel) document.getElementById('model-opencode').value = s.opencodeModel;
   if (s.language) document.getElementById('settings-language').value = s.language;
   // Add model info buttons + free/key badges in settings
-  document.querySelectorAll('.provider-body select[id^="model-"]').forEach(sel => {
+  document.querySelectorAll('.provider-body [id^="model-"]').forEach(sel => {
     if (!sel.parentNode.querySelector('.btn-model-info')) {
       const btn = document.createElement('button');
       btn.className = 'btn-model-info';
@@ -1895,8 +1900,10 @@ function updateModelInfoBadge() {
   const freeBadge = document.getElementById('provider-free-badge');
   if (freeBadge) {
     const meta = MODEL_META[model];
-    freeBadge.textContent = meta && meta.free ? '\u2601 Free' : '\uD83D\uDD11 Key';
-    freeBadge.className = 'model-free-badge ' + (meta && meta.free ? 'free' : 'key');
+    const isLocal = provider === 'ollama' || provider === 'lmstudio' || provider === 'localai';
+    const isFree = meta ? meta.free : isLocal;
+    freeBadge.textContent = isFree ? '\u2601 Free' : '\uD83D\uDD11 Key';
+    freeBadge.className = 'model-free-badge ' + (isFree ? 'free' : 'key');
   }
 }
 
@@ -3148,6 +3155,27 @@ function sanitizePath(filePath) {
   return normalized || '_';
 }
 
+// ==================== ACTIVITY DISPLAY (module-level) ====================
+function setActivity(text) {
+  let el = document.querySelector('.chat-activity');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'chat-activity';
+    const lastMsg = document.querySelector('.chat-msg.ai:last-child');
+    const container = document.getElementById('chat-messages');
+    if (lastMsg && lastMsg.parentNode) {
+      lastMsg.parentNode.insertBefore(el, lastMsg.nextSibling);
+    } else if (container) {
+      container.appendChild(el);
+    }
+  }
+  el.textContent = text;
+}
+function clearActivity() {
+  const el = document.querySelector('.chat-activity');
+  if (el) el.remove();
+}
+
 async function executeToolCall(name, args) {
   const project = currentProject;
   const type = currentProjectType;
@@ -3157,9 +3185,7 @@ async function executeToolCall(name, args) {
     return 'Permission denied: ' + name + ' is blocked';
   }
 
-  if (typeof setActivity === 'function') {
-    setActivity(formatToolActivity(name, args));
-  }
+  setActivity(formatToolActivity(name, args));
 
   switch (name) {
     case 'read_file':
@@ -3759,19 +3785,6 @@ async function sendMessage(text) {
   }
 
   startAnim('*Thinking*');
-
-  let activityEl = null;
-  function setActivity(text) {
-    if (!activityEl) {
-      activityEl = document.createElement('div');
-      activityEl.className = 'chat-activity';
-      msgDiv.parentNode?.insertBefore(activityEl, msgDiv.nextSibling);
-    }
-    activityEl.textContent = text;
-  }
-  function clearActivity() {
-    if (activityEl) { activityEl.remove(); activityEl = null; }
-  }
 
   logToTerminal('Sending request to ' + provider + '...', 'info');
 

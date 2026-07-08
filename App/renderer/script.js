@@ -1624,6 +1624,17 @@ async function loadSettings() {
   document.getElementById('exc-terminal').checked = ex.terminal || false;
   const ci = document.getElementById('custom-instructions');
   if (ci && s.customInstructions !== undefined) ci.value = s.customInstructions;
+  // Restore agent mode preference
+  const savedMode = localStorage.getItem('florde-agent-mode');
+  if (savedMode === 'build') {
+    const btn = document.getElementById('btn-agentic-mode');
+    if (btn) {
+      btn.classList.remove('agentic-plan');
+      btn.classList.add('agentic-build');
+      btn.textContent = 'Build';
+      btn.title = 'Build mode: AI executes directly';
+    }
+  }
   } catch (err) {
     console.error('loadSettings error:', err);
   }
@@ -2912,6 +2923,7 @@ document.getElementById('btn-agentic-mode').addEventListener('click', () => {
   btn.classList.toggle('agentic-build', isPlan);
   btn.textContent = isPlan ? 'Build' : 'Plan';
   btn.title = isPlan ? 'Build mode: AI executes directly' : 'Plan mode: AI plans first, you approve';
+  localStorage.setItem('florde-agent-mode', isPlan ? 'build' : 'plan');
 });
 
 document.getElementById('chat-image-input').addEventListener('change', (e) => {
@@ -3581,17 +3593,24 @@ async function detectCapabilities(provider, providerId) {
 function showPlanModal(plan) {
   return new Promise(resolve => {
     const modal = document.getElementById('plan-modal');
-    const content = document.getElementById('plan-content');
-    content.textContent = plan;
+    const textarea = document.getElementById('plan-content');
+    const editToggle = document.getElementById('plan-edit-toggle');
+    const stepProgress = document.getElementById('plan-step-progress');
+    textarea.value = plan;
+    textarea.readOnly = true;
+    editToggle.checked = false;
+    editToggle.onchange = () => { textarea.readOnly = !editToggle.checked; };
+    stepProgress.textContent = '';
     modal.classList.remove('hidden');
     const execute = document.getElementById('btn-plan-execute');
     const cancel = document.getElementById('btn-plan-cancel');
     const cleanup = () => {
       modal.classList.add('hidden');
+      editToggle.onchange = null;
       execute.removeEventListener('click', onExecute);
       cancel.removeEventListener('click', onCancel);
     };
-    const onExecute = () => { cleanup(); resolve(true); };
+    const onExecute = () => { cleanup(); resolve(textarea.value); };
     const onCancel = () => { cleanup(); resolve(false); };
     execute.addEventListener('click', onExecute);
     cancel.addEventListener('click', onCancel);
@@ -3778,9 +3797,13 @@ async function sendMessage(text) {
     }
     stopAnim(plan);
     if (plan) {
-      const approved = await showPlanModal(plan);
-      if (!approved) return;
-      chatHistory.push({ role: 'system', content: 'Approved execution plan:\n' + plan });
+      const editedPlan = await showPlanModal(plan);
+      if (editedPlan === false) return;
+      chatHistory.push({ role: 'system', content: 'Approved execution plan:\n' + editedPlan });
+      _planSteps = (editedPlan.match(/^\d+\./gm) || []).length;
+      _currentStep = 0;
+      const stepEl = document.getElementById('plan-step-progress');
+      if (stepEl) stepEl.textContent = '1/' + _planSteps;
     }
   }
 
@@ -3791,6 +3814,8 @@ async function sendMessage(text) {
   try {
     const timeoutMinutes = parseInt(document.getElementById('settings-timeout')?.value) || 30;
     let _timedOut = false;
+    let _planSteps = 0;
+    let _currentStep = 0;
     const onTimeout = () => {
       _timedOut = true;
       if (_requestAborter) _requestAborter.abort();
@@ -3902,6 +3927,20 @@ async function sendMessage(text) {
               logToTerminal(loopMsg, 'warn');
               continue;
             }
+            // Step tracking
+            if (_planSteps) {
+              _currentStep = Math.min(_currentStep + 1, _planSteps);
+              const stepEl = document.getElementById('plan-step-progress');
+              if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
+              // Add step indicator div to latest AI message
+              const aiMsg = document.querySelector('.chat-msg.ai:last-child');
+              if (aiMsg) {
+                const sd = document.createElement('div');
+                sd.className = 'agent-step';
+                sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
+                aiMsg.appendChild(sd);
+              }
+            }
             stopAnim('*' + formatToolActivity(name, args) + '*');
             let result;
             try {
@@ -3910,6 +3949,10 @@ async function sendMessage(text) {
               result = 'Error: ' + err.message;
             }
             messages.push(getToolResultMsg(toolCall.id, name, result));
+            // Audit trail
+            if (_planSteps) {
+              chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });
+            }
             startAnim('*Running tools', ' (' + toolNames + ')*');
             resetRequestTimeout(timeoutMinutes, onTimeout);
           }
@@ -3963,6 +4006,19 @@ async function sendMessage(text) {
               logToTerminal(loopMsg, 'warn');
               continue;
             }
+            // Step tracking
+            if (_planSteps) {
+              _currentStep = Math.min(_currentStep + 1, _planSteps);
+              const stepEl = document.getElementById('plan-step-progress');
+              if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
+              const aiMsg = document.querySelector('.chat-msg.ai:last-child');
+              if (aiMsg) {
+                const sd = document.createElement('div');
+                sd.className = 'agent-step';
+                sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
+                aiMsg.appendChild(sd);
+              }
+            }
             stopAnim('*' + formatToolActivity(name, args) + '*');
             let result;
             try {
@@ -3971,6 +4027,10 @@ async function sendMessage(text) {
               result = 'Error: ' + err.message;
             }
             messages.push(getToolResultMsg(toolCall.id, name, result));
+            // Audit trail
+            if (_planSteps) {
+              chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });
+            }
             const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
             displayContent = displayContent.replace(bracketStr, '');
             if (toolCall._raw) {

@@ -300,7 +300,13 @@
     <div class="modal-content" style="max-width:800px;min-width:500px;max-height:80vh;display:flex;flex-direction:column;">
       <h2>AI Execution Plan</h2>
       <p style="font-size:0.85rem;color:var(--text2);margin-bottom:0.5rem;">Review the plan below. Approve to execute step by step, or cancel to refine.</p>
-      <div id="plan-content" style="flex:1;overflow-y:auto;padding:0.5rem;background:var(--bg3);border-radius:6px;font-size:0.85rem;line-height:1.6;white-space:pre-wrap;"></div>
+      <textarea id="plan-content" style="flex:1;padding:0.5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:0.85rem;line-height:1.6;color:var(--text);resize:vertical;font-family:inherit;" readonly></textarea>
+      <div style="margin-top:0.3rem;display:flex;gap:0.3rem;align-items:center;">
+        <label style="font-size:0.75rem;color:var(--text3);display:flex;align-items:center;gap:0.3rem;cursor:pointer;">
+          <input type="checkbox" id="plan-edit-toggle" /> Edit plan
+        </label>
+        <span id="plan-step-progress" style="font-size:0.75rem;color:var(--text3);margin-left:auto;"></span>
+      </div>
       <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:flex-end;">
         <button id="btn-plan-cancel" class="btn btn-secondary">Cancel</button>
         <button id="btn-plan-execute" class="btn btn-primary">Execute Plan</button>

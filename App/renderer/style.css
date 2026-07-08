@@ -551,6 +551,14 @@ body {
 .ollama-search-item { padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--text2); }
 .ollama-search-item:hover { background: var(--hover); color: var(--text); }
 
+.agent-step { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem; margin: 0.2rem 0; background: var(--bg3); border-radius: 4px; font-size: 0.8rem; }
+.agent-step-num { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.agent-step-name { color: var(--text2); flex: 1; }
+.agent-step-bar { width: 60px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.agent-step-progress { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+.agent-step-actions { display: flex; gap: 0.3rem; padding: 0.2rem 0.5rem; }
+.agent-continue, .agent-skip { font-size: 0.75rem; padding: 0.2rem 0.5rem; }
+
 /* ==================== RISK COLORS ==================== */
 .risk-safe { color: #22c55e; }
 .risk-low { color: #86efac; }

@@ -43,10 +43,4 @@ App/renderer/git/
 App/renderer/terminal/
 App/renderer/tools/
 
-# Scripts
-build.bat
-dev_run.bat
-run.bat
-delete_all_data.bat
-
 

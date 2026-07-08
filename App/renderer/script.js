@@ -4790,13 +4790,58 @@ document.getElementById('btn-ollama-models')?.addEventListener('click', async ()
     if (models.length === 0) {
       list.innerHTML = '<div class="ollama-empty">No models installed</div><button class="ollama-download-btn">Download Model</button>';
     } else {
-      list.innerHTML = models.map(m => '<div class="ollama-model-item" data-name="' + m.name + '">' + m.name + '</div>').join('') +
-        '<div class="ollama-download-item">Download Model...</div>';
+      list.innerHTML = models.map(m =>
+        '<div class="ollama-model-item" data-name="' + m.name + '">' +
+          '<span class="ollama-model-name">' + m.name + '</span>' +
+          '<button class="ollama-model-delete" data-name="' + m.name + '" title="Delete model">\uD83D\uDDD1\uFE0F</button>' +
+        '</div>'
+      ).join('') +
+      '<div class="ollama-download-item">Download Model...</div>';
     }
     list.querySelectorAll('.ollama-model-item').forEach(item => {
-      item.addEventListener('click', () => {
-        document.getElementById('model-ollama').value = item.dataset.name;
+      item.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('ollama-model-delete')) return;
+        const name = item.dataset.name;
+        document.getElementById('model-ollama').value = name;
         list.classList.add('hidden');
+        // Show model info toast
+        try {
+          const url = (document.getElementById('url-ollama')?.value || 'http://localhost:11434').replace(/\/+$/, '');
+          const r = await fetchWithTimeout(url + '/api/show', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          }, 5000);
+          const info = await r.json();
+          const size = (info.size || 0) >= 1073741824 ? (info.size / 1073741824).toFixed(1) + ' GB' :
+                       (info.size || 0) >= 1048576 ? (info.size / 1048576).toFixed(1) + ' MB' :
+                       (info.size || 0) + ' bytes';
+          const modified = info.modified_at ? new Date(info.modified_at).toLocaleDateString() : 'unknown';
+          showNotification('info',
+            name + ' \u2014 ' + size + ' \u2014 modified ' + modified +
+            (info.details ? ' \u2014 ' + (info.details.parameter_size || '?') + ' params' : ''),
+            '\uD83E\uDD16');
+        } catch {}
+      });
+    });
+    list.querySelectorAll('.ollama-model-delete').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const name = btn.dataset.name;
+        if (!confirm('Delete model "' + name + '"? This cannot be undone.')) return;
+        try {
+          const url = (document.getElementById('url-ollama')?.value || 'http://localhost:11434').replace(/\/+$/, '');
+          await fetchWithTimeout(url + '/api/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          }, 10000);
+          // Refresh list
+          document.getElementById('btn-ollama-models').click();
+          document.getElementById('btn-ollama-models').click();
+        } catch (err) {
+          alert('Delete failed: ' + err.message);
+        }
       });
     });
     const downloadBtn = list.querySelector('.ollama-download-btn, .ollama-download-item');
@@ -4813,6 +4858,10 @@ function showOllamaDownloadModal() {
     '<div class="settings-form">' +
     '<label>Model Name</label>' +
     '<input type="text" id="ollama-dl-name" placeholder="llama3.2" />' +
+    '<div style="position:relative;">' +
+    '<input type="text" id="ollama-dl-search" placeholder="Search models..." style="width:100%;padding:0.4rem;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text);margin:0.5rem 0;box-sizing:border-box;" />' +
+    '<div id="ollama-dl-search-results" class="ollama-search-results hidden"></div>' +
+    '</div>' +
     '<p style="font-size:0.8rem;color:var(--text3);">Or choose a popular model:</p>' +
     '<div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:1rem;">' +
     ['llama3.2', 'llama3.1', 'qwen2.5-coder', 'mistral', 'codestral', 'deepseek-coder-v2', 'phi3', 'gemma2'].map(m =>
@@ -4826,6 +4875,40 @@ function showOllamaDownloadModal() {
   overlay.querySelectorAll('.ollama-quick').forEach(btn => {
     btn.addEventListener('click', () => document.getElementById('ollama-dl-name').value = btn.textContent);
   });
+  // Search handler
+  const searchInput = document.getElementById('ollama-dl-search');
+  const searchResults = document.getElementById('ollama-dl-search-results');
+  if (searchInput && searchResults) {
+    let searchTimer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) { searchResults.classList.add('hidden'); return; }
+      searchTimer = setTimeout(() => {
+        const known = ['llama3.2','llama3.1','qwen2.5-coder','mistral','codestral','deepseek-coder-v2','phi3','gemma2','nomic-embed-text','llava','mixtral','command-r','dolphin-llama3','starling-lm','tinyllama','neural-chat'];
+        const matches = known.filter(m => m.includes(q));
+        if (matches.length > 0) {
+          searchResults.innerHTML = matches.map(m => '<div class="ollama-search-item" data-name="' + m + '">' + m + '</div>').join('');
+          searchResults.classList.remove('hidden');
+          searchResults.querySelectorAll('.ollama-search-item').forEach(item => {
+            item.addEventListener('click', () => {
+              document.getElementById('ollama-dl-name').value = item.dataset.name;
+              searchResults.classList.add('hidden');
+            });
+          });
+        } else {
+          searchResults.innerHTML = '<div class="ollama-search-item" style="color:var(--text3);">No matches found</div>';
+          searchResults.classList.remove('hidden');
+        }
+      }, 300);
+    });
+    // Hide results on click outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#ollama-dl-search, #ollama-dl-search-results')) {
+        searchResults.classList.add('hidden');
+      }
+    }, { once: false });
+  }
   overlay.querySelector('.ollama-dl-close').addEventListener('click', () => overlay.remove());
   overlay.querySelector('#ollama-dl-start').addEventListener('click', async () => {
     const name = document.getElementById('ollama-dl-name').value.trim();
@@ -4874,6 +4957,23 @@ function showOllamaDownloadModal() {
     }
   });
 }
+
+// Ollama live status check
+async function checkOllamaStatus() {
+  const el = document.getElementById('ollama-status');
+  if (!el) return;
+  el.className = 'ollama-status checking';
+  try {
+    const url = (document.getElementById('url-ollama')?.value || 'http://localhost:11434').replace(/\/+$/, '');
+    await fetchWithTimeout(url + '/api/tags', { method: 'GET' }, 3000);
+    el.className = 'ollama-status online';
+  } catch {
+    el.className = 'ollama-status offline';
+  }
+}
+document.getElementById('url-ollama')?.addEventListener('change', checkOllamaStatus);
+checkOllamaStatus();
+setInterval(checkOllamaStatus, 30000);
 
 document.getElementById('chat-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';

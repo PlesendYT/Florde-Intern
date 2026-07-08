@@ -530,13 +530,26 @@ body {
 @keyframes blink { 50% { opacity: 0; } }
 .chat-activity { font-size: 0.75rem; color: var(--text3); padding: 0.2rem 0.6rem; font-style: italic; }
 .ollama-model-list { background: var(--bg2); border: 1px solid var(--border2); border-radius: 6px; margin-top: 0.3rem; max-height: 200px; overflow-y: auto; font-size: 0.8rem; }
-.ollama-model-item, .ollama-download-item, .ollama-download-btn { padding: 0.4rem 0.6rem; cursor: pointer; color: var(--text2); }
-.ollama-model-item:hover, .ollama-download-item:hover, .ollama-download-btn:hover { background: var(--hover); color: var(--text); }
+.ollama-model-item { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.6rem; cursor: pointer; color: var(--text2); }
+.ollama-model-item:hover { background: var(--hover); color: var(--text); }
+.ollama-model-name { flex: 1; }
+.ollama-model-delete { background: none; border: none; cursor: pointer; font-size: 0.75rem; padding: 0.1rem 0.3rem; opacity: 0.4; }
+.ollama-model-delete:hover { opacity: 1; }
+.ollama-download-item, .ollama-download-btn { padding: 0.4rem 0.6rem; cursor: pointer; color: var(--text2); }
+.ollama-download-item:hover, .ollama-download-btn:hover { background: var(--hover); color: var(--text); }
 .ollama-loading, .ollama-empty, .ollama-error { padding: 0.5rem; color: var(--text3); text-align: center; }
 .ollama-error { color: #ef4444; }
 .ollama-dl-progress { margin: 0.5rem 0; }
 .ollama-dl-bar { height: 4px; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.3s; }
 .ollama-dl-text { font-size: 0.75rem; color: var(--text3); margin-top: 0.2rem; display: block; }
+.ollama-status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 0.2rem; vertical-align: middle; transition: background 0.3s; }
+.ollama-status.online { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
+.ollama-status.offline { background: #ef4444; }
+.ollama-status.checking { background: #facc15; animation: ollama-pulse 1s infinite; }
+@keyframes ollama-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.ollama-search-results { position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; z-index: 10; }
+.ollama-search-item { padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--text2); }
+.ollama-search-item:hover { background: var(--hover); color: var(--text); }
 
 /* ==================== RISK COLORS ==================== */
 .risk-safe { color: #22c55e; }

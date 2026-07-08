@@ -179,6 +179,23 @@ body {
 .settings-form input:focus, .settings-form select:focus { outline: none; border-color: var(--accent); }
 .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
 
+.model-info-modal { max-width: 420px; }
+.model-info-grid { display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0; }
+.info-row { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+.info-label { color: var(--text2); font-size: 0.85rem; }
+.info-value { font-weight: 500; }
+.caps-list { display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: flex-end; }
+.cap-badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 3px; white-space: nowrap; }
+.cap-yes { background: rgba(34,197,94,0.2); color: #22c55e; }
+.cap-no { background: rgba(239,68,68,0.15); color: #ef4444; }
+.btn-model-info { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 1rem; padding: 0.2rem 0.4rem; margin-left: 0.3rem; }
+.btn-model-info:hover { color: var(--text); }
+.model-free-badge { font-size: 0.7rem; margin-left: 0.3rem; padding: 0.1rem 0.3rem; border-radius: 3px; white-space: nowrap; }
+.model-free-badge.free { color: #22c55e; }
+.model-free-badge.key { color: var(--text3); }
+.perm-desc { background: var(--bg3); padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; font-size: 0.85rem; border-left: 3px solid var(--accent); }
+.perm-desc strong { color: var(--text2); }
+
 /* ==================== SETTINGS TABS ==================== */
 .settings-tabs {
   display: flex; gap: 0.3rem; margin-bottom: 1rem;

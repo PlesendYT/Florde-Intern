@@ -172,8 +172,9 @@ function getActiveTools() {
     { type: 'function', function: { name: 'browser_reload', description: 'Reload the current browser page.', parameters: { type: 'object', properties: {} } } },
     { type: 'function', function: { name: 'browser_evaluate', description: 'Execute custom JavaScript code in the browser page context and return the result.', parameters: { type: 'object', properties: { code: { type: 'string', description: 'JavaScript code to execute' } }, required: ['code'] } } },
   ];
+  const appTools = _getAppToolDefs();
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
-  return [...baseTools, ...pluginTools];
+  return [...baseTools, ...appTools, ...pluginTools];
 }
 
 window.__updateTools = function() {
@@ -999,7 +1000,7 @@ const PermissionManager = {
   init() {
     const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
     this._rules = settings.permissions || {};
-    const allTools = ['read_file', 'write_file', 'delete_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate'];
+    const allTools = ['read_file', 'write_file', 'delete_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
     allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
   },
 
@@ -1074,7 +1075,7 @@ function showPermissionPrompt(toolName, args, callback) {
   overlay.className = 'permission-prompt-overlay';
   const act = formatToolActivity(toolName, args);
   showNotification('warning', 'Action Required: ' + act, '\u{1F512}');
-  const desc = args.description ? '<p style="color:var(--text2);font-size:0.85rem;margin-top:0.5rem;">' + escapeHtml(args.description) + '</p>' : '';
+  const desc = args.description ? '<div class="perm-desc"><strong>Summary:</strong> ' + escapeHtml(args.description) + '</div>' : '';
   overlay.innerHTML = '<div class="permission-prompt">' +
     '<h3>\u{1F512} AI Action Required</h3>' +
     '<p>The AI wants to <strong>' + act + '</strong></p>' +
@@ -1312,7 +1313,10 @@ function buildSystemPrompt(hasTools) {
 - list_files(): List all project files
 - search_files(query): Find text in files
 - exec_command(command): Run shell commands in the project directory
-- ask_question(question, choices): Ask the user a question when you need input or a decision`;
+- ask_question(question, choices): Ask the user a question when you need input or a decision
+- Plus connected service tools (e.g. make_list_scenarios, github_create_issue) — use them to interact with external services`;
+
+  const appsSection = buildConnectedAppsPrompt();
 
   const basePrompt = `You are Florde AI, an AI coding assistant with direct access to the user's project files.
 
@@ -1323,9 +1327,8 @@ ${currentProjectType === 'local' ? 'Notes: This is a local project. Shell comman
 
 Zero-Cloud-Storage: All user data, code, and chat history stays in the local database/JSON files.
 Encrypted API Communication: Cloud model connections go directly from client to provider - no proxy server.
-  Local RAG: Project context is built locally. Embeddings are generated via local models.
-  const appsSection = buildConnectedAppsPrompt();
-    ${promptExtSection}${customSection}${appsSection}`;
+Local RAG: Project context is built locally. Embeddings are generated via local models.
+${promptExtSection}${customSection}${appsSection}`;
 
   if (hasTools) {
     return basePrompt + `
@@ -1344,7 +1347,8 @@ RULES:
 7. Only modify files inside the project — do not access files outside
 8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
 9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.
-10. Use web_fetch/web_search sparingly (max 1-2 calls). Fetch all needed URLs at once, then synthesize your response immediately. Do NOT fetch more URLs after you have the information.`;
+10. Use web_fetch/web_search sparingly (max 1-2 calls). Fetch all needed URLs at once, then synthesize your response immediately. Do NOT fetch more URLs after you have the information.
+11. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
   }
 
   return basePrompt + `
@@ -1373,7 +1377,8 @@ RULES:
 6. Explain what you're doing at each step
 7. Only modify files inside the project — do not access files outside
 8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
-9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.`;
+9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.
+10. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
 }
 
 function getPluginPromptExtensions() {
@@ -1445,6 +1450,26 @@ function parseTextToolCalls(text) {
   return calls;
 }
 
+// ==================== MODEL META ====================
+const MODEL_META = {
+  'gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false },
+  'gpt-4o-mini': { context: 128000, costIn: 0.15, costOut: 0.6, free: false },
+  'gpt-5.5': { context: 256000, costIn: 5, costOut: 25, free: false },
+  'claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false },
+  'claude-3.5-haiku': { context: 200000, costIn: 0.8, costOut: 4, free: false },
+  'gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true },
+  'gemini-2.5-pro': { context: 1048576, costIn: 1.25, costOut: 10, free: false },
+  'deepseek-chat': { context: 64000, costIn: 0.14, costOut: 0.28, free: false },
+  'deepseek-reasoner': { context: 64000, costIn: 0.55, costOut: 2.19, free: false },
+  'mistral-large-latest': { context: 131000, costIn: 2, costOut: 6, free: false },
+  'codestral-latest': { context: 256000, costIn: 1, costOut: 3, free: false },
+  'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false },
+  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true },
+  'deepseek-v4-flash-free': { context: 128000, costIn: 0, costOut: 0, free: true },
+  'deepseek-v4-pro': { context: 128000, costIn: 2, costOut: 8, free: false },
+  'qwen2.5-coder': { context: 131072, costIn: 0, costOut: 0, free: true, local: true },
+};
+
 // ==================== SETTINGS ====================
 
 async function loadSettings() {
@@ -1504,6 +1529,33 @@ async function loadSettings() {
   if (s.grokModel) document.getElementById('model-grok').value = s.grokModel;
   if (s.opencodeModel) document.getElementById('model-opencode').value = s.opencodeModel;
   if (s.language) document.getElementById('settings-language').value = s.language;
+  // Add model info buttons + free/key badges in settings
+  document.querySelectorAll('.provider-body select[id^="model-"]').forEach(sel => {
+    if (!sel.parentNode.querySelector('.btn-model-info')) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-model-info';
+      btn.textContent = '\u24D8';
+      btn.title = 'Model info';
+      btn.addEventListener('click', () => {
+        const providerId = sel.id.replace('model-', '');
+        showModelInfo(providerId, sel.value);
+      });
+      sel.parentNode.insertBefore(btn, sel.nextSibling);
+    }
+    let badge = sel.parentNode.querySelector('.model-free-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'model-free-badge';
+      sel.parentNode.insertBefore(badge, sel.nextSibling);
+    }
+    const updateBadge = () => {
+      const meta = MODEL_META[sel.value];
+      if (meta && meta.free) { badge.textContent = '\u2601 Free'; badge.className = 'model-free-badge free'; }
+      else { badge.textContent = '\uD83D\uDD11 Key'; badge.className = 'model-free-badge key'; }
+    };
+    updateBadge();
+    sel.addEventListener('change', updateBadge);
+  });
   await initSandbox();
   try {
     const autoStart = await window.electronAPI.getAutoStart();
@@ -1839,6 +1891,13 @@ function updateModelInfoBadge() {
   const model = prov?.model || '';
   badge.textContent = model;
   badge.title = 'Model: ' + model + '\nProvider: ' + (provider || '') + '\nClick for details';
+  // Update free badge
+  const freeBadge = document.getElementById('provider-free-badge');
+  if (freeBadge) {
+    const meta = MODEL_META[model];
+    freeBadge.textContent = meta && meta.free ? '\u2601 Free' : '\uD83D\uDD11 Key';
+    freeBadge.className = 'model-free-badge ' + (meta && meta.free ? 'free' : 'key');
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -1853,14 +1912,36 @@ document.addEventListener('click', (e) => {
   }
 });
 
+function showModelInfo(providerId, modelName) {
+  const cap = capabilityCache[providerId + ':' + modelName];
+  const meta = MODEL_META[modelName];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const caps = cap ? Object.entries(cap).filter(([k, v]) => typeof v === 'boolean').map(([k, v]) => '<span class="cap-badge ' + (v ? 'cap-yes' : 'cap-no') + '">' + k.replace(/_/g, ' ') + '</span>').join('') : '<span class="cap-badge cap-no">unknown</span>';
+  const metaHtml = meta ? '<div class="info-row"><span class="info-label">Context Window</span><span class="info-value">' + (meta.context / 1000).toFixed(0) + 'K tokens</span></div>' +
+    '<div class="info-row"><span class="info-label">Input Cost</span><span class="info-value">' + (meta.free ? '\u2601 Free' : '$' + meta.costIn + '/M tokens') + '</span></div>' +
+    '<div class="info-row"><span class="info-label">Output Cost</span><span class="info-value">' + (meta.free ? '\u2601 Free' : '$' + meta.costOut + '/M tokens') + '</span></div>' +
+    (meta.local ? '<div class="info-row"><span class="info-label">Type</span><span class="info-value">Local (Ollama)</span></div>' : '') : '<div class="info-row"><span class="info-label">Context</span><span class="info-value">Unknown</span></div>';
+  overlay.innerHTML = '<div class="modal-content model-info-modal"><h2>' + escapeHtml(modelName) + '</h2>' +
+    '<div class="model-info-grid">' + metaHtml +
+    '<div class="info-row"><span class="info-label">Capabilities</span><span class="info-value caps-list">' + caps + '</span></div>' +
+    '</div>' +
+    '<div class="modal-actions"><button class="btn btn-secondary close-model-info">Close</button></div></div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('.close-model-info').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
 function showModelInfoPopup() {
   const sel = document.getElementById('provider-select');
   const provider = sel?.value;
   const prov = providers[provider];
-  const cacheKey = provider + ':' + (prov?.model || 'default');
+  const modelName = prov?.model || 'Unknown';
+  const cacheKey = provider + ':' + modelName;
   const caps = capabilityCache[cacheKey] || getKnownCapabilities(provider, prov?.model);
   const temp = prov?.temperature !== undefined ? prov.temperature : 0.7;
   const isLocal = provider === 'ollama' || provider === 'lmstudio' || provider === 'localai';
+  const meta = MODEL_META[modelName];
 
   let popup = document.getElementById('model-info-popup');
   if (!popup) {
@@ -1877,11 +1958,16 @@ function showModelInfoPopup() {
 
   const capList = caps ? Object.entries(caps).map(([k, v]) => '<span class="cap-item ' + (v ? 'cap-yes' : 'cap-no') + '">' + k.replace(/_/g, ' ') + ': ' + (v ? '\u2713' : '\u2717') + '</span>').join('') : '<span>Loading...</span>';
 
+  const metaHtml = meta ? '<div class="model-info-section"><strong>Context:</strong> ' + (meta.context / 1000).toFixed(0) + 'K tokens</div>' +
+    '<div class="model-info-section"><strong>Pricing:</strong> ' + (meta.free ? '\u2601 Free' : 'In $' + meta.costIn + '/M \u2022 Out $' + meta.costOut + '/M') + '</div>' +
+    (meta.local ? '<div class="model-info-section"><strong>Type:</strong> Local (Ollama)</div>' : '') : '';
+
   popup.innerHTML = '<div class="model-info-header">' +
-    '<strong>' + (prov?.model || 'Unknown') + '</strong>' +
-    '<span class="model-info-provider">' + provider + (isLocal ? ' \U0001F194' : ' \U0001F511') + '</span>' +
+    '<strong>' + modelName + '</strong>' +
+    '<span class="model-info-provider">' + provider + (meta && meta.free ? ' \u2601 Free' : isLocal ? ' \U0001F194' : ' \U0001F511') + '</span>' +
     '</div>' +
     '<div class="model-info-body">' +
+    metaHtml +
     '<div class="model-info-section"><strong>Temperature:</strong> ' + temp.toFixed(1) + '</div>' +
     '<div class="model-info-section"><strong>Capabilities:</strong></div>' +
     '<div class="model-info-caps">' + capList + '</div>' +
@@ -3317,15 +3403,102 @@ async function executeToolCall(name, args) {
     case 'browser_evaluate':
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
-      const result = await BrowserPanel.evaluate(args.code);
-      return 'Result: ' + (typeof result === 'object' ? JSON.stringify(result) : String(result));
+      const evalResult = await BrowserPanel.evaluate(args.code);
+      return 'Result: ' + (typeof evalResult === 'object' ? JSON.stringify(evalResult) : String(evalResult));
 
     default:
+      // Check if this is a connected app tool (e.g. make_list_scenarios)
+      if (APP_TOOL_LOOKUP[name]) {
+        return await executeAppTool(name, args);
+      }
       if (typeof pluginRegistry !== 'undefined' && pluginRegistry.toolHandlers.has(name)) {
         return await pluginRegistry.executeTool(name, args);
       }
       throw new Error('Unknown tool: ' + name);
   }
+}
+
+// Execute a named tool for a connected app (e.g. make_list_scenarios, github_create_issue)
+async function executeAppTool(name, args) {
+  const appId = APP_TOOL_LOOKUP[name];
+  const cap = APP_CAPABILITIES[appId];
+  if (!cap) throw new Error('Unknown app capability: ' + appId);
+  const shortName = name.slice(appId.length + 1);
+  const toolDef = cap.tools.find(t => t.n === shortName);
+  if (!toolDef) throw new Error('Unknown tool: ' + name);
+
+  // Get API key from keychain
+  const apiKey = await window.electronAPI.keychain.retrieve({ key: 'app:' + appId });
+  if (!apiKey) {
+    const appInfo = CONNECTED_APPS.find(a => a.id === appId);
+    throw new Error(appInfo ? appInfo.name + ' is not connected. Go to Settings > Connected Apps to connect it first.' : 'App not connected: ' + appId);
+  }
+
+  // Build request
+  let endpoint = toolDef.p;
+  let method = toolDef.m || 'GET';
+  let body = null;
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': 'Florde/1.0' };
+  const authType = cap.auth || 'Bearer';
+  headers['Authorization'] = authType === 'Token' ? 'Token ' + apiKey : 'Bearer ' + apiKey;
+  if (appId === 'supabase') headers['apikey'] = apiKey;
+
+  // Handle GraphQL (Railway)
+  if (toolDef.isGraphQL) {
+    let query = toolDef.gql;
+    const variables = {};
+    if (toolDef.gqlVars) {
+      const varMap = toolDef.gqlVars.length > 0 ? toolDef.gqlVars : Object.keys(args);
+      for (const v of varMap) {
+        variables[v] = args[v] || '';
+      }
+    }
+    body = JSON.stringify({ query, variables });
+  } else if (args && Object.keys(args).length > 0) {
+    // Substitute path params
+    const pathParams = endpoint.match(/\{(\w+)\}/g);
+    if (pathParams) {
+      for (const pp of pathParams) {
+        const key = pp.slice(1, -1);
+        if (args[key] !== undefined) {
+          endpoint = endpoint.replace(pp, encodeURIComponent(String(args[key])));
+        }
+      }
+    }
+
+    // Determine remaining args (not used in path)
+    const usedInPath = (endpoint.match(/\{(\w+)\}/g) || []).map(p => p.slice(1, -1));
+    const remaining = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (!usedInPath.includes(k)) remaining[k] = v;
+    }
+
+    if (method === 'GET') {
+      // Remaining args become query params
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(remaining)) {
+        if (v !== undefined && v !== null) qs.set(k, String(v));
+      }
+      const qStr = qs.toString();
+      if (qStr) endpoint += '?' + qStr;
+    } else if (toolDef.body) {
+      body = JSON.stringify(toolDef.body);
+    } else if (Object.keys(remaining).length > 0) {
+      body = JSON.stringify(remaining);
+    }
+  }
+
+  const url = cap.baseUrl + endpoint;
+  const fetchOpts = { method, headers };
+  if (body) fetchOpts.body = body;
+
+  const resp = await fetch(url, fetchOpts);
+  const text = await resp.text();
+  if (!resp.ok) {
+    const appInfo = CONNECTED_APPS.find(a => a.id === appId);
+    throw new Error((appInfo ? appInfo.name : appId) + ' API error ' + resp.status + ': ' + text.slice(0, 500));
+  }
+  return text.length > 10000 ? text.slice(0, 10000) + '\n... [truncated, full response was ' + text.length + ' chars]' : text;
 }
 
 async function checkToolSupport(provider, providerId) {
@@ -3431,6 +3604,16 @@ const TOOL_LABELS = {
 };
 
 function formatToolActivity(name, args) {
+  // App tool: show nice label like "Make: List Scenarios"
+  const appId = APP_TOOL_LOOKUP[name];
+  if (appId) {
+    const app = CONNECTED_APPS.find(a => a.id === appId);
+    const shortName = name.slice(appId.length + 1).replace(/_/g, ' ');
+    const appLabel = app ? app.name : appId;
+    const label = appLabel + ': ' + shortName.replace(/\b\w/g, c => c.toUpperCase());
+    const arg = args && Object.keys(args).length > 0 ? Object.values(args).filter(v => typeof v === 'string').slice(0, 2).join(', ') : '';
+    return arg ? label + ' ' + arg : label;
+  }
   const label = TOOL_LABELS[name] || name;
   const detailed = document.getElementById('detailed-activity')?.checked;
   let arg = (args && (args.path || args.command || args.question || args.query || (args.code && args.code.slice(0, 40)))) || '';
@@ -3578,7 +3761,6 @@ async function sendMessage(text) {
   startAnim('*Thinking*');
 
   let activityEl = null;
-  let _activityTimeout = null;
   function setActivity(text) {
     if (!activityEl) {
       activityEl = document.createElement('div');
@@ -3586,8 +3768,9 @@ async function sendMessage(text) {
       msgDiv.parentNode?.insertBefore(activityEl, msgDiv.nextSibling);
     }
     activityEl.textContent = text;
-    if (_activityTimeout) clearTimeout(_activityTimeout);
-    _activityTimeout = setTimeout(() => { if (activityEl) { activityEl.remove(); activityEl = null; } }, 5000);
+  }
+  function clearActivity() {
+    if (activityEl) { activityEl.remove(); activityEl = null; }
   }
 
   logToTerminal('Sending request to ' + provider + '...', 'info');
@@ -3729,6 +3912,7 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        clearActivity();
         clearRequestTimeout();
         return;
       }
@@ -3795,11 +3979,13 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        clearActivity();
         clearRequestTimeout();
         return;
       }
     }
 
+    clearActivity();
     clearRequestTimeout();
     const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
     if (responseContent) {
@@ -3849,6 +4035,7 @@ async function sendMessage(text) {
     contentDiv.textContent = 'Error: ' + displayMsg;
     logToTerminal('AI request failed: ' + displayMsg, 'error');
   } finally {
+    clearActivity();
     _isRequestActive = false;
     _requestAborter = null;
     resetSendButton();
@@ -4242,17 +4429,217 @@ document.querySelectorAll('.provider-body input[type="password"]').forEach(input
 // ==================== CONNECTED APPS ====================
 
 const CONNECTED_APPS = [
-  { id: 'make', name: 'Make.com', icon: '🔗', desc: 'Automation workflows — trigger & manage scenarios via API', tokenLabel: 'Make API Key', tokenHelp: 'Get your key from Make.com > Settings > API > API tokens', tokenPrefix: '' },
-  { id: 'cloudflare', name: 'Cloudflare', icon: '☁️', desc: 'CDN, DNS, Workers, D1, R2 & more', tokenLabel: 'Cloudflare API Token', tokenHelp: 'Create a token at dash.cloudflare.com > My Profile > API Tokens', tokenPrefix: '' },
-  { id: 'netlify', name: 'Netlify', icon: '🌐', desc: 'Hosting, serverless functions, forms & deploy', tokenLabel: 'Netlify Personal Access Token', tokenHelp: 'Generate at app.netlify.com > User Settings > Applications > Personal access tokens', tokenPrefix: '' },
-  { id: 'github', name: 'GitHub', icon: '🐙', desc: 'Repos, issues, PRs, Actions, deployments', tokenLabel: 'GitHub Personal Access Token', tokenHelp: 'Generate at github.com > Settings > Developer settings > Personal access tokens (needs repo, workflow scopes)', tokenPrefix: '' },
-  { id: 'gitlab', name: 'GitLab', icon: '🦊', desc: 'Repos, CI/CD, registry & project management', tokenLabel: 'GitLab Personal Access Token', tokenHelp: 'Generate at gitlab.com > Preferences > Access Tokens', tokenPrefix: '' },
-  { id: 'vercel', name: 'Vercel', icon: '▲', desc: 'Frontend deployment, serverless functions, analytics', tokenLabel: 'Vercel Token', tokenHelp: 'Generate at vercel.com > Settings > Tokens', tokenPrefix: '' },
-  { id: 'digitalocean', name: 'DigitalOcean', icon: '🐳', desc: 'Cloud VMs, Kubernetes, app platform & databases', tokenLabel: 'DigitalOcean Personal Access Token', tokenHelp: 'Create at cloud.digitalocean.com > API > Tokens/Keys', tokenPrefix: '' },
-  { id: 'supabase', name: 'Supabase', icon: '⚡', desc: 'Postgres DB, auth, realtime, storage & edge functions', tokenLabel: 'Supabase Service Role Key', tokenHelp: 'Find in Supabase dashboard > Settings > API > service_role key', tokenPrefix: 'eyJ' },
-  { id: 'railway', name: 'Railway', icon: '🚂', desc: 'Full-stack deployment with database provisioning', tokenLabel: 'Railway API Token', tokenHelp: 'Generate at railway.com > Account > Tokens', tokenPrefix: '' },
-  { id: 'render', name: 'Render', icon: '🖥️', desc: 'Cloud hosting for web services, static sites & cron', tokenLabel: 'Render API Key', tokenHelp: 'Find at dashboard.render.com > Account Settings > API Keys', tokenPrefix: '' },
+  { id: 'make', name: 'Make.com', icon: '🔗', desc: 'Automation workflows — trigger & manage scenarios via API', baseUrl: 'https://eu1.make.com/api/v2', authType: 'Token', tokenLabel: 'Make API Token', tokenHelp: 'Get token from Make.com > Profile > API > Add token. Scopes needed: scenarios:read/write, hooks:read/write. Default zone: eu1. Change zone in baseUrl if needed (eu2, us1, us2).' },
+  { id: 'cloudflare', name: 'Cloudflare', icon: '☁️', desc: 'CDN, DNS, Workers, D1, R2 & more', baseUrl: 'https://api.cloudflare.com/client/v4', authType: 'Bearer', tokenLabel: 'Cloudflare API Token', tokenHelp: 'Create a token at dash.cloudflare.com > My Profile > API Tokens' },
+  { id: 'netlify', name: 'Netlify', icon: '🌐', desc: 'Hosting, serverless functions, forms & deploy', baseUrl: 'https://api.netlify.com/api/v1', authType: 'Bearer', tokenLabel: 'Netlify Personal Access Token', tokenHelp: 'Generate at app.netlify.com > User Settings > Applications > Personal access tokens' },
+  { id: 'github', name: 'GitHub', icon: '🐙', desc: 'Repos, issues, PRs, Actions, deployments', baseUrl: 'https://api.github.com', authType: 'Bearer', tokenLabel: 'GitHub Personal Access Token', tokenHelp: 'Generate at github.com > Settings > Developer settings > Personal access tokens (needs repo, workflow scopes)' },
+  { id: 'gitlab', name: 'GitLab', icon: '🦊', desc: 'Repos, CI/CD, registry & project management', baseUrl: 'https://gitlab.com/api/v4', authType: 'Bearer', tokenLabel: 'GitLab Personal Access Token', tokenHelp: 'Generate at gitlab.com > Preferences > Access Tokens' },
+  { id: 'vercel', name: 'Vercel', icon: '▲', desc: 'Frontend deployment, serverless functions, analytics', baseUrl: 'https://api.vercel.com', authType: 'Bearer', tokenLabel: 'Vercel Token', tokenHelp: 'Generate at vercel.com > Settings > Tokens' },
+  { id: 'digitalocean', name: 'DigitalOcean', icon: '🐳', desc: 'Cloud VMs, Kubernetes, app platform & databases', baseUrl: 'https://api.digitalocean.com/v2', authType: 'Bearer', tokenLabel: 'DigitalOcean Personal Access Token', tokenHelp: 'Create at cloud.digitalocean.com > API > Tokens/Keys' },
+  { id: 'supabase', name: 'Supabase', icon: '⚡', desc: 'Postgres DB, auth, realtime, storage & edge functions', baseUrl: 'https://api.supabase.com', authType: 'Bearer', tokenLabel: 'Supabase Service Role Key', tokenHelp: 'Find in Supabase dashboard > Settings > API > service_role key. Also need project reference ID.' },
+  { id: 'railway', name: 'Railway', icon: '🚂', desc: 'Full-stack deployment with database provisioning', baseUrl: 'https://api.railway.app/graphql/v2', authType: 'Bearer', tokenLabel: 'Railway API Token', tokenHelp: 'Generate at railway.com > Account > Tokens' },
+  { id: 'render', name: 'Render', icon: '🖥️', desc: 'Cloud hosting for web services, static sites & cron', baseUrl: 'https://api.render.com/v1', authType: 'Bearer', tokenLabel: 'Render API Key', tokenHelp: 'Find at dashboard.render.com > Account Settings > API Keys' },
 ];
+
+// === Manus-style App Capabilities ===
+// Each connected app exposes specific tools with clean names and params.
+// The AI uses these like Manus connectors — no raw API knowledge needed.
+const APP_CAPABILITIES = {
+  make: {
+    auth: 'Token', baseUrl: 'https://eu1.make.com/api/v2',
+    desc: 'Make.com automation platform',
+    tools: [
+      { n: 'list_scenarios', d: 'List all scenarios for a team', m: 'GET', p: '/scenarios', ps: { teamId: { t: 'number', d: 'Team ID' } }, r: ['teamId'] },
+      { n: 'get_scenario', d: 'Get scenario details', m: 'GET', p: '/scenarios/{scenarioId}', ps: { scenarioId: { t: 'number', d: 'Scenario ID' } }, r: ['scenarioId'] },
+      { n: 'create_scenario', d: 'Create a new automation scenario', m: 'POST', p: '/scenarios', ps: { teamId: { t: 'number', d: 'Team ID' }, name: { t: 'string', d: 'Scenario name' }, description: { t: 'string', d: 'Description (optional)' } }, r: ['teamId', 'name'] },
+      { n: 'update_scenario', d: 'Update a scenario name, description or scheduling', m: 'PATCH', p: '/scenarios/{scenarioId}', ps: { scenarioId: { t: 'number', d: 'Scenario ID' }, name: { t: 'string', d: 'New name (optional)' }, description: { t: 'string', d: 'New description (optional)' } }, r: ['scenarioId'] },
+      { n: 'delete_scenario', d: 'Delete a scenario permanently', m: 'DELETE', p: '/scenarios/{scenarioId}', ps: { scenarioId: { t: 'number', d: 'Scenario ID' } }, r: ['scenarioId'] },
+      { n: 'activate_scenario', d: 'Activate (turn on) a scenario', m: 'PATCH', p: '/scenarios/{scenarioId}', ps: { scenarioId: { t: 'number', d: 'Scenario ID' } }, r: ['scenarioId'], body: { isActive: true } },
+      { n: 'deactivate_scenario', d: 'Deactivate (turn off) a scenario', m: 'PATCH', p: '/scenarios/{scenarioId}', ps: { scenarioId: { t: 'number', d: 'Scenario ID' } }, r: ['scenarioId'], body: { isActive: false } },
+      { n: 'trigger_scenario', d: 'Run a scenario immediately (on-demand execution)', m: 'POST', p: '/scenarios/{scenarioId}/run', ps: { scenarioId: { t: 'number', d: 'Scenario ID' }, inputs: { t: 'object', d: 'Optional input data as key-value pairs' } }, r: ['scenarioId'] },
+      { n: 'list_webhooks', d: 'List webhooks available for a team', m: 'GET', p: '/hooks', ps: { teamId: { t: 'number', d: 'Team ID' } }, r: ['teamId'] },
+      { n: 'create_webhook', d: 'Create a webhook', m: 'POST', p: '/hooks', ps: { teamId: { t: 'number', d: 'Team ID' }, name: { t: 'string', d: 'Webhook name' }, typeName: { t: 'string', d: 'Hook type (gateway-webhook)' } }, r: ['teamId', 'name', 'typeName'] },
+      { n: 'list_organizations', d: 'List organizations the API token has access to', m: 'GET', p: '/organizations', ps: {}, r: [] },
+      { n: 'list_teams', d: 'List teams in an organization', m: 'GET', p: '/teams', ps: { organizationId: { t: 'number', d: 'Organization ID' } }, r: ['organizationId'] },
+      { n: 'list_connections', d: 'List app connections for a team', m: 'GET', p: '/connections', ps: { teamId: { t: 'number', d: 'Team ID' } }, r: ['teamId'] },
+    ]
+  },
+  github: {
+    auth: 'Bearer', baseUrl: 'https://api.github.com',
+    desc: 'GitHub repos, issues, PRs, Actions',
+    tools: [
+      { n: 'get_user', d: 'Get authenticated GitHub user profile', m: 'GET', p: '/user', ps: {}, r: [] },
+      { n: 'list_repos', d: 'List repositories for the authenticated user', m: 'GET', p: '/user/repos', ps: { type: { t: 'string', d: 'all|owner|public|private|member' }, sort: { t: 'string', d: 'created|updated|pushed|full_name' }, direction: { t: 'string', d: 'asc|desc' } }, r: [] },
+      { n: 'create_repo', d: 'Create a new repository', m: 'POST', p: '/user/repos', ps: { name: { t: 'string', d: 'Repository name' }, description: { t: 'string', d: 'Description (optional)' }, private: { t: 'boolean', d: 'Whether repo is private' }, auto_init: { t: 'boolean', d: 'Initialize with README' } }, r: ['name'] },
+      { n: 'get_repo', d: 'Get repository details', m: 'GET', p: '/repos/{owner}/{repo}', ps: { owner: { t: 'string', d: 'Repository owner (user or org)' }, repo: { t: 'string', d: 'Repository name' } }, r: ['owner', 'repo'] },
+      { n: 'list_issues', d: 'List issues in a repository', m: 'GET', p: '/repos/{owner}/{repo}/issues', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, state: { t: 'string', d: 'open|closed|all' }, sort: { t: 'string', d: 'created|updated|comments' } }, r: ['owner', 'repo'] },
+      { n: 'create_issue', d: 'Create an issue in a repository', m: 'POST', p: '/repos/{owner}/{repo}/issues', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, title: { t: 'string', d: 'Issue title' }, body: { t: 'string', d: 'Issue body in Markdown' }, labels: { t: 'array', d: 'Labels to apply', it: { t: 'string' } }, assignees: { t: 'array', d: 'GitHub usernames to assign', it: { t: 'string' } } }, r: ['owner', 'repo', 'title'] },
+      { n: 'update_issue', d: 'Update an issue (title, body, state, labels)', m: 'PATCH', p: '/repos/{owner}/{repo}/issues/{issueNumber}', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, issueNumber: { t: 'number', d: 'Issue number' }, title: { t: 'string', d: 'New title (optional)' }, body: { t: 'string', d: 'New body (optional)' }, state: { t: 'string', d: 'open|closed' } }, r: ['owner', 'repo', 'issueNumber'] },
+      { n: 'list_pull_requests', d: 'List pull requests in a repository', m: 'GET', p: '/repos/{owner}/{repo}/pulls', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, state: { t: 'string', d: 'open|closed|all' } }, r: ['owner', 'repo'] },
+      { n: 'create_pull_request', d: 'Create a pull request', m: 'POST', p: '/repos/{owner}/{repo}/pulls', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, title: { t: 'string', d: 'PR title' }, head: { t: 'string', d: 'Branch with changes' }, base: { t: 'string', d: 'Target branch (e.g. main)' }, body: { t: 'string', d: 'PR description (optional)' } }, r: ['owner', 'repo', 'title', 'head', 'base'] },
+      { n: 'list_branches', d: 'List branches in a repository', m: 'GET', p: '/repos/{owner}/{repo}/branches', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' } }, r: ['owner', 'repo'] },
+      { n: 'list_commits', d: 'List commits in a repository', m: 'GET', p: '/repos/{owner}/{repo}/commits', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, sha: { t: 'string', d: 'Branch or SHA' }, per_page: { t: 'number', d: 'Results per page' } }, r: ['owner', 'repo'] },
+      { n: 'list_workflows', d: 'List GitHub Actions workflows', m: 'GET', p: '/repos/{owner}/{repo}/actions/workflows', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' } }, r: ['owner', 'repo'] },
+      { n: 'trigger_workflow', d: 'Trigger a GitHub Actions workflow run', m: 'POST', p: '/repos/{owner}/{repo}/actions/workflows/{workflowId}/dispatches', ps: { owner: { t: 'string', d: 'Repository owner' }, repo: { t: 'string', d: 'Repository name' }, workflowId: { t: 'number', d: 'Workflow ID' }, ref: { t: 'string', d: 'Branch to run on' }, inputs: { t: 'object', d: 'Workflow inputs (key-value)' } }, r: ['owner', 'repo', 'workflowId', 'ref'] },
+      { n: 'search_issues', d: 'Search issues and PRs (GitHub search syntax)', m: 'GET', p: '/search/issues', ps: { q: { t: 'string', d: 'Search query' }, per_page: { t: 'number', d: 'Results per page' } }, r: ['q'] },
+      { n: 'search_code', d: 'Search code across repositories', m: 'GET', p: '/search/code', ps: { q: { t: 'string', d: 'Search query' }, per_page: { t: 'number', d: 'Results per page' } }, r: ['q'] },
+    ]
+  },
+  gitlab: {
+    auth: 'Bearer', baseUrl: 'https://gitlab.com/api/v4',
+    desc: 'GitLab repos, issues, merge requests, CI/CD',
+    tools: [
+      { n: 'get_user', d: 'Get authenticated GitLab user', m: 'GET', p: '/user', ps: {}, r: [] },
+      { n: 'list_projects', d: 'List projects (repositories)', m: 'GET', p: '/projects', ps: { membership: { t: 'boolean', d: 'Limit to owned' }, per_page: { t: 'number', d: 'Per page' }, search: { t: 'string', d: 'Search name' } }, r: [] },
+      { n: 'get_project', d: 'Get project details', m: 'GET', p: '/projects/{projectId}', ps: { projectId: { t: 'string', d: 'Project ID or URL-encoded path' } }, r: ['projectId'] },
+      { n: 'create_project', d: 'Create a new project', m: 'POST', p: '/projects', ps: { name: { t: 'string', d: 'Project name' }, description: { t: 'string', d: 'Description' }, visibility: { t: 'string', d: 'public|internal|private' } }, r: ['name'] },
+      { n: 'list_issues', d: 'List issues in a project', m: 'GET', p: '/projects/{projectId}/issues', ps: { projectId: { t: 'string', d: 'Project ID' }, state: { t: 'string', d: 'opened|closed|all' }, labels: { t: 'string', d: 'Comma-separated labels' } }, r: ['projectId'] },
+      { n: 'create_issue', d: 'Create an issue in a project', m: 'POST', p: '/projects/{projectId}/issues', ps: { projectId: { t: 'string', d: 'Project ID' }, title: { t: 'string', d: 'Issue title' }, description: { t: 'string', d: 'Description' }, labels: { t: 'string', d: 'Comma-separated labels' } }, r: ['projectId', 'title'] },
+      { n: 'list_merge_requests', d: 'List merge requests in a project', m: 'GET', p: '/projects/{projectId}/merge_requests', ps: { projectId: { t: 'string', d: 'Project ID' }, state: { t: 'string', d: 'opened|closed|merged|all' } }, r: ['projectId'] },
+      { n: 'create_merge_request', d: 'Create a merge request', m: 'POST', p: '/projects/{projectId}/merge_requests', ps: { projectId: { t: 'string', d: 'Project ID' }, title: { t: 'string', d: 'MR title' }, source_branch: { t: 'string', d: 'Source branch' }, target_branch: { t: 'string', d: 'Target branch' }, description: { t: 'string', d: 'Description' } }, r: ['projectId', 'title', 'source_branch', 'target_branch'] },
+      { n: 'list_branches', d: 'List branches in a project', m: 'GET', p: '/projects/{projectId}/repository/branches', ps: { projectId: { t: 'string', d: 'Project ID' } }, r: ['projectId'] },
+      { n: 'list_commits', d: 'List commits in a project', m: 'GET', p: '/projects/{projectId}/repository/commits', ps: { projectId: { t: 'string', d: 'Project ID' }, ref_name: { t: 'string', d: 'Branch name' }, per_page: { t: 'number', d: 'Per page' } }, r: ['projectId'] },
+    ]
+  },
+  cloudflare: {
+    auth: 'Bearer', baseUrl: 'https://api.cloudflare.com/client/v4',
+    desc: 'Cloudflare CDN, DNS, Workers',
+    tools: [
+      { n: 'verify_token', d: 'Verify API token is valid', m: 'GET', p: '/user/tokens/verify', ps: {}, r: [] },
+      { n: 'list_zones', d: 'List all zones (domains)', m: 'GET', p: '/zones', ps: { name: { t: 'string', d: 'Filter by domain' }, per_page: { t: 'number', d: 'Per page' } }, r: [] },
+      { n: 'get_zone', d: 'Get zone details', m: 'GET', p: '/zones/{zoneId}', ps: { zoneId: { t: 'string', d: 'Zone ID' } }, r: ['zoneId'] },
+      { n: 'list_dns_records', d: 'List DNS records for a zone', m: 'GET', p: '/zones/{zoneId}/dns_records', ps: { zoneId: { t: 'string', d: 'Zone ID' }, type: { t: 'string', d: 'A|AAAA|CNAME|MX|TXT|NS' }, name: { t: 'string', d: 'Filter by name' } }, r: ['zoneId'] },
+      { n: 'create_dns_record', d: 'Create a DNS record', m: 'POST', p: '/zones/{zoneId}/dns_records', ps: { zoneId: { t: 'string', d: 'Zone ID' }, type: { t: 'string', d: 'A|AAAA|CNAME|MX|TXT|NS' }, name: { t: 'string', d: 'Record name' }, content: { t: 'string', d: 'Record value' }, ttl: { t: 'number', d: 'TTL (1=auto)' }, proxied: { t: 'boolean', d: 'Proxied through Cloudflare' } }, r: ['zoneId', 'type', 'name', 'content'] },
+      { n: 'delete_dns_record', d: 'Delete a DNS record', m: 'DELETE', p: '/zones/{zoneId}/dns_records/{recordId}', ps: { zoneId: { t: 'string', d: 'Zone ID' }, recordId: { t: 'string', d: 'Record ID' } }, r: ['zoneId', 'recordId'] },
+      { n: 'purge_cache', d: 'Purge cached files for a zone', m: 'POST', p: '/zones/{zoneId}/purge_cache', ps: { zoneId: { t: 'string', d: 'Zone ID' }, files: { t: 'array', d: 'URLs to purge (empty=all)', it: { t: 'string' } } }, r: ['zoneId'] },
+    ]
+  },
+  netlify: {
+    auth: 'Bearer', baseUrl: 'https://api.netlify.com/api/v1',
+    desc: 'Netlify hosting, functions, forms',
+    tools: [
+      { n: 'get_user', d: 'Get authenticated user', m: 'GET', p: '/user', ps: {}, r: [] },
+      { n: 'list_sites', d: 'List all sites', m: 'GET', p: '/sites', ps: { filter: { t: 'string', d: 'Filter by name' }, per_page: { t: 'number', d: 'Per page' } }, r: [] },
+      { n: 'get_site', d: 'Get site details', m: 'GET', p: '/sites/{siteId}', ps: { siteId: { t: 'string', d: 'Site ID' } }, r: ['siteId'] },
+      { n: 'create_site', d: 'Create a new site', m: 'POST', p: '/sites', ps: { name: { t: 'string', d: 'Site name (optional)' }, custom_domain: { t: 'string', d: 'Custom domain (optional)' } }, r: [] },
+      { n: 'delete_site', d: 'Delete a site', m: 'DELETE', p: '/sites/{siteId}', ps: { siteId: { t: 'string', d: 'Site ID' } }, r: ['siteId'] },
+      { n: 'list_deploys', d: 'List deploys for a site', m: 'GET', p: '/sites/{siteId}/deploys', ps: { siteId: { t: 'string', d: 'Site ID' }, per_page: { t: 'number', d: 'Per page' } }, r: ['siteId'] },
+      { n: 'get_deploy', d: 'Get deploy details', m: 'GET', p: '/sites/{siteId}/deploys/{deployId}', ps: { siteId: { t: 'string', d: 'Site ID' }, deployId: { t: 'string', d: 'Deploy ID' } }, r: ['siteId', 'deployId'] },
+      { n: 'list_functions', d: 'List serverless functions for a site', m: 'GET', p: '/sites/{siteId}/functions', ps: { siteId: { t: 'string', d: 'Site ID' } }, r: ['siteId'] },
+      { n: 'list_forms', d: 'List forms for a site', m: 'GET', p: '/sites/{siteId}/forms', ps: { siteId: { t: 'string', d: 'Site ID' } }, r: ['siteId'] },
+      { n: 'list_submissions', d: 'List form submissions', m: 'GET', p: '/forms/{formId}/submissions', ps: { formId: { t: 'string', d: 'Form ID' }, per_page: { t: 'number', d: 'Per page' } }, r: ['formId'] },
+    ]
+  },
+  vercel: {
+    auth: 'Bearer', baseUrl: 'https://api.vercel.com',
+    desc: 'Vercel frontend deployment platform',
+    tools: [
+      { n: 'get_user', d: 'Get authenticated user', m: 'GET', p: '/v2/user', ps: {}, r: [] },
+      { n: 'list_projects', d: 'List all projects', m: 'GET', p: '/v9/projects', ps: { per_page: { t: 'number', d: 'Per page' } }, r: [] },
+      { n: 'get_project', d: 'Get project details', m: 'GET', p: '/v9/projects/{projectId}', ps: { projectId: { t: 'string', d: 'Project ID' } }, r: ['projectId'] },
+      { n: 'create_project', d: 'Create a new project', m: 'POST', p: '/v9/projects', ps: { name: { t: 'string', d: 'Project name' }, framework: { t: 'string', d: 'nextjs|nuxt|sveltekit|etc.' }, gitRepository: { t: 'object', d: 'Git config {type, repo}' } }, r: ['name'] },
+      { n: 'delete_project', d: 'Delete a project', m: 'DELETE', p: '/v9/projects/{projectId}', ps: { projectId: { t: 'string', d: 'Project ID' } }, r: ['projectId'] },
+      { n: 'list_deployments', d: 'List deployments', m: 'GET', p: '/v11/deployments', ps: { projectId: { t: 'string', d: 'Filter by project' } }, r: [] },
+      { n: 'get_deployment', d: 'Get deployment details', m: 'GET', p: '/v11/deployments/{deploymentId}', ps: { deploymentId: { t: 'string', d: 'Deployment ID' } }, r: ['deploymentId'] },
+      { n: 'list_domains', d: 'List all domains', m: 'GET', p: '/v4/domains', ps: {}, r: [] },
+      { n: 'add_domain', d: 'Add a domain to the account', m: 'POST', p: '/v4/domains', ps: { name: { t: 'string', d: 'Domain name' } }, r: ['name'] },
+    ]
+  },
+  digitalocean: {
+    auth: 'Bearer', baseUrl: 'https://api.digitalocean.com/v2',
+    desc: 'DigitalOcean cloud VMs, databases, K8s',
+    tools: [
+      { n: 'get_account', d: 'Get account information', m: 'GET', p: '/account', ps: {}, r: [] },
+      { n: 'list_droplets', d: 'List all droplets (VMs)', m: 'GET', p: '/droplets', ps: { per_page: { t: 'number', d: 'Per page' } }, r: [] },
+      { n: 'create_droplet', d: 'Create a new droplet', m: 'POST', p: '/droplets', ps: { name: { t: 'string', d: 'Droplet name' }, region: { t: 'string', d: 'Region slug (nyc1, sfo2)' }, size: { t: 'string', d: 'Size slug (s-1vcpu-1gb)' }, image: { t: 'string', d: 'Image slug or ID' } }, r: ['name', 'region', 'size', 'image'] },
+      { n: 'delete_droplet', d: 'Delete a droplet', m: 'DELETE', p: '/droplets/{dropletId}', ps: { dropletId: { t: 'number', d: 'Droplet ID' } }, r: ['dropletId'] },
+      { n: 'list_kubernetes_clusters', d: 'List Kubernetes clusters', m: 'GET', p: '/kubernetes/clusters', ps: {}, r: [] },
+      { n: 'list_databases', d: 'List database clusters', m: 'GET', p: '/databases', ps: {}, r: [] },
+      { n: 'list_domains', d: 'List all domains', m: 'GET', p: '/domains', ps: {}, r: [] },
+    ]
+  },
+  supabase: {
+    auth: 'Bearer', baseUrl: 'https://api.supabase.com',
+    desc: 'Supabase Postgres, auth, realtime, storage',
+    tools: [
+      { n: 'list_projects', d: 'List all Supabase projects', m: 'GET', p: '/v1/projects', ps: {}, r: [] },
+      { n: 'get_project', d: 'Get project details', m: 'GET', p: '/v1/projects/{projectRef}', ps: { projectRef: { t: 'string', d: 'Project reference ID' } }, r: ['projectRef'] },
+      { n: 'create_project', d: 'Create a Supabase project', m: 'POST', p: '/v1/projects', ps: { name: { t: 'string', d: 'Project name' }, organization_id: { t: 'string', d: 'Organization ID' }, plan: { t: 'string', d: 'free|pro|team|enterprise' }, region: { t: 'string', d: 'Region' } }, r: ['name', 'organization_id'] },
+      { n: 'list_organizations', d: 'List organizations', m: 'GET', p: '/v1/organizations', ps: {}, r: [] },
+      { n: 'run_sql', d: 'Run SQL query against a project database', m: 'POST', p: '/v1/projects/{projectRef}/database/query', ps: { projectRef: { t: 'string', d: 'Project reference ID' }, query: { t: 'string', d: 'SQL query' } }, r: ['projectRef', 'query'] },
+    ]
+  },
+  railway: {
+    auth: 'Bearer', baseUrl: 'https://api.railway.app/graphql/v2',
+    desc: 'Railway full-stack deployment platform',
+    tools: [
+      { n: 'list_projects', d: 'List all Railway projects', m: 'POST', p: '/graphql/v2', ps: {}, r: [], isGraphQL: true, gql: 'query { projects { id name description createdAt } }' },
+      { n: 'get_project', d: 'Get project details with environments', m: 'POST', p: '/graphql/v2', ps: { id: { t: 'string', d: 'Project ID' } }, r: ['id'], isGraphQL: true, gql: 'query($id:String!){ project(id:$id){ id name description createdAt environments{ id name } } }', gqlVars: ['id'] },
+      { n: 'list_services', d: 'List services in a project', m: 'POST', p: '/graphql/v2', ps: { id: { t: 'string', d: 'Project ID' } }, r: ['id'], isGraphQL: true, gql: 'query($id:String!){ project(id:$id){ services{ id name } } }', gqlVars: ['id'] },
+      { n: 'get_service', d: 'Get service details', m: 'POST', p: '/graphql/v2', ps: { id: { t: 'string', d: 'Service ID' } }, r: ['id'], isGraphQL: true, gql: 'query($id:String!){ service(id:$id){ id name createdAt } }', gqlVars: ['id'] },
+      { n: 'list_deployments', d: 'List deployments for a service', m: 'POST', p: '/graphql/v2', ps: { id: { t: 'string', d: 'Service ID' } }, r: ['id'], isGraphQL: true, gql: 'query($id:String!){ deployments(serviceId:$id){ id status createdAt } }', gqlVars: ['id'] },
+      { n: 'list_variables', d: 'List env vars for a service', m: 'POST', p: '/graphql/v2', ps: { id: { t: 'string', d: 'Service ID' } }, r: ['id'], isGraphQL: true, gql: 'query($id:String!){ variables(serviceId:$id){ name value } }', gqlVars: ['id'] },
+    ]
+  },
+  render: {
+    auth: 'Bearer', baseUrl: 'https://api.render.com/v1',
+    desc: 'Render cloud hosting',
+    tools: [
+      { n: 'get_user', d: 'Get authenticated user info', m: 'GET', p: '/users/me', ps: {}, r: [] },
+      { n: 'list_services', d: 'List all services', m: 'GET', p: '/services', ps: { type: { t: 'string', d: 'web_service|static_site|cron_job|private_service' } }, r: [] },
+      { n: 'get_service', d: 'Get service details', m: 'GET', p: '/services/{serviceId}', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
+      { n: 'create_service', d: 'Create a new service', m: 'POST', p: '/services', ps: { name: { t: 'string', d: 'Service name' }, type: { t: 'string', d: 'web_service|static_site|cron_job|private_service' }, repo: { t: 'string', d: 'Git repo URL' }, branch: { t: 'string', d: 'Deploy branch' }, runtime: { t: 'string', d: 'docker|node|python|ruby|go|rust' }, plan: { t: 'string', d: 'free|starter|pro|pro_plus' } }, r: ['name', 'type'] },
+      { n: 'delete_service', d: 'Delete a service', m: 'DELETE', p: '/services/{serviceId}', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
+      { n: 'list_deployments', d: 'List deploys for a service', m: 'GET', p: '/services/{serviceId}/deploys', ps: { serviceId: { t: 'string', d: 'Service ID' }, per_page: { t: 'number', d: 'Per page' } }, r: ['serviceId'] },
+      { n: 'get_deployment', d: 'Get deploy details', m: 'GET', p: '/services/{serviceId}/deploys/{deployId}', ps: { serviceId: { t: 'string', d: 'Service ID' }, deployId: { t: 'string', d: 'Deploy ID' } }, r: ['serviceId', 'deployId'] },
+      { n: 'trigger_deploy', d: 'Trigger a new deploy', m: 'POST', p: '/services/{serviceId}/deploys', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
+      { n: 'list_domains', d: 'List custom domains for a service', m: 'GET', p: '/services/{serviceId}/custom-domains', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
+      { n: 'add_domain', d: 'Add a custom domain', m: 'POST', p: '/services/{serviceId}/custom-domains', ps: { serviceId: { t: 'string', d: 'Service ID' }, name: { t: 'string', d: 'Domain name' } }, r: ['serviceId', 'name'] },
+    ]
+  }
+};
+
+// Build names list and reverse lookup
+const APP_TOOL_NAMES = [];
+const APP_TOOL_LOOKUP = {};
+for (const [appId, cap] of Object.entries(APP_CAPABILITIES)) {
+  for (const t of cap.tools) {
+    const fullName = appId + '_' + t.n;
+    APP_TOOL_NAMES.push(fullName);
+    APP_TOOL_LOOKUP[fullName] = appId;
+  }
+}
+
+function _convertParamSchema(ps) {
+  const properties = {};
+  for (const [key, val] of Object.entries(ps)) {
+    const schema = { type: val.t, description: val.d };
+    if (val.it) schema.items = val.it;
+    properties[key] = schema;
+  }
+  return { type: 'object', properties };
+}
+
+function _getAppToolDefs() {
+  if (!window._connectedAppIds) return [];
+  const defs = [];
+  for (const appId of window._connectedAppIds) {
+    const cap = APP_CAPABILITIES[appId];
+    if (!cap) continue;
+    for (const t of cap.tools) {
+      const { type, properties } = _convertParamSchema(t.ps);
+      defs.push({
+        type: 'function',
+        function: {
+          name: appId + '_' + t.n,
+          description: t.d + ' (' + cap.desc + ')',
+          parameters: { type: 'object', properties, required: t.r || [] }
+        }
+      });
+    }
+  }
+  return defs;
+}
 
 let _appsConnectingId = null;
 
@@ -4349,11 +4736,19 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
 // Build connected apps section for system prompt
 function buildConnectedAppsPrompt() {
   if (!window._connectedAppIds || window._connectedAppIds.length === 0) return '';
-  const list = window._connectedAppIds.map(id => {
+  const lines = ['\n\nConnected services (API keys in OS keychain):'];
+  for (const id of window._connectedAppIds) {
     const app = CONNECTED_APPS.find(a => a.id === id);
-    return app ? '- ' + app.name + ' (' + app.icon + ')' : '- ' + id;
-  }).join('\n');
-  return '\n\nConnected services available (API keys are stored in OS keychain):\n' + list + '\nUse exec_command with curl to call their APIs when needed. Prompt the user before making any API calls.';
+    const cap = APP_CAPABILITIES[id];
+    if (!app || !cap) continue;
+    lines.push('\n' + app.icon + ' ' + app.name + ' — available tools:');
+    for (const t of cap.tools) {
+      const params = Object.entries(t.ps).map(([k, v]) => k + ': ' + v.t).join(', ');
+      lines.push('  - ' + id + '_' + t.n + '(' + params + '): ' + t.d);
+    }
+  }
+  lines.push('\nUse these tools to interact with connected services. Prompt the user before making destructive changes (delete, deactivate, etc.).');
+  return lines.join('\n');
 }
 
 // Language select

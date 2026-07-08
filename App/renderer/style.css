@@ -937,3 +937,54 @@ body {
 .source-search { color: var(--accent2); }
 .source-fetch a { color: var(--accent); text-decoration: none; }
 .source-fetch a:hover { text-decoration: underline; }
+
+/* ==================== CONNECTED APPS ==================== */
+.apps-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px; margin-top: 8px;
+}
+.app-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; display: flex;
+  flex-direction: column; align-items: flex-start; gap: 6px;
+  transition: border-color 0.2s;
+}
+.app-card:hover { border-color: var(--border2); }
+.app-card-icon { font-size: 1.8rem; line-height: 1; }
+.app-card-name { font-weight: 600; font-size: 0.95rem; color: var(--text); }
+.app-card-desc { font-size: 0.78rem; color: var(--text3); line-height: 1.3; }
+.app-card-status {
+  font-size: 0.72rem; padding: 2px 8px; border-radius: 10px;
+  font-weight: 500; margin-top: auto;
+}
+.app-card-status.connected { background: rgba(34,197,94,0.15); color: #22c55e; }
+.app-card-status.disconnected { background: rgba(100,100,100,0.15); color: var(--text3); }
+.app-card-btn {
+  margin-top: 8px; padding: 5px 14px; border: none; border-radius: 5px;
+  cursor: pointer; font-size: 0.8rem; font-weight: 500; width: 100%;
+}
+.app-card-btn.connect { background: var(--accent); color: #fff; }
+.app-card-btn.connect:hover { opacity: 0.85; }
+.app-card-btn.disconnect { background: rgba(239,68,68,0.15); color: #ef4444; }
+.app-card-btn.disconnect:hover { background: rgba(239,68,68,0.25); }
+.app-connect-modal {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+}
+.app-connect-modal.hidden { display: none; }
+.app-connect-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.6);
+}
+.app-connect-dialog {
+  position: relative; background: var(--bg1); border: 1px solid var(--border);
+  border-radius: 10px; padding: 24px; width: 420px; max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.app-connect-dialog h3 { margin: 0 0 4px; }
+.app-connect-dialog label { font-size: 0.85rem; color: var(--text2); margin-top: 0.5rem; display: block; }
+.app-connect-dialog input {
+  width: 100%; padding: 8px 10px; margin-top: 4px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; font-size: 0.9rem; box-sizing: border-box;
+}
+.app-connect-dialog input:focus { border-color: var(--accent); outline: none; }

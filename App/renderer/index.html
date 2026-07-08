@@ -314,6 +314,7 @@
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general">General</button>
         <button class="settings-tab" data-tab="providers">AI Providers</button>
+        <button class="settings-tab" data-tab="apps">Connected Apps</button>
         <button class="settings-tab" data-tab="appearance">Appearance</button>
         <button class="settings-tab" data-tab="security">Security</button>
       </div>
@@ -636,6 +637,31 @@
           <label>AI Tool Permissions</label>
           <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;">Standard: Ask — AI fragt vor jeder Aktion. Erlaubt AI Dateien zu lesen, zu schreiben, Befehle auszuführen und Fragen zu stellen.</p>
           <div id="permission-list"></div>
+        </div>
+      </div>
+
+      <!-- Apps Tab -->
+      <div class="settings-tab-content" data-tab="apps">
+        <div class="settings-form">
+          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+            Connect external services to give the AI access to your accounts. API keys are stored securely in the OS keychain.
+          </p>
+          <div id="apps-grid" class="apps-grid"></div>
+          <!-- Connect Modal (inline) -->
+          <div id="app-connect-modal" class="app-connect-modal hidden">
+            <div class="app-connect-overlay" id="app-connect-overlay"></div>
+            <div class="app-connect-dialog">
+              <h3 id="app-connect-title">Connect App</h3>
+              <p id="app-connect-desc" style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;"></p>
+              <label>API Key / Token</label>
+              <input type="password" id="app-connect-key" placeholder="Paste your API key here..." autofocus />
+              <p style="font-size:0.78rem;color:var(--text3);margin-top:0.3rem;" id="app-connect-help"></p>
+              <div class="modal-actions" style="margin-top:1rem;">
+                <button id="btn-app-connect-save" class="btn btn-primary">Connect</button>
+                <button id="btn-app-connect-cancel" class="btn btn-secondary">Cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

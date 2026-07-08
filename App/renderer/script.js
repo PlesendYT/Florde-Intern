@@ -1324,7 +1324,8 @@ ${currentProjectType === 'local' ? 'Notes: This is a local project. Shell comman
 Zero-Cloud-Storage: All user data, code, and chat history stays in the local database/JSON files.
 Encrypted API Communication: Cloud model connections go directly from client to provider - no proxy server.
   Local RAG: Project context is built locally. Embeddings are generated via local models.
-  ${promptExtSection}${customSection}`;
+  const appsSection = buildConnectedAppsPrompt();
+    ${promptExtSection}${customSection}${appsSection}`;
 
   if (hasTools) {
     return basePrompt + `
@@ -4238,6 +4239,123 @@ document.querySelectorAll('.provider-body input[type="password"]').forEach(input
   });
 });
 
+// ==================== CONNECTED APPS ====================
+
+const CONNECTED_APPS = [
+  { id: 'make', name: 'Make.com', icon: '🔗', desc: 'Automation workflows — trigger & manage scenarios via API', tokenLabel: 'Make API Key', tokenHelp: 'Get your key from Make.com > Settings > API > API tokens', tokenPrefix: '' },
+  { id: 'cloudflare', name: 'Cloudflare', icon: '☁️', desc: 'CDN, DNS, Workers, D1, R2 & more', tokenLabel: 'Cloudflare API Token', tokenHelp: 'Create a token at dash.cloudflare.com > My Profile > API Tokens', tokenPrefix: '' },
+  { id: 'netlify', name: 'Netlify', icon: '🌐', desc: 'Hosting, serverless functions, forms & deploy', tokenLabel: 'Netlify Personal Access Token', tokenHelp: 'Generate at app.netlify.com > User Settings > Applications > Personal access tokens', tokenPrefix: '' },
+  { id: 'github', name: 'GitHub', icon: '🐙', desc: 'Repos, issues, PRs, Actions, deployments', tokenLabel: 'GitHub Personal Access Token', tokenHelp: 'Generate at github.com > Settings > Developer settings > Personal access tokens (needs repo, workflow scopes)', tokenPrefix: '' },
+  { id: 'gitlab', name: 'GitLab', icon: '🦊', desc: 'Repos, CI/CD, registry & project management', tokenLabel: 'GitLab Personal Access Token', tokenHelp: 'Generate at gitlab.com > Preferences > Access Tokens', tokenPrefix: '' },
+  { id: 'vercel', name: 'Vercel', icon: '▲', desc: 'Frontend deployment, serverless functions, analytics', tokenLabel: 'Vercel Token', tokenHelp: 'Generate at vercel.com > Settings > Tokens', tokenPrefix: '' },
+  { id: 'digitalocean', name: 'DigitalOcean', icon: '🐳', desc: 'Cloud VMs, Kubernetes, app platform & databases', tokenLabel: 'DigitalOcean Personal Access Token', tokenHelp: 'Create at cloud.digitalocean.com > API > Tokens/Keys', tokenPrefix: '' },
+  { id: 'supabase', name: 'Supabase', icon: '⚡', desc: 'Postgres DB, auth, realtime, storage & edge functions', tokenLabel: 'Supabase Service Role Key', tokenHelp: 'Find in Supabase dashboard > Settings > API > service_role key', tokenPrefix: 'eyJ' },
+  { id: 'railway', name: 'Railway', icon: '🚂', desc: 'Full-stack deployment with database provisioning', tokenLabel: 'Railway API Token', tokenHelp: 'Generate at railway.com > Account > Tokens', tokenPrefix: '' },
+  { id: 'render', name: 'Render', icon: '🖥️', desc: 'Cloud hosting for web services, static sites & cron', tokenLabel: 'Render API Key', tokenHelp: 'Find at dashboard.render.com > Account Settings > API Keys', tokenPrefix: '' },
+];
+
+let _appsConnectingId = null;
+
+function getAppKeychainKey(appId) { return 'app:' + appId; }
+
+async function getConnectedApps() {
+  const connected = {};
+  for (const app of CONNECTED_APPS) {
+    try {
+      const val = await window.electronAPI.keychain.retrieve({ key: getAppKeychainKey(app.id) });
+      if (val) connected[app.id] = val;
+    } catch {}
+  }
+  return connected;
+}
+
+async function connectApp(appId, token) {
+  await window.electronAPI.keychain.store({ key: getAppKeychainKey(appId), value: token });
+}
+
+async function disconnectApp(appId) {
+  await window.electronAPI.keychain.delete({ key: getAppKeychainKey(appId) });
+}
+
+async function renderAppsGrid() {
+  const grid = document.getElementById('apps-grid');
+  if (!grid) return;
+  const connected = await getConnectedApps();
+  window._connectedAppIds = Object.keys(connected);
+  grid.innerHTML = CONNECTED_APPS.map(app => {
+    const isConnected = !!connected[app.id];
+    return `<div class="app-card">
+      <div class="app-card-icon">${app.icon}</div>
+      <div class="app-card-name">${app.name}</div>
+      <div class="app-card-desc">${app.desc}</div>
+      <span class="app-card-status ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '✓ Connected' : '— Not connected'}</span>
+      <button class="app-card-btn ${isConnected ? 'disconnect' : 'connect'}" data-app-id="${app.id}">${isConnected ? 'Disconnect' : 'Connect'}</button>
+    </div>`;
+  }).join('');
+  // Attach event listeners
+  grid.querySelectorAll('.app-card-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const appId = btn.dataset.appId;
+      const app = CONNECTED_APPS.find(a => a.id === appId);
+      if (!app) return;
+      const connected = await getConnectedApps();
+      if (connected[appId]) {
+        await disconnectApp(appId);
+        renderAppsGrid();
+      } else {
+        showAppConnectDialog(app);
+      }
+    });
+  });
+}
+
+function showAppConnectDialog(app) {
+  _appsConnectingId = app.id;
+  document.getElementById('app-connect-title').textContent = 'Connect ' + app.name;
+  document.getElementById('app-connect-desc').textContent = app.desc;
+  document.getElementById('app-connect-key').value = '';
+  document.getElementById('app-connect-help').textContent = app.tokenHelp;
+  document.getElementById('app-connect-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('app-connect-key').focus(), 100);
+}
+
+function hideAppConnectDialog() {
+  document.getElementById('app-connect-modal').classList.add('hidden');
+  _appsConnectingId = null;
+}
+
+document.getElementById('btn-app-connect-save')?.addEventListener('click', async () => {
+  const key = document.getElementById('app-connect-key').value.trim();
+  if (!key) return;
+  if (_appsConnectingId) {
+    await connectApp(_appsConnectingId, key);
+    hideAppConnectDialog();
+    renderAppsGrid();
+  }
+});
+document.getElementById('btn-app-connect-cancel')?.addEventListener('click', hideAppConnectDialog);
+document.getElementById('app-connect-overlay')?.addEventListener('click', hideAppConnectDialog);
+document.getElementById('app-connect-key')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btn-app-connect-save').click();
+});
+
+// Render apps grid when settings tab opens
+document.querySelectorAll('.settings-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.dataset.tab === 'apps') renderAppsGrid();
+  });
+});
+
+// Build connected apps section for system prompt
+function buildConnectedAppsPrompt() {
+  if (!window._connectedAppIds || window._connectedAppIds.length === 0) return '';
+  const list = window._connectedAppIds.map(id => {
+    const app = CONNECTED_APPS.find(a => a.id === id);
+    return app ? '- ' + app.name + ' (' + app.icon + ')' : '- ' + id;
+  }).join('\n');
+  return '\n\nConnected services available (API keys are stored in OS keychain):\n' + list + '\nUse exec_command with curl to call their APIs when needed. Prompt the user before making any API calls.';
+}
+
 // Language select
 document.getElementById('settings-language').addEventListener('change', () => {
   logToTerminal('Language will take effect on restart', 'info');
@@ -4857,9 +4975,17 @@ function initXtermTerminal() {
   });
 }
 
+async function initConnectedApps() {
+  try {
+    const connected = await getConnectedApps();
+    window._connectedAppIds = Object.keys(connected);
+  } catch {}
+}
+
 initEditorTools();
 initGitPanel();
 initXtermTerminal();
+initConnectedApps();
 
 // === Browser Panel Toggle ===
 document.getElementById('btn-browser-toggle').addEventListener('click', async () => {

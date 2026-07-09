@@ -3223,12 +3223,14 @@ async function executeToolCall(name, args) {
 
   switch (name) {
     case 'read_file':
+      if (!args || !args.path) throw new Error('path required for read_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Read_File: ' + sanitizePath(args.path));
       logToTerminal('Read_File: ' + sanitizePath(args.path), 'info');
       return await window.electronAPI.projectReadFile(project, sanitizePath(args.path));
 
     case 'write_file':
+      if (!args) throw new Error('args required');
       if (!project) throw new Error('No project open');
       // Support batch write via {files: {"path": "content", ...}}
       if (args.files && typeof args.files === 'object') {
@@ -3281,6 +3283,7 @@ async function executeToolCall(name, args) {
       return 'File written: ' + sanitizePath(args.path);
 
     case 'delete_file':
+      if (!args || !args.path) throw new Error('path required for delete_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Delete_File: ' + sanitizePath(args.path));
       logToTerminal('Delete_File: ' + sanitizePath(args.path), 'info');
@@ -3295,11 +3298,13 @@ async function executeToolCall(name, args) {
       return JSON.stringify(files);
 
     case 'search_files':
+      if (!args || !args.query) throw new Error('query required for search_files');
       if (!project) throw new Error('No project open');
       const results = await window.electronAPI.searchInFiles(project, args.query);
       return JSON.stringify(results);
 
     case 'exec_command':
+      if (!args || !args.command) throw new Error('command required for exec_command');
       if (!project) throw new Error('No project open');
       const execDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : sandboxDir;
       if (!execDir) throw new Error('AI Sandbox not configured');
@@ -3316,10 +3321,12 @@ async function executeToolCall(name, args) {
       return outputText;
 
     case 'ask_question':
+      if (!args || !args.question) throw new Error('question required for ask_question');
       showNotification('question', 'Florde Has a Question \u2014 Check the question dialog', '\u2753');
       return await askUserQuestion(args.question, args.choices);
 
     case 'rename_file':
+      if (!args || !args.path || !args.new_path) throw new Error('path and new_path required for rename_file');
       if (!project) throw new Error('No project open');
       const oldPath = sanitizePath(args.path);
       const newPath = sanitizePath(args.new_path);
@@ -3413,16 +3420,19 @@ async function executeToolCall(name, args) {
       return 'Task scheduled: "' + (args.plan || '').slice(0, 100) + '". The user will be prompted to continue this task on their next request.';
 
     case 'browser_open':
+      if (!args || !args.url) throw new Error('url required for browser_open');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
       await BrowserPanel.navigate(args.url);
       return 'Opened: ' + args.url;
     case 'browser_click':
+      if (!args || !args.selector) throw new Error('selector required for browser_click');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
       await BrowserPanel.evaluate(`document.querySelector('${args.selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').click()`);
       return 'Clicked: ' + args.selector;
     case 'browser_type':
+      if (!args || !args.selector || args.text === undefined) throw new Error('selector and text required for browser_type');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
       const escapedText = args.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
@@ -3461,6 +3471,7 @@ async function executeToolCall(name, args) {
       await BrowserPanel.reload();
       return 'Page reloaded';
     case 'browser_evaluate':
+      if (!args || !args.code) throw new Error('code required for browser_evaluate');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
       const evalResult = await BrowserPanel.evaluate(args.code);
@@ -3843,13 +3854,14 @@ async function sendMessage(text) {
 
   startAnim('*Thinking*');
 
+  let _planSteps = 0;
+  let _currentStep = 0;
+
   logToTerminal('Sending request to ' + provider + '...', 'info');
 
   try {
     const timeoutMinutes = parseInt(document.getElementById('settings-timeout')?.value) || 30;
     let _timedOut = false;
-    let _planSteps = 0;
-    let _currentStep = 0;
     const onTimeout = () => {
       _timedOut = true;
       if (_requestAborter) _requestAborter.abort();
@@ -5004,7 +5016,7 @@ function showOllamaDownloadModal() {
       if (!e.target.closest('#ollama-dl-search, #ollama-dl-search-results')) {
         searchResults.classList.add('hidden');
       }
-    }, { once: false });
+    }, { once: true });
   }
   overlay.querySelector('.ollama-dl-close').addEventListener('click', () => overlay.remove());
   overlay.querySelector('#ollama-dl-start').addEventListener('click', async () => {

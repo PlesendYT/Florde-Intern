@@ -33,9 +33,9 @@
     <div class="modal-content" style="max-width:550px;">
       <h2>New Sandbox Project</h2>
       <div class="settings-form">
-        <label>Project Name</label>
+        <label for="new-project-name">Project Name</label>
         <input type="text" id="new-project-name" placeholder="my-project" autofocus />
-        <label>Template (optional)</label>
+        <label for="project-template">Template (optional)</label>
         <select id="project-template">
           <option value="">Blank project</option>
           <option value="web-app">Web App (HTML/CSS/JS)</option>
@@ -57,9 +57,9 @@
     <div class="modal-content">
       <h2>Open Local Project</h2>
       <div class="settings-form">
-        <label>Project Name</label>
+        <label for="local-project-name">Project Name</label>
         <input type="text" id="local-project-name" placeholder="my-project" />
-        <label>Folder Path</label>
+        <label for="local-project-path">Folder Path</label>
         <div style="display:flex;gap:0.5rem;">
           <input type="text" id="local-project-path" placeholder="C:\path\to\folder" readonly style="flex:1;" />
           <button id="btn-browse-folder" class="btn btn-secondary" style="white-space:nowrap;">Browse</button>
@@ -330,7 +330,7 @@
       <!-- General Tab -->
       <div class="settings-tab-content active" data-tab="general">
         <div class="settings-form">
-          <label>Language</label>
+          <label for="settings-language">Language</label>
           <select id="settings-language">
             <option value="en">English</option>
             <option value="de">Deutsch</option>
@@ -351,7 +351,7 @@
             <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
             Launch Florde on Windows startup
           </label>
-          <label style="margin-top:0.8rem;">Timeout (minutes)</label>
+          <label for="settings-timeout" style="margin-top:0.8rem;">Timeout (minutes)</label>
           <input type="number" id="settings-timeout" value="30" min="1" max="360" />
           <label style="margin-top:0.8rem;">
             <input type="checkbox" id="auto-accept" style="width:auto;margin-right:0.5rem;" />
@@ -677,7 +677,7 @@
       <!-- Appearance Tab -->
       <div class="settings-tab-content" data-tab="appearance">
         <div class="settings-form">
-          <label>Theme</label>
+          <label for="settings-theme">Theme</label>
           <select id="settings-theme">
             <option value="dark">Dark (Default)</option>
             <option value="light">Light</option>

@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, net, Menu, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 
 let mainWindow;
 let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
@@ -453,7 +453,8 @@ ipcMain.handle('git-commit', (event, repoPath, name, description) => {
   try {
     execSync('git add -A', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
     const msg = name + (description ? '\n\n' + description : '');
-    execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    const r = spawnSync('git', ['commit', '-m', msg], { cwd: repoPath, timeout: 10000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.stderr || e.message };
@@ -463,6 +464,16 @@ ipcMain.handle('git-commit', (event, repoPath, name, description) => {
 function gitExec(repoPath, cmd, timeout = 15000) {
   try { return execSync(cmd, { cwd: repoPath, timeout, encoding: 'utf-8' }).trim(); }
   catch (e) { return { error: e.stderr || e.message }; }
+}
+
+function gitExecSafe(repoPath, args, timeout = 15000) {
+  try {
+    const r = spawnSync('git', args, { cwd: repoPath, timeout, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
+    return r.stdout.trim();
+  } catch (e) {
+    return { error: e.stderr || e.message };
+  }
 }
 
 ipcMain.handle('git-branch-list', (event, repoPath) => {
@@ -479,21 +490,24 @@ ipcMain.handle('git-branch-list', (event, repoPath) => {
 
 ipcMain.handle('git-branch-create', (event, repoPath, name) => {
   try {
-    execSync(`git checkout -b "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    const r = spawnSync('git', ['checkout', '-b', name], { cwd: repoPath, timeout: 10000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
     return { ok: true };
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });
 
 ipcMain.handle('git-branch-delete', (event, repoPath, name) => {
   try {
-    execSync(`git branch -d "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    const r = spawnSync('git', ['branch', '-d', name], { cwd: repoPath, timeout: 10000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
     return { ok: true };
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });
 
 ipcMain.handle('git-checkout', (event, repoPath, name) => {
   try {
-    execSync(`git checkout "${name}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+    const r = spawnSync('git', ['checkout', name], { cwd: repoPath, timeout: 10000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
     return { ok: true };
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });

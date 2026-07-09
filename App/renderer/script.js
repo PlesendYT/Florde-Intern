@@ -27,9 +27,12 @@ const SUMMARY_THRESHOLD = 60000; // chars — if history exceeds this, summarize
 let _backoffTimer = null;
 let _backoffStep = null;
 
+let _requestInterval = null;
+
 function clearRequestTimeout() {
   if (_timeoutTimer) { clearTimeout(_timeoutTimer); _timeoutTimer = null; }
   if (_timeoutEl) { _timeoutEl.remove(); _timeoutEl = null; }
+  if (_requestInterval) { clearInterval(_requestInterval); _requestInterval = null; }
 }
 
 function startRequestTimeout(minutes, onTimeout) {
@@ -45,9 +48,9 @@ function startRequestTimeout(minutes, onTimeout) {
   _timeoutEl.textContent = 'Timeout: ' + minutes + 'm';
   chat.appendChild(_timeoutEl);
   const start = Date.now();
-  const iv = setInterval(() => {
+  _requestInterval = setInterval(() => {
     const remaining = totalMs - (Date.now() - start);
-    if (remaining <= 0) { clearInterval(iv); return; }
+    if (remaining <= 0) { clearInterval(_requestInterval); _requestInterval = null; return; }
     const secs = Math.ceil(remaining / 1000);
     const mins = Math.floor(secs / 60);
     const secStr = (secs % 60).toString().padStart(2, '0');
@@ -55,7 +58,7 @@ function startRequestTimeout(minutes, onTimeout) {
       _timeoutEl.textContent = 'Timeout: ' + mins + ':' + secStr;
     } else if (secs >= 300 && _timeoutEl) {
       _timeoutEl.textContent = 'Timeout: ' + minutes + 'm';
-      clearInterval(iv);
+      clearInterval(_requestInterval); _requestInterval = null;
     }
   }, 1000);
 }
@@ -209,7 +212,7 @@ function showNotification(type, text, icon) {
   const container = document.getElementById('notification-container');
   const n = document.createElement('div');
   n.className = 'notification ' + type;
-  n.innerHTML = '<span class="notification-icon">' + icon + '</span><span class="notification-text">' + text + '</span><button class="notification-dismiss">&times;</button>';
+  n.innerHTML = '<span class="notification-icon">' + icon + '</span><span class="notification-text">' + escapeHtml(text) + '</span><button class="notification-dismiss">&times;</button>';
   n.querySelector('.notification-dismiss').addEventListener('click', () => n.remove());
   container.appendChild(n);
   setTimeout(() => { if (n.parentNode) n.remove(); }, 6000);
@@ -1093,7 +1096,7 @@ function showPermissionPrompt(toolName, args, callback) {
   const desc = args.description ? '<div class="perm-desc"><strong>Summary:</strong> ' + escapeHtml(args.description) + '</div>' : '';
   overlay.innerHTML = '<div class="permission-prompt">' +
     '<h3>\u{1F512} AI Action Required</h3>' +
-    '<p>The AI wants to <strong>' + act + '</strong></p>' +
+    '<p>The AI wants to <strong>' + escapeHtml(act) + '</strong></p>' +
     desc +
     '<div class="permission-actions">' +
       '<button class="btn-allow-once">Allow Once</button>' +
@@ -1219,7 +1222,7 @@ function showExpandableShellView(command, result) {
   });
   el.querySelector('.shell-action-ask').addEventListener('click', async (e) => {
     e.stopPropagation();
-    document.getElementById('chat-input').value = 'What does this command do and what were the results?\n```\n' + command + '\n```\n\nResults:\n```\n' + (result || '') + '\n```';
+    const ci = document.getElementById('chat-input'); if (ci) ci.value = 'What does this command do and what were the results?\n```\n' + command + '\n```\n\nResults:\n```\n' + (result || '') + '\n```';
   });
   return el;
 }
@@ -2087,7 +2090,7 @@ async function loadProjectList() {
     div.dataset.path = p.name;
     const typeLabel = p.type === 'local' ? 'Local' : 'Sandbox';
     const isFav = Favorites.isFavorite(p.name);
-    div.innerHTML = `<button class="star-icon" data-path="${p.name}">${isFav ? '\u2605' : '\u2606'}</button><span class="project-type">${typeLabel}</span><span style="flex:1">${p.name}</span><button class="project-del" data-name="${p.name}">&times;</button>`;
+    div.innerHTML = `<button class="star-icon" data-path="${escapeHtml(p.name)}">${isFav ? '\u2605' : '\u2606'}</button><span class="project-type">${typeLabel}</span><span style="flex:1">${escapeHtml(p.name)}</span><button class="project-del" data-name="${escapeHtml(p.name)}">&times;</button>`;
     div.addEventListener('click', (e) => {
       if (e.target.tagName !== 'BUTTON') WorkspaceManager.openProject(p.name, p.name);
     });
@@ -2098,23 +2101,27 @@ async function loadProjectList() {
     div.querySelector('.project-del').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`Delete project "${p.name}"?`)) {
-        await window.electronAPI.deleteProject(p.name);
-        loadProjectList();
+        try {
+          await window.electronAPI.deleteProject(p.name);
+          loadProjectList();
+        } catch (err) {
+          showNotification('error', 'Delete failed: ' + err.message);
+        }
       }
     });
     container.appendChild(div);
   }
 }
 
-document.getElementById('btn-start-new').addEventListener('click', () => {
-  document.getElementById('new-project-modal').classList.remove('hidden');
-  document.getElementById('new-project-name').value = '';
+document.getElementById('btn-start-new')?.addEventListener('click', () => {
+  document.getElementById('new-project-modal')?.classList.remove('hidden');
+  const npn = document.getElementById('new-project-name');
+  if (npn) { npn.value = ''; requestAnimationFrame(() => npn.focus()); }
   blurMonaco();
-  requestAnimationFrame(() => document.getElementById('new-project-name').focus());
 });
 
-document.getElementById('btn-cancel-new').addEventListener('click', () => {
-  document.getElementById('new-project-modal').classList.add('hidden');
+document.getElementById('btn-cancel-new')?.addEventListener('click', () => {
+  document.getElementById('new-project-modal')?.classList.add('hidden');
 });
 
 const TEMPLATES = {
@@ -3042,8 +3049,8 @@ function updateTokenCount() {
 }
 
 const chatInput = document.getElementById('chat-input');
-chatInput.addEventListener('input', () => { updateTokenCount(); autoResizeTextarea(chatInput); });
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
+chatInput?.addEventListener('input', () => { updateTokenCount(); autoResizeTextarea(chatInput); });
+chatInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
@@ -4881,9 +4888,9 @@ document.getElementById('btn-ollama-models')?.addEventListener('click', async ()
       list.innerHTML = '<div class="ollama-empty">No models installed</div><button class="ollama-download-btn">Download Model</button>';
     } else {
       list.innerHTML = models.map(m =>
-        '<div class="ollama-model-item" data-name="' + m.name + '">' +
-          '<span class="ollama-model-name">' + m.name + '</span>' +
-          '<button class="ollama-model-delete" data-name="' + m.name + '" title="Delete model">\uD83D\uDDD1\uFE0F</button>' +
+        '<div class="ollama-model-item" data-name="' + escapeHtml(m.name) + '">' +
+          '<span class="ollama-model-name">' + escapeHtml(m.name) + '</span>' +
+          '<button class="ollama-model-delete" data-name="' + escapeHtml(m.name) + '" title="Delete model">\uD83D\uDDD1\uFE0F</button>' +
         '</div>'
       ).join('') +
       '<div class="ollama-download-item">Download Model...</div>';
@@ -5063,7 +5070,7 @@ async function checkOllamaStatus() {
 }
 document.getElementById('url-ollama')?.addEventListener('change', checkOllamaStatus);
 checkOllamaStatus();
-setInterval(checkOllamaStatus, 30000);
+const _ollamaStatusTimer = setInterval(checkOllamaStatus, 30000);
 
 document.getElementById('chat-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';
@@ -5688,6 +5695,7 @@ document.getElementById('btn-add-mcp-server')?.addEventListener('click', () => {
 
 window.addEventListener('beforeunload', () => {
   for (const client of _mcpClients.values()) client.disconnect();
+  if (_ollamaStatusTimer) clearInterval(_ollamaStatusTimer);
 });
 
 initEditorTools();

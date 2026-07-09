@@ -113,6 +113,16 @@ document.getElementById('pricing-period-toggle')?.addEventListener('change', fun
   });
 });
 
+// FAQ collapsible
+document.querySelectorAll('.faq-question').forEach(q => {
+  q.addEventListener('click', () => {
+    const answer = q.nextElementSibling;
+    const isOpen = answer.classList.contains('open');
+    document.querySelectorAll('.faq-answer.open').forEach(a => { a.classList.remove('open'); a.previousElementSibling.classList.remove('open'); });
+    if (!isOpen) { answer.classList.add('open'); q.classList.add('open'); }
+  });
+});
+
 // Install tab switching
 document.querySelectorAll('.install-tab').forEach(tab => {
   tab.addEventListener('click', () => {

@@ -95,6 +95,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () => ipcRenderer.invoke('keychain:list')
   },
 
+  docker: {
+    ps: () => ipcRenderer.invoke('docker:ps'),
+    images: () => ipcRenderer.invoke('docker:images'),
+    start: (id) => ipcRenderer.invoke('docker:start', id),
+    stop: (id) => ipcRenderer.invoke('docker:stop', id),
+    restart: (id) => ipcRenderer.invoke('docker:restart', id),
+    logs: (id, lines) => ipcRenderer.invoke('docker:logs', id, lines),
+    info: () => ipcRenderer.invoke('docker:info'),
+  },
+
   terminal: {
     create: (opts) => ipcRenderer.invoke('terminal:create', opts),
     resize: (opts) => ipcRenderer.invoke('terminal:resize', opts),

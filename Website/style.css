@@ -727,3 +727,24 @@ h2 {
 .faq-item { margin-bottom: 16px; }
 .faq-item h4 { font-size: 14px; margin-bottom: 4px; color: #fff; }
 .faq-item p { font-size: 13px; color: #999; }
+
+/* FAQ Section */
+#faq .faq-list { max-width: 700px; margin: 0 auto; }
+#faq .faq-item { border: 1px solid #2d2d4a; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+#faq .faq-question {
+  width: 100%; background: transparent; border: none; color: #e0e0e0;
+  padding: 16px 20px; text-align: left; font-size: 15px; font-weight: 500;
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  font-family: inherit; transition: background 0.2s;
+}
+#faq .faq-question:hover { background: rgba(124,58,237,0.06); }
+#faq .faq-question::after {
+  content: '+'; font-size: 18px; color: #7c3aed; transition: transform 0.2s;
+}
+#faq .faq-question.open::after { content: '−'; }
+#faq .faq-answer {
+  max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s ease;
+  padding: 0 20px; background: rgba(255,255,255,0.02);
+}
+#faq .faq-answer.open { max-height: 200px; padding: 0 20px 16px; }
+#faq .faq-answer p { font-size: 14px; color: #aaa; line-height: 1.7; }

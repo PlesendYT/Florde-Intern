@@ -1591,6 +1591,13 @@ async function loadSettings() {
   if (s.detailedActivity !== undefined) document.getElementById('detailed-activity').checked = s.detailedActivity;
   else document.getElementById('detailed-activity').checked = false;
   if (s.theme) { currentTheme = s.theme; document.getElementById('settings-theme').value = s.theme; applyTheme(); }
+  if (s.layout) {
+    document.body.className = document.body.className.replace(/layout-\S+/g, '').trim();
+    document.body.classList.add('layout-' + s.layout);
+    const radio = document.querySelector('.layout-option input[value="' + s.layout + '"]');
+    if (radio) radio.checked = true;
+  }
+  if (s.shortcuts) userShortcuts = s.shortcuts;
   // Add temperature sliders to each provider body
   const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of tempProviders) {
@@ -1770,6 +1777,8 @@ async function validateAndSaveSettings() {
     settings[id + 'Temp'] = getTemp(id);
   }
   settings.theme = document.getElementById('settings-theme').value;
+  settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
+  settings.shortcuts = userShortcuts;
   settings.language = document.getElementById('settings-language').value;
   settings.seeThoughts = document.getElementById('see-thoughts').checked;
   settings.instantMode = document.getElementById('instant-mode').checked;
@@ -4420,11 +4429,16 @@ document.getElementById('btn-export-zip').addEventListener('click', async () => 
 
 document.getElementById('btn-terminal-toggle').addEventListener('click', () => {
   const panel = document.getElementById('terminal-panel');
+  const wasHidden = panel.classList.contains('hidden');
+  if (wasHidden) {
+    document.getElementById('docker-panel')?.classList.add('hidden');
+    document.getElementById('btn-docker-toggle')?.classList.remove('active');
+  }
   panel.classList.toggle('hidden');
   document.getElementById('btn-terminal-toggle').classList.toggle('active');
   if (!panel.classList.contains('hidden') && typeof TerminalManager !== 'undefined') {
     const t = TerminalManager._terminals[TerminalManager._activeTerminalId];
-    if (t) setTimeout(() => { try { t.fitAddon.fit(); } catch (e) {} }, 50);
+    if (t) setTimeout(() => { try { t.fitAddon.fit(); } catch(e) {} }, 50);
   }
 });
 
@@ -4472,30 +4486,127 @@ document.addEventListener('click', () => {
 
 // ==================== KEYBOARD SHORTCUTS ====================
 
+const DEFAULT_SHORTCUTS = {
+  saveFile: { label: 'Save current file', keys: 'Ctrl+S', ctrl: true, key: 's', shift: false, alt: false, fn: () => saveCurrentFile() },
+  newFile: { label: 'New file', keys: 'Ctrl+N', ctrl: true, key: 'n', shift: false, alt: false, fn: () => { const name = prompt('File name:'); if (name) { tabContents[name] = ''; tabLanguages[name] = detectLanguage(name); tabDirty[name] = true; openTabs.push(name); switchTab(openTabs.length - 1); renderFileTree(); } } },
+  closeTab: { label: 'Close current tab', keys: 'Ctrl+W', ctrl: true, key: 'w', shift: false, alt: false, fn: () => { if (activeTabIndex >= 0) closeTab(activeTabIndex); } },
+  commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+P', ctrl: true, key: 'p', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
+  searchFiles: { label: 'Search in files', keys: 'Ctrl+Shift+F', ctrl: true, key: 'f', shift: true, alt: false, fn: () => { document.getElementById('btn-search-toggle').click(); } },
+  toggleSidebar: { label: 'Toggle sidebar', keys: 'Ctrl+B', ctrl: true, key: 'b', shift: false, alt: false, fn: () => { document.getElementById('btn-sidebar-toggle').click(); } },
+  nextTab: { label: 'Next tab', keys: 'Ctrl+Tab', ctrl: true, key: 'Tab', shift: false, alt: false, fn: () => { if (openTabs.length > 1) { const next = (activeTabIndex + 1 + openTabs.length) % openTabs.length; switchTab(next); } } },
+  prevTab: { label: 'Previous tab', keys: 'Ctrl+Shift+Tab', ctrl: true, key: 'Tab', shift: true, alt: false, fn: () => { if (openTabs.length > 1) { const prev = (activeTabIndex - 1 + openTabs.length) % openTabs.length; switchTab(prev); } } },
+  toggleTerminal: { label: 'Toggle terminal', keys: 'Ctrl+`', ctrl: true, key: '`', shift: false, alt: false, fn: () => { document.getElementById('btn-terminal-toggle').click(); } },
+  toggleBrowser: { label: 'Toggle browser', keys: 'Ctrl+Shift+B', ctrl: true, key: 'b', shift: true, alt: false, fn: () => { document.getElementById('btn-browser-toggle').click(); } },
+  toggleDocker: { label: 'Toggle Docker panel', keys: 'Ctrl+Shift+D', ctrl: true, key: 'D', shift: true, alt: false, fn: () => { document.getElementById('btn-docker-toggle')?.click(); } },
+  quickOpen: { label: 'Quick file open', keys: 'Ctrl+P', ctrl: true, key: 'p', shift: false, alt: false, fn: () => { if (currentProject) showQuickOpen(); } },
+  showHelp: { label: 'Toggle shortcuts help', keys: '?', ctrl: false, key: '?', shift: false, alt: false, fn: () => { renderHelpShortcuts(); document.getElementById('help-modal').classList.toggle('hidden'); } },
+};
+
+let userShortcuts = {};
+
+function getShortcuts() {
+  return { ...DEFAULT_SHORTCUTS, ...userShortcuts };
+}
+
+function shortcutMatch(e, s) {
+  if (s.key === '?') {
+    if (e.key !== '?' || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return false;
+    if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return false;
+    return true;
+  }
+  return (e.ctrlKey || e.metaKey) === s.ctrl && e.key === s.key && e.shiftKey === s.shift && e.altKey === s.alt;
+}
+
+function renderShortcutsEditor() {
+  const container = document.getElementById('shortcuts-list');
+  if (!container) return;
+  const shortcuts = getShortcuts();
+  container.innerHTML = Object.entries(shortcuts).map(([id, s]) => `
+    <div class="shortcut-editor-row" data-id="${id}">
+      <span class="shortcut-label">${s.label}</span>
+      <button class="shortcut-record-btn" data-id="${id}">${s.keys}</button>
+      <button class="shortcut-reset-btn" data-id="${id}" title="Reset to default">↺</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.shortcut-record-btn').forEach(btn => {
+    let recording = false;
+    btn.addEventListener('click', () => {
+      recording = true;
+      btn.classList.add('recording');
+      btn.textContent = 'Press keys...';
+      const handler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const parts = [];
+        if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+        if (e.shiftKey) parts.push('Shift');
+        if (e.altKey) parts.push('Alt');
+        let key = e.key;
+        if (key === ' ') key = 'Space';
+        else if (key.length === 1) key = key.toUpperCase();
+        parts.push(key);
+        const combo = parts.join('+');
+        const id = btn.dataset.id;
+        const existing = { ...(userShortcuts[id] || DEFAULT_SHORTCUTS[id]) };
+        existing.keys = combo;
+        existing.ctrl = e.ctrlKey || e.metaKey;
+        existing.shift = e.shiftKey;
+        existing.alt = e.altKey;
+        existing.key = e.key;
+        userShortcuts[id] = existing;
+        btn.textContent = combo;
+        btn.classList.remove('recording');
+        recording = false;
+        saveSettingsToDisk({ shortcuts: userShortcuts });
+        document.removeEventListener('keydown', handler);
+      };
+      document.addEventListener('keydown', handler);
+      setTimeout(() => {
+        if (recording) {
+          recording = false;
+          btn.classList.remove('recording');
+          btn.textContent = userShortcuts[btn.dataset.id]?.keys || DEFAULT_SHORTCUTS[btn.dataset.id]?.keys || '—';
+          document.removeEventListener('keydown', handler);
+        }
+      }, 5000);
+    });
+  });
+
+  container.querySelectorAll('.shortcut-reset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      delete userShortcuts[id];
+      const def = DEFAULT_SHORTCUTS[id];
+      if (def) {
+        const recordBtn = container.querySelector(`.shortcut-record-btn[data-id="${id}"]`);
+        if (recordBtn) recordBtn.textContent = def.keys;
+      }
+      saveSettingsToDisk({ shortcuts: userShortcuts });
+    });
+  });
+}
+
 document.addEventListener('keydown', (e) => {
-  const ctrl = e.ctrlKey || e.metaKey;
-  if (ctrl && e.key === 's') { e.preventDefault(); saveCurrentFile(); }
-  else if (ctrl && e.key === 'n') { e.preventDefault(); const name = prompt('File name:'); if (name) { tabContents[name] = ''; tabLanguages[name] = detectLanguage(name); tabDirty[name] = true; openTabs.push(name); switchTab(openTabs.length - 1); renderFileTree(); } }
-  else if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabIndex >= 0) closeTab(activeTabIndex); }
-  else if (ctrl && e.shiftKey && e.key === 'P') { e.preventDefault(); if (typeof CommandPalette !== 'undefined') CommandPalette.show(); }
-  else if (ctrl && e.shiftKey && e.key === 'F') { e.preventDefault(); document.getElementById('btn-search-toggle').click(); }
-  else if (ctrl && e.key === 'b') { e.preventDefault(); document.getElementById('btn-sidebar-toggle').click(); }
-  else if (ctrl && e.key === 'Tab') {
-    e.preventDefault();
-    if (openTabs.length > 1) {
-      const dir = e.shiftKey ? -1 : 1;
-      const next = (activeTabIndex + dir + openTabs.length) % openTabs.length;
-      switchTab(next);
+  const shortcuts = getShortcuts();
+  for (const [id, s] of Object.entries(shortcuts)) {
+    if (shortcutMatch(e, s)) {
+      e.preventDefault();
+      s.fn();
+      return;
     }
   }
-  else if (ctrl && e.key === '`') { e.preventDefault(); document.getElementById('btn-terminal-toggle').click(); }
-  else if (ctrl && e.shiftKey && e.key === 'B') { e.preventDefault(); document.getElementById('btn-browser-toggle').click(); }
-  else if (ctrl && e.key === 'p') { e.preventDefault(); if (currentProject) showQuickOpen(); }
-  else if (e.key === '?' && !ctrl && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-    e.preventDefault();
-    document.getElementById('help-modal').classList.toggle('hidden');
-  }
 });
+
+function renderHelpShortcuts() {
+  const container = document.getElementById('help-shortcuts-list');
+  if (!container) return;
+  const shortcuts = getShortcuts();
+  container.innerHTML = Object.entries(shortcuts).map(([id, s]) =>
+    `<div class="shortcut-row"><kbd>${s.keys}</kbd> <span>${s.label}</span></div>`
+  ).join('');
+  container.insertAdjacentHTML('beforeend', '<div class="shortcut-row"><kbd>Enter</kbd> <span>Send chat message</span></div><div class="shortcut-row"><kbd>Shift+Enter</kbd> <span>New line in chat</span></div>');
+}
 
 document.getElementById('btn-close-help').addEventListener('click', () => {
   document.getElementById('help-modal').classList.add('hidden');
@@ -4526,6 +4637,9 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     }
     if (tab.dataset.tab === 'mcp') {
       renderMcpServers();
+    }
+    if (tab.dataset.tab === 'shortcuts') {
+      renderShortcutsEditor();
     }
   });
 });
@@ -5084,6 +5198,16 @@ document.getElementById('url-ollama')?.addEventListener('change', checkOllamaSta
 checkOllamaStatus();
 const _ollamaStatusTimer = setInterval(checkOllamaStatus, 30000);
 
+document.querySelectorAll('.layout-option input')?.forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    if (!e.target.checked) return;
+    const layout = e.target.value;
+    document.body.className = document.body.className.replace(/layout-\S+/g, '').trim();
+    document.body.classList.add('layout-' + layout);
+    saveSettingsToDisk({ layout });
+  });
+});
+
 document.getElementById('chat-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';
   document.documentElement.style.setProperty('--chat-font-size', size);
@@ -5478,7 +5602,7 @@ const TerminalManager = {
     container.id = `term-instance-${id}`;
     document.getElementById('terminal-container').appendChild(container);
     term.open(container);
-    const unsubData = window.electronAPI.terminal.onData(({ id: termId, data }) => { if (termId === id) term.write(data); });
+    const unsubData = window.electronAPI.terminal.onData(({ id: termId, data }) => { if (termId === id) { term.write(data); term.scrollToBottom(); } });
     const unsubExit = window.electronAPI.terminal.onExit(({ id: termId }) => { if (termId === id) term.write('\r\n\x1b[31m[Process exited]\x1b[0m'); });
     term.onData(data => { window.electronAPI.terminal.write({ id, data }); });
     this._unsubscribers.push(unsubData, unsubExit);
@@ -5547,6 +5671,126 @@ const BrowserPanel = {
   async reload() { await window.electronAPI.browser.reload(); },
   async close() { await window.electronAPI.browser.close(); },
   abortAll() { window.electronAPI.browser.close().catch(() => {}); },
+};
+
+const DockerPanel = {
+  _refreshTimer: null,
+
+  async checkDocker() {
+    if (!window.electronAPI?.docker) return false;
+    const info = await window.electronAPI.docker.info();
+    const statusEl = document.getElementById('docker-status');
+    if (statusEl) {
+      statusEl.style.color = info.ok ? '#22c55e' : '#ef4444';
+      statusEl.title = info.ok ? `Docker v${info.version}` : 'Docker not available';
+    }
+    return info.ok;
+  },
+
+  async refreshContainers() {
+    if (!await this.checkDocker()) return;
+    const res = await window.electronAPI.docker.ps();
+    const containerEl = document.getElementById('docker-containers');
+    if (!containerEl) return;
+    if (!res.ok) { containerEl.innerHTML = '<div class="docker-error">' + (res.error || 'Failed to list containers') + '</div>'; return; }
+    containerEl.innerHTML = (res.containers || []).map(c => `
+      <div class="docker-container-row" data-id="${c.id}">
+        <span class="docker-status-dot ${c.running ? 'running' : 'stopped'}"></span>
+        <span class="docker-container-name">${c.name}</span>
+        <span class="docker-container-image">${c.image}</span>
+        <span class="docker-container-status">${c.status}</span>
+        <span class="docker-container-ports">${c.ports}</span>
+        <div class="docker-container-actions">
+          <button class="docker-btn docker-btn-start" data-id="${c.id}" ${c.running ? 'disabled' : ''}>Start</button>
+          <button class="docker-btn docker-btn-stop" data-id="${c.id}" ${!c.running ? 'disabled' : ''}>Stop</button>
+          <button class="docker-btn docker-btn-restart" data-id="${c.id}">Restart</button>
+          <button class="docker-btn docker-btn-logs" data-id="${c.id}">Logs</button>
+        </div>
+      </div>
+    `).join('');
+
+    containerEl.querySelectorAll('.docker-btn-start').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await window.electronAPI.docker.start(btn.dataset.id);
+        this.refreshContainers();
+      });
+    });
+    containerEl.querySelectorAll('.docker-btn-stop').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await window.electronAPI.docker.stop(btn.dataset.id);
+        this.refreshContainers();
+      });
+    });
+    containerEl.querySelectorAll('.docker-btn-restart').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await window.electronAPI.docker.restart(btn.dataset.id);
+        setTimeout(() => this.refreshContainers(), 1000);
+      });
+    });
+    containerEl.querySelectorAll('.docker-btn-logs').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const res = await window.electronAPI.docker.logs(btn.dataset.id, 100);
+        const logEl = document.getElementById('docker-log-content');
+        if (logEl) logEl.textContent = res.ok ? res.logs : (res.error || 'No logs');
+        document.querySelectorAll('.docker-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.docker-panel-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById('docker-logs')?.classList.remove('hidden');
+        document.querySelector('.docker-tab[data-docker-panel="logs"]')?.classList.add('active');
+      });
+    });
+  },
+
+  async refreshImages() {
+    if (!await this.checkDocker()) return;
+    const res = await window.electronAPI.docker.images();
+    const imageEl = document.getElementById('docker-images');
+    if (!imageEl) return;
+    if (!res.ok) { imageEl.innerHTML = '<div class="docker-error">' + (res.error || 'Failed to list images') + '</div>'; return; }
+    imageEl.innerHTML = (res.images || []).map(img => `
+      <div class="docker-image-row">
+        <span class="docker-image-name">${img.repository}:${img.tag}</span>
+        <span class="docker-image-id">${img.id}</span>
+        <span class="docker-image-size">${img.size}</span>
+      </div>
+    `).join('');
+  },
+
+  toggle() {
+    const panel = document.getElementById('docker-panel');
+    if (!panel) return;
+    const wasHidden = panel.classList.contains('hidden');
+    if (wasHidden) {
+      document.getElementById('terminal-panel')?.classList.add('hidden');
+    }
+    panel.classList.toggle('hidden');
+    document.getElementById('btn-docker-toggle')?.classList.toggle('active', !panel.classList.contains('hidden'));
+    if (wasHidden) {
+      this.refreshContainers();
+      this.refreshImages();
+      this._refreshTimer = setInterval(() => { this.refreshContainers(); }, 5000);
+    } else {
+      if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+    }
+  },
+
+  async init() {
+    if (!window.electronAPI?.docker) return;
+    await this.checkDocker();
+    document.getElementById('btn-docker-toggle')?.addEventListener('click', () => this.toggle());
+    document.getElementById('btn-docker-refresh')?.addEventListener('click', () => { this.refreshContainers(); this.refreshImages(); });
+    document.getElementById('btn-docker-minimize')?.addEventListener('click', () => this.toggle());
+    document.querySelectorAll('.docker-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.docker-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.docker-panel-content').forEach(c => c.classList.add('hidden'));
+        tab.classList.add('active');
+        const panel = document.getElementById(tab.dataset.dockerPanel);
+        if (panel) panel.classList.remove('hidden');
+        if (tab.dataset.dockerPanel === 'containers') this.refreshContainers();
+        if (tab.dataset.dockerPanel === 'images') this.refreshImages();
+      });
+    });
+  }
 };
 
 function initXtermTerminal() {
@@ -5713,6 +5957,7 @@ window.addEventListener('beforeunload', () => {
 initEditorTools();
 initGitPanel();
 initXtermTerminal();
+DockerPanel.init();
 initConnectedApps();
 
 // === Browser Panel Toggle ===

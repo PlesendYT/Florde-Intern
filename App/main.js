@@ -561,6 +561,64 @@ ipcMain.handle('open-external', (event, url) => {
   shell.openExternal(url);
 });
 
+// ==================== DOCKER ====================
+
+function dockerExec(args, timeout = 30000) {
+  try {
+    const r = require('child_process').spawnSync('docker', args, { timeout, encoding: 'utf-8' });
+    if (r.error) throw r.error;
+    return { ok: true, stdout: r.stdout.trim(), stderr: r.stderr.trim() };
+  } catch (e) {
+    return { ok: false, error: e.stderr || e.message };
+  }
+}
+
+ipcMain.handle('docker:info', () => {
+  const r = dockerExec(['info', '--format', '{{.ServerVersion}}']);
+  return r.ok ? { ok: true, version: r.stdout } : { ok: false, error: r.error };
+});
+
+ipcMain.handle('docker:ps', () => {
+  const r = dockerExec(['ps', '-a', '--format', '{{.ID}}|{{.Image}}|{{.Names}}|{{.Status}}|{{.Ports}}|{{.CreatedAt}}']);
+  if (!r.ok) return { ok: false, error: r.error };
+  const containers = r.stdout.split('\n').filter(Boolean).map(line => {
+    const [id, image, names, status, ports, createdAt] = line.split('|');
+    const running = status && status.toLowerCase().startsWith('up');
+    return { id: id ? id.substring(0, 12) : '', image: image || '', name: names || '', status: status || '', ports: ports || '', createdAt: createdAt || '', running };
+  });
+  return { ok: true, containers };
+});
+
+ipcMain.handle('docker:images', () => {
+  const r = dockerExec(['images', '--format', '{{.Repository}}|{{.Tag}}|{{.ID}}|{{.Size}}|{{.CreatedAt}}']);
+  if (!r.ok) return { ok: false, error: r.error };
+  const images = r.stdout.split('\n').filter(Boolean).map(line => {
+    const [repository, tag, id, size, createdAt] = line.split('|');
+    return { repository: repository || '', tag: tag || '', id: id ? id.substring(0, 12) : '', size: size || '', createdAt: createdAt || '' };
+  });
+  return { ok: true, images };
+});
+
+ipcMain.handle('docker:start', (event, id) => {
+  const r = dockerExec(['start', id]);
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
+});
+
+ipcMain.handle('docker:stop', (event, id) => {
+  const r = dockerExec(['stop', id]);
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
+});
+
+ipcMain.handle('docker:restart', (event, id) => {
+  const r = dockerExec(['restart', id]);
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
+});
+
+ipcMain.handle('docker:logs', (event, id, lines = 50) => {
+  const r = dockerExec(['logs', '--tail', String(lines), id]);
+  return r.ok ? { ok: true, logs: r.stdout } : { ok: false, error: r.error };
+});
+
 // ==================== TERMINAL ====================
 
 const { spawn } = require('node-pty');

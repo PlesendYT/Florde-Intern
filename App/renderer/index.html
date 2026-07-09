@@ -106,6 +106,7 @@
         <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
         <button id="btn-cmd-palette" title="Command Palette (Ctrl+Shift+P)">&#9889;</button>
         <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
+        <button id="btn-docker-toggle" title="Toggle Docker Panel">&#x1F433;</button>
         <button id="btn-browser-toggle" title="Toggle Browser (Ctrl+Shift+B)">&#127760;</button>
         <div class="dev-utils-wrapper">
           <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
@@ -240,6 +241,22 @@
           </div>
         </div>
 
+        <!-- Docker Panel -->
+        <div id="docker-panel" class="hidden">
+          <div id="docker-tab-bar">
+            <div class="docker-tab active" data-docker-panel="containers">Containers</div>
+            <div class="docker-tab" data-docker-panel="images">Images</div>
+            <div class="docker-tab" data-docker-panel="logs">Logs</div>
+            <div style="flex:1"></div>
+            <span id="docker-status" class="docker-status" title="Docker status">&#9679;</span>
+            <button id="btn-docker-refresh" class="docker-clear" title="Refresh">&#x21bb;</button>
+            <button id="btn-docker-minimize" class="docker-clear" title="Minimize">&#8212;</button>
+          </div>
+          <div id="docker-containers" class="docker-panel-content"></div>
+          <div id="docker-images" class="docker-panel-content hidden"></div>
+          <div id="docker-logs" class="docker-panel-content hidden"><pre id="docker-log-content" class="docker-log-content"></pre></div>
+        </div>
+
         <!-- Terminal / Output Panel -->
         <div id="terminal-panel" class="hidden">
           <div id="terminal-tab-bar">
@@ -325,6 +342,7 @@
         <button class="settings-tab" data-tab="appearance">Appearance</button>
         <button class="settings-tab" data-tab="security">Security</button>
         <button class="settings-tab" data-tab="mcp">MCP Servers</button>
+        <button class="settings-tab" data-tab="shortcuts">Shortcuts</button>
       </div>
 
       <!-- General Tab -->
@@ -685,6 +703,29 @@
             <option value="solarized-dark">Solarized Dark</option>
             <option value="solarized-light">Solarized Light</option>
           </select>
+          <label>Layout</label>
+          <div class="layout-options">
+            <label class="layout-option" data-layout="sidebar-left">
+              <input type="radio" name="layout" value="sidebar-left" checked>
+              <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="12" height="30" fill="currentColor" opacity="0.3" rx="2"/><rect x="14" y="0" width="26" height="30" fill="currentColor" opacity="0.15" rx="2"/></svg></span>
+              <span>Sidebar Left</span>
+            </label>
+            <label class="layout-option" data-layout="sidebar-right">
+              <input type="radio" name="layout" value="sidebar-right">
+              <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="26" height="30" fill="currentColor" opacity="0.15" rx="2"/><rect x="28" y="0" width="12" height="30" fill="currentColor" opacity="0.3" rx="2"/></svg></span>
+              <span>Sidebar Right</span>
+            </label>
+            <label class="layout-option" data-layout="top-bar">
+              <input type="radio" name="layout" value="top-bar">
+              <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="40" height="8" fill="currentColor" opacity="0.3" rx="2"/><rect x="0" y="10" width="40" height="20" fill="currentColor" opacity="0.15" rx="2"/></svg></span>
+              <span>Top Bar</span>
+            </label>
+            <label class="layout-option" data-layout="floating">
+              <input type="radio" name="layout" value="floating">
+              <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="40" height="30" fill="currentColor" opacity="0.15" rx="2"/><rect x="0" y="0" width="40" height="30" fill="currentColor" opacity="0.05" rx="2" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/><rect x="26" y="2" width="12" height="12" fill="currentColor" opacity="0.35" rx="2"/></svg></span>
+              <span>Floating</span>
+            </label>
+          </div>
           <label>Chat Font Size: <span id="chat-font-size-label">14px</span></label>
           <input type="range" id="chat-font-size" min="10" max="24" value="14">
           <label>Editor Font Size: <span id="editor-font-size-label">14px</span></label>
@@ -701,6 +742,14 @@
         </p>
         <div id="mcp-server-list"></div>
         <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Add Server</button>
+      </div>
+
+      <!-- Shortcuts Tab -->
+      <div class="settings-tab-content" data-tab="shortcuts">
+        <div class="settings-form">
+          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">Click a shortcut to record a new key combination. Changes save automatically.</p>
+          <div id="shortcuts-list"></div>
+        </div>
       </div>
 
       <div id="settings-validation" class="settings-validation hidden"></div>
@@ -809,21 +858,7 @@
   <div id="help-modal" class="modal hidden">
     <div class="modal-content" style="max-width:500px;">
       <h2>Keyboard Shortcuts</h2>
-      <div class="settings-form">
-        <div class="shortcut-row"><kbd>Ctrl+S</kbd> <span>Save current file</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+N</kbd> <span>New file</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+W</kbd> <span>Close current tab</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+Tab</kbd> <span>Next tab</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+Shift+Tab</kbd> <span>Previous tab</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+B</kbd> <span>Toggle sidebar</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+Shift+F</kbd> <span>Search in files</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+P</kbd> <span>Quick file open</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+Shift+P</kbd> <span>Command palette</span></div>
-        <div class="shortcut-row"><kbd>Ctrl+`</kbd> <span>Toggle terminal</span></div>
-        <div class="shortcut-row"><kbd>Enter</kbd> <span>Send chat message</span></div>
-        <div class="shortcut-row"><kbd>Shift+Enter</kbd> <span>New line in chat</span></div>
-        <div class="shortcut-row"><kbd>?</kbd> <span>Toggle this help</span></div>
-      </div>
+      <div class="settings-form" id="help-shortcuts-list"></div>
       <div class="modal-actions">
         <button id="btn-close-help" class="btn btn-secondary">Close</button>
       </div>

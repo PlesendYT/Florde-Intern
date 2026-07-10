@@ -770,6 +770,7 @@ function createBrowserWindow(url) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
+      allowFileAccess: true,
       preload: path.join(__dirname, 'browser-preload.js'),
     },
   });

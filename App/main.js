@@ -765,11 +765,12 @@ function createBrowserWindow(url) {
     minWidth: 600,
     minHeight: 400,
     title: 'Florde Browser',
-    backgroundColor: '#0a0a0f',
+    backgroundColor: '#1a1a2e',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,
+      preload: path.join(__dirname, 'browser-preload.js'),
     },
   });
   browserWindow.on('closed', () => {
@@ -824,6 +825,41 @@ ipcMain.handle('browser:close', () => {
 });
 ipcMain.handle('browser:is-open', () => {
   return browserWindow !== null && !browserWindow.isDestroyed();
+});
+
+// Browser nav bar IPC (from browser-preload.js)
+ipcMain.on('browser-nav-back', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.goBack();
+});
+ipcMain.on('browser-nav-forward', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.goForward();
+});
+ipcMain.on('browser-nav-reload', () => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.webContents.reload();
+});
+ipcMain.on('browser-nav-url', (event, url) => {
+  if (browserWindow && !browserWindow.isDestroyed()) browserWindow.loadURL(url);
+});
+ipcMain.on('browser-nav-external', (event, url) => {
+  if (url) shell.openExternal(url.startsWith('http') ? url : 'https://' + url);
+});
+
+// Sync URL to browser nav bar on navigation
+app.on('web-contents-created', (event, wc) => {
+  wc.on('did-navigate', (event, url) => {
+    if (browserWindow && wc === browserWindow.webContents) {
+      browserWindow.webContents.executeJavaScript(
+        `document.getElementById('florde-browser-url').value = ${JSON.stringify(url)};`
+      ).catch(() => {});
+    }
+  });
+  wc.on('did-navigate-in-page', (event, url) => {
+    if (browserWindow && wc === browserWindow.webContents) {
+      browserWindow.webContents.executeJavaScript(
+        `document.getElementById('florde-browser-url').value = ${JSON.stringify(url)};`
+      ).catch(() => {});
+    }
+  });
 });
 
 // ==================== APP ====================

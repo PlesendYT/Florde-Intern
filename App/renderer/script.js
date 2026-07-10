@@ -6179,7 +6179,7 @@ document.getElementById('btn-browser-toggle').addEventListener('click', async ()
     BrowserPanel.hide();
   } else {
     BrowserPanel.show();
-    await BrowserPanel.navigate('about:blank');
+    await BrowserPanel.navigate('https://duckduckgo.com');
   }
 });
 

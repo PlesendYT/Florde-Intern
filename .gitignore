@@ -37,10 +37,5 @@ App/*.log
 config/icon/icon.ico
 config/icon/icon.png
 
-# Editor generated
-App/renderer/fuse.js
-App/renderer/git/
-App/renderer/terminal/
-App/renderer/tools/
 
 

@@ -39,6 +39,7 @@ function createWindow() {
 app.whenReady().then(() => {
   if (!fs.existsSync(getProjectsDir())) fs.mkdirSync(getProjectsDir(), { recursive: true });
   if (!fs.existsSync(getSandboxDir())) fs.mkdirSync(getSandboxDir(), { recursive: true });
+  createWindow();
 });
 
 // ==================== NOTIFICATIONS ====================
@@ -58,8 +59,12 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
-  fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
-  return true;
+  try {
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 // ==================== PROJECTS ====================
@@ -76,7 +81,11 @@ function getProjectRoot(name) {
 function getProjectMeta(name) {
   const p = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(p)) return null;
-  return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return null;
+  }
 }
 
 ipcMain.handle('list-projects', () => {
@@ -122,12 +131,20 @@ ipcMain.handle('delete-project', (event, name) => {
 ipcMain.handle('load-session', (event, name) => {
   const p = path.join(getProjectsDir(), name, 'session.json');
   if (!fs.existsSync(p)) return { history: [] };
-  return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return { sessions: [] };
+  }
 });
 
 ipcMain.handle('save-session', (event, name, data) => {
-  fs.writeFileSync(path.join(getProjectsDir(), name, 'session.json'), JSON.stringify(data, null, 2), 'utf-8');
-  return true;
+  try {
+    fs.writeFileSync(path.join(getProjectsDir(), name, 'session.json'), JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('get-project-root', (event, name) => getProjectRoot(name));
@@ -198,20 +215,20 @@ ipcMain.handle('project-rename-file', (event, name, oldPath, newPath) => {
 
 // ==================== SEARCH IN FILES ====================
 
-ipcMain.handle('search-in-files', (event, name, query) => {
+ipcMain.handle('search-in-files', async (event, name, query) => {
   const root = getProjectRoot(name);
   if (!root || !fs.existsSync(root)) return [];
   const results = [];
   const lower = query.toLowerCase();
-  function walk(d) {
-    const entries = fs.readdirSync(d, { withFileTypes: true });
+  async function walk(d) {
+    const entries = await fs.promises.readdir(d, { withFileTypes: true });
     for (const e of entries) {
       if (e.name.startsWith('.')) continue;
       const full = path.join(d, e.name);
-      if (e.isDirectory()) walk(full);
+      if (e.isDirectory()) await walk(full);
       else {
         try {
-          const content = fs.readFileSync(full, 'utf-8');
+          const content = await fs.promises.readFile(full, 'utf-8');
           const lines = content.split('\n');
           for (let i = 0; i < lines.length; i++) {
             if (lines[i].toLowerCase().includes(lower)) {
@@ -222,7 +239,7 @@ ipcMain.handle('search-in-files', (event, name, query) => {
       }
     }
   }
-  walk(root);
+  await walk(root);
   return results;
 });
 
@@ -294,6 +311,7 @@ ipcMain.handle('sandbox-delete-file', (event, sandboxPath, filePath) => {
 ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
   const allowed = getSandboxDir();
   if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
+  if (/[;&|`$\n]/.test(command)) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
   try {
     const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
     return { ok: true, output };
@@ -391,8 +409,12 @@ ipcMain.handle('get-plugins', () => {
 });
 
 ipcMain.handle('save-plugins', (event, data) => {
-  fs.writeFileSync(getPluginsPath(), JSON.stringify(data, null, 2), 'utf-8');
-  return true;
+  try {
+    fs.writeFileSync(getPluginsPath(), JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('ollama-list', async () => {
@@ -427,9 +449,9 @@ ipcMain.handle('web-search', async (event, query, numResults = 5) => {
         results.push({ title, url: url2 });
       }
     }
-    return JSON.stringify(results.slice(0, numResults));
+    return results.slice(0, numResults);
   } catch (err) {
-    return JSON.stringify({ error: err.message });
+    return { error: err.message };
   }
 });
 
@@ -462,17 +484,21 @@ ipcMain.handle('git-commit', (event, repoPath, name, description) => {
 });
 
 function gitExec(repoPath, cmd, timeout = 15000) {
-  try { return execSync(cmd, { cwd: repoPath, timeout, encoding: 'utf-8' }).trim(); }
-  catch (e) { return { error: e.stderr || e.message }; }
+  try {
+    const out = execSync(cmd, { cwd: repoPath, timeout, encoding: 'utf-8' }).trim();
+    return { stdout: out, stderr: '', error: null };
+  } catch (e) {
+    return { stdout: '', stderr: e.stderr || '', error: e.stderr || e.message };
+  }
 }
 
 function gitExecSafe(repoPath, args, timeout = 15000) {
   try {
     const r = spawnSync('git', args, { cwd: repoPath, timeout, encoding: 'utf-8', shell: false });
     if (r.error) throw r.error;
-    return r.stdout.trim();
+    return { stdout: r.stdout.trim(), stderr: r.stderr.trim(), error: null };
   } catch (e) {
-    return { error: e.stderr || e.message };
+    return { stdout: '', stderr: e.stderr || '', error: e.stderr || e.message };
   }
 }
 
@@ -480,10 +506,10 @@ ipcMain.handle('git-branch-list', (event, repoPath) => {
   const local = gitExec(repoPath, 'git branch');
   if (local.error) return { local: [], remote: [], current: '' };
   const remote = gitExec(repoPath, 'git branch -r');
-  const currentLine = (typeof local === 'string' ? local : '').split('\n').find(l => l.startsWith('*'));
+  const currentLine = local.stdout.split('\n').find(l => l.startsWith('*'));
   return {
-    local: (typeof local === 'string' ? local : '').split('\n').map(l => l.replace('*', '').trim()).filter(Boolean),
-    remote: (typeof remote === 'string' && !remote.error ? remote : '').split('\n').map(l => l.trim()).filter(Boolean),
+    local: local.stdout.split('\n').map(l => l.replace('*', '').trim()).filter(Boolean),
+    remote: remote.stdout.split('\n').map(l => l.trim()).filter(Boolean),
     current: currentLine ? currentLine.replace('*', '').trim() : ''
   };
 });
@@ -515,7 +541,7 @@ ipcMain.handle('git-checkout', (event, repoPath, name) => {
 ipcMain.handle('git-log', (event, repoPath, limit = 50) => {
   const out = gitExec(repoPath, `git log --oneline --decorate -${limit} --pretty=format:"%H|%h|%an|%ae|%ad|%s" --date=short`);
   if (out.error) return [];
-  return out.split('\n').filter(Boolean).map(line => {
+  return out.stdout.split('\n').filter(Boolean).map(line => {
     const parts = line.split('|');
     return { hash: parts[0] || '', shortHash: parts[1] || '', author: parts[2] || '', email: parts[3] || '', date: parts[4] || '', message: parts.slice(5).join('|') || '' };
   });
@@ -526,7 +552,7 @@ ipcMain.handle('git-blame', (event, repoPath, filePath) => {
   if (out.error) return [];
   const lines = [];
   const current = {};
-  for (const line of out.split('\n')) {
+  for (const line of out.stdout.split('\n')) {
     if (line.startsWith('\t')) { current.content = line.slice(1); lines.push({ ...current }); continue; }
     const parts = line.split(' ');
     if (parts[0] === 'author') current.author = parts.slice(1).join(' ');
@@ -538,27 +564,37 @@ ipcMain.handle('git-blame', (event, repoPath, filePath) => {
 });
 
 ipcMain.handle('git-diff-file', (event, repoPath, filePath) => {
-  return gitExec(repoPath, `git diff HEAD -- "${filePath}"`);
+  const out = gitExec(repoPath, `git diff HEAD -- "${filePath}"`);
+  return out.stdout;
 });
 
 ipcMain.handle('git-push', (event, repoPath, remote = 'origin', branch) => {
   try {
-    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD');
-    execSync(`git push "${remote}" "${b}"`, { cwd: repoPath, timeout: 30000, encoding: 'utf-8' });
+    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD').stdout;
+    const r = spawnSync('git', ['push', remote, b], { cwd: repoPath, timeout: 30000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
+    if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
     return { ok: true };
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });
 
 ipcMain.handle('git-pull', (event, repoPath, remote = 'origin', branch) => {
   try {
-    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD');
-    execSync(`git pull "${remote}" "${b}"`, { cwd: repoPath, timeout: 30000, encoding: 'utf-8' });
+    const b = branch || gitExec(repoPath, 'git rev-parse --abbrev-ref HEAD').stdout;
+    const r = spawnSync('git', ['pull', remote, b], { cwd: repoPath, timeout: 30000, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
+    if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
     return { ok: true };
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });
 
-ipcMain.handle('open-external', (event, url) => {
-  shell.openExternal(url);
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 // ==================== DOCKER ====================
@@ -666,16 +702,21 @@ ipcMain.handle('terminal:kill', (event, { id }) => {
 // ==================== KEYCHAIN ====================
 
 ipcMain.handle('keychain:store', (event, { key, value }) => {
-  const { safeStorage } = require('electron');
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('OS keychain not available on this system');
+  try {
+    const { safeStorage } = require('electron');
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { success: false, error: 'OS keychain not available on this system' };
+    }
+    const encrypted = safeStorage.encryptString(value);
+    const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
+    let keychain = {};
+    try { keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8')); } catch (e) {}
+    keychain[key] = encrypted.toString('base64');
+    fs.writeFileSync(keychainPath, JSON.stringify(keychain));
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-  const encrypted = safeStorage.encryptString(value);
-  const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
-  let keychain = {};
-  try { keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8')); } catch (e) {}
-  keychain[key] = encrypted.toString('base64');
-  fs.writeFileSync(keychainPath, JSON.stringify(keychain));
 });
 
 ipcMain.handle('keychain:retrieve', (event, { key }) => {
@@ -787,6 +828,5 @@ ipcMain.handle('browser:is-open', () => {
 
 // ==================== APP ====================
 
-app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

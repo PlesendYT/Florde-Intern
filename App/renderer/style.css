@@ -21,8 +21,8 @@
   --bg: #f5f5f8; --bg2: #ffffff; --bg3: #eaeaef;
   --text: #1a1a2e; --text2: #555; --text3: #999;
   --border: rgba(0,0,0,0.08); --border2: rgba(0,0,0,0.15);
-  --hover: rgba(124,58,237,0.08);
-  --sidebar-bg: #eaeaef; --terminal-bg: #f0f0f3; --tab-bg: #e0e0e6;
+  --accent: #7c3aed; --accent2: #3b82f6; --hover: rgba(124,58,237,0.08);
+  --tab-active: #e0e0ff; --sidebar-bg: #eaeaef; --terminal-bg: #f0f0f3; --tab-bg: #e0e0e6;
   --chat-user: #e8dff5; --chat-ai: #ffffff; --scrollbar: #ccc;
   --diff-added: rgba(34,197,94,0.12); --diff-removed: rgba(239,68,68,0.12);
   --diff-added-text: #22c55e; --diff-removed-text: #ef4444;
@@ -418,7 +418,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .tree-children { margin-left: 1rem; }
 
 .context-menu {
-  position: fixed; z-index: 1000; background: var(--bg2); border: 1px solid var(--border);
+  position: fixed; z-index: 1001; background: var(--bg2); border: 1px solid var(--border);
   border-radius: 6px; padding: 0.25rem 0; min-width: 160px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .context-menu-item {
@@ -713,7 +713,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 #btn-export-chat:hover { background: var(--hover); color: var(--accent); }
 
 /* ==================== CHAT TABS ==================== */
-#chat-tab-bar { display: flex; align-items: center; background: var(--sidebar-bg, #1a1a2e); border-bottom: 1px solid var(--border-color); height: 36px; overflow-x: auto; padding: 0 4px; flex-shrink: 0; }
+#chat-tab-bar { display: flex; align-items: center; background: var(--sidebar-bg, #1a1a2e); border-bottom: 1px solid var(--border); height: 36px; overflow-x: auto; padding: 0 4px; flex-shrink: 0; }
 #chat-tab-bar::-webkit-scrollbar { height: 3px; }
 .chat-tab { display: flex; align-items: center; gap: 4px; padding: 4px 8px; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: transparent; color: var(--text2); flex-shrink: 0; }
 .chat-tab.active { background: var(--bg, #1e1e36); color: var(--text); }
@@ -1127,7 +1127,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   position: absolute; inset: 0; background: rgba(0,0,0,0.6);
 }
 .app-connect-dialog {
-  position: relative; background: var(--bg1); border: 1px solid var(--border);
+  position: relative; background: var(--bg3); border: 1px solid var(--border);
   border-radius: 10px; padding: 24px; width: 420px; max-width: 90vw;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
 }

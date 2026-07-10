@@ -415,6 +415,7 @@ class OllamaProvider {
     }
     if (this._useChat) {
       try {
+        chatBody.stream = !!onChunk;
         const r = await this._post('/api/chat', chatBody, OLLAMA_TIMEOUT);
         if (onChunk) {
           const reader = r.body.getReader(), decoder = new TextDecoder();
@@ -1159,21 +1160,24 @@ function showCriticalWarning(command, callback) {
 
   const holdBtn = document.getElementById('critical-hold-btn');
   const cancelBtn = document.getElementById('critical-cancel-btn');
+  const holdProgress = holdBtn.querySelector('.hold-progress');
   let holdTimer = null;
   let holdSeconds = 0;
+  let holdText = document.createTextNode('Hold 10s to Confirm');
+  holdBtn.appendChild(holdText);
 
   holdBtn.addEventListener('mousedown', () => {
     if (holdTimer) return;
     holdSeconds = 0;
-    holdBtn.querySelector('.hold-progress').style.width = '0%';
+    holdProgress.style.width = '0%';
     holdTimer = setInterval(() => {
       holdSeconds++;
       const pct = (holdSeconds / 10) * 100;
-      holdBtn.querySelector('.hold-progress').style.width = pct + '%';
-      holdBtn.textContent = 'Hold ' + (10 - holdSeconds) + 's';
+      holdProgress.style.width = pct + '%';
+      holdText.textContent = 'Hold ' + (10 - holdSeconds) + 's';
       if (holdSeconds >= 10) {
         clearInterval(holdTimer); holdTimer = null;
-        holdBtn.textContent = 'Confirm Execution';
+        holdText.textContent = 'Confirm Execution';
         holdBtn.style.background = '#dc2626';
         holdBtn.onclick = () => { overlay.remove(); callback(true); };
       }
@@ -1181,15 +1185,15 @@ function showCriticalWarning(command, callback) {
   });
   holdBtn.addEventListener('mouseup', () => {
     if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
-    holdBtn.querySelector('.hold-progress').style.width = '0%';
-    holdBtn.textContent = 'Hold 10s to Confirm';
+    holdProgress.style.width = '0%';
+    holdText.textContent = 'Hold 10s to Confirm';
     holdBtn.onclick = null;
     holdBtn.style.background = '';
   });
   holdBtn.addEventListener('mouseleave', () => {
     if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
-    holdBtn.querySelector('.hold-progress').style.width = '0%';
-    holdBtn.textContent = 'Hold 10s to Confirm';
+    holdProgress.style.width = '0%';
+    holdText.textContent = 'Hold 10s to Confirm';
     holdBtn.onclick = null;
     holdBtn.style.background = '';
   });
@@ -1426,10 +1430,13 @@ function parseTextToolCalls(text) {
     const name = m[1];
     let depth = 1;
     let idx = re.lastIndex;
-    while (idx < text.length && depth > 0) {
+    const maxIter = 10000;
+    let iter = 0;
+    while (idx < text.length && depth > 0 && iter < maxIter) {
       if (text[idx] === '{') depth++;
       if (text[idx] === '}') depth--;
       idx++;
+      iter++;
     }
     if (idx <= text.length && text[idx - 1] === '}' && text[idx] === ']') {
       const jsonStr = text.slice(re.lastIndex - 1, idx);
@@ -1888,14 +1895,14 @@ function enableOfflineMode(enabled) {
       return Promise.reject(new Error('Offline mode: internet access blocked'));
     };
     if (!_originalXHROpen) _originalXHROpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url) {
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
       const urlStr = typeof url === 'string' ? url : (url ? url.toString() : '');
       const allowed = urlStr.startsWith('file://') || urlStr.startsWith('data:') || urlStr.startsWith('blob:') || urlStr.includes('localhost') || urlStr.includes('127.0.0.1') || urlStr.includes('::1');
       if (!allowed) {
         logToTerminal('Blocked XHR (offline mode): ' + urlStr.slice(0, 120), 'warn');
         throw new Error('Offline mode: internet access blocked');
       }
-      return _originalXHROpen.apply(this, arguments);
+      return _originalXHROpen.call(this, method, url, ...rest);
     };
   } else {
     if (_originalFetch) { window.fetch = _originalFetch; _originalFetch = null; }
@@ -2119,10 +2126,7 @@ function blurMonaco() {
 });
 
 // Debug: highlight click target on document
-document.addEventListener('click', (e) => {
-  console.log('CLICK target:', e.target.id || e.target.tagName, e.target.className);
-}, true);
-
+// Removed debug logging
 // Debug: show hover target info
 document.addEventListener('mouseover', (e) => {
   const el = e.target;
@@ -2339,8 +2343,13 @@ async function openProject(name) {
   currentProject = name;
   document.getElementById('project-name').textContent = name;
 
-  const session = await window.electronAPI.loadSession(name);
-  const savedMessages = session.history || [];
+  let savedMessages = [];
+  try {
+    const session = await window.electronAPI.loadSession(name);
+    savedMessages = (session && session.history) || [];
+  } catch (e) {
+    console.error('loadSession failed for', name, e);
+  }
   ChatManager._sessions = [];
   ChatManager._nextId = 1;
   ChatManager.newSession();
@@ -2517,7 +2526,11 @@ async function saveSession() {
   }
   const sessionToSave = ChatManager.getActive();
   const historyToSave = sessionToSave ? sessionToSave.messages : chatHistory;
-  await window.electronAPI.saveSession(currentProject, { history: historyToSave });
+  try {
+    await window.electronAPI.saveSession(currentProject, { history: historyToSave });
+  } catch (e) {
+    console.error('saveSession failed:', e);
+  }
   renderTabs();
 }
 
@@ -2526,7 +2539,11 @@ async function saveAllTabs() {
   for (let f of Object.keys(tabContents)) {
     tabContents[f] = f === getActiveFileName() ? currentContent : tabContents[f];
     if (currentProject) {
-      await window.electronAPI.projectWriteFile(currentProject, f, tabContents[f]);
+      try {
+        await window.electronAPI.projectWriteFile(currentProject, f, tabContents[f]);
+      } catch (e) {
+        console.error('saveAllTabs: failed to save', f, e);
+      }
     }
     tabDirty[f] = false;
   }
@@ -2580,6 +2597,7 @@ let autoSaveTimer;
 const modelDisposables = new Map();
 
 async function switchTab(index) {
+  if (index < 0 || index >= openTabs.length) return;
   if (activeTabIndex >= 0 && activeTabIndex < openTabs.length && editor) {
     tabContents[openTabs[activeTabIndex]] = editor.getValue();
     if (currentProjectType === 'local') await saveCurrentFile();
@@ -2612,25 +2630,33 @@ async function switchTab(index) {
   renderTabs();
 }
 
+let _closingTab = false;
 async function closeTab(index) {
-  const name = openTabs[index];
-  if (tabDirty[name] && !confirm(`"${name}" has unsaved changes. Close anyway?`)) return;
-  if (currentProjectType === 'local') await saveCurrentFile();
-  const disposable = modelDisposables.get(name);
-  if (disposable) { disposable.dispose(); modelDisposables.delete(name); }
-  const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
-  if (model) model.dispose();
-  openTabs.splice(index, 1);
-  if (index <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
-  if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
-  if (openTabs.length > 0) switchTab(activeTabIndex);
-  else {
-    document.getElementById('file-name').textContent = 'No file open';
-    if (editor) editor.setValue('');
-    if (editor) editor.setModel(null);
+  if (_closingTab) return;
+  _closingTab = true;
+  try {
+    if (index < 0 || index >= openTabs.length) return;
+    const name = openTabs[index];
+    if (tabDirty[name] && !confirm(`"${name}" has unsaved changes. Close anyway?`)) return;
+    if (currentProjectType === 'local') await saveCurrentFile();
+    const disposable = modelDisposables.get(name);
+    if (disposable) { disposable.dispose(); modelDisposables.delete(name); }
+    const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
+    if (model) model.dispose();
+    openTabs.splice(index, 1);
+    if (index <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
+    if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
+    if (openTabs.length > 0) switchTab(activeTabIndex);
+    else {
+      document.getElementById('file-name').textContent = 'No file open';
+      if (editor) editor.setValue('');
+      if (editor) editor.setModel(null);
+    }
+    renderTabs();
+    updateStatusBar();
+  } finally {
+    _closingTab = false;
   }
-  renderTabs();
-  updateStatusBar();
 }
 
 function closeAllTabs() {
@@ -3127,7 +3153,7 @@ function buildVisionMessages(baseMessages, images) {
 
 function formatMessageContent(content) {
   const seeThoughts = document.getElementById('see-thoughts')?.checked !== false;
-  let html = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (seeThoughts) {
     html = html.replace(/\[think\]([\s\S]*?)\[\/think\]/g, '<div class="think-block">$1</div>');
   } else {
@@ -3607,16 +3633,17 @@ async function executeToolCall(name, args) {
       if (!args || !args.selector) throw new Error('selector required for browser_click');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
-      await BrowserPanel.evaluate(`document.querySelector('${args.selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').click()`);
+      await BrowserPanel.evaluate(`document.querySelector('${args.selector.replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\)/g, '\\)').replace(/\]/g, '\\]').replace(/>/g, '\\>').replace(/\+/g, '\\+').replace(/~/g, '\\~').replace(/#/g, '\\#').replace(/\./g, '\\.').replace(/:/g, '\\:')}').click()`);
       return 'Clicked: ' + args.selector;
     case 'browser_type':
       if (!args || !args.selector || args.text === undefined) throw new Error('selector and text required for browser_type');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
-      const escapedText = args.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+      const escapedSelector = args.selector.replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\)/g, '\\)').replace(/\]/g, '\\]').replace(/>/g, '\\>').replace(/\+/g, '\\+').replace(/~/g, '\\~').replace(/#/g, '\\#').replace(/\./g, '\\.').replace(/:/g, '\\:');
+      const escapedText = args.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
       await BrowserPanel.evaluate(`
         (() => {
-          const el = document.querySelector('${args.selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}');
+          const el = document.querySelector('${escapedSelector}');
           if (!el) throw new Error('Element not found: ${args.selector.replace(/'/g, "\\'")}');
           el.value = '${escapedText}';
           el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -4005,6 +4032,8 @@ async function sendMessage(text) {
   }
 
   // === Agentic Mode: generate plan first ===
+  let _planSteps = 0;
+  let _currentStep = 0;
   if (document.getElementById('btn-agentic-mode')?.classList.contains('agentic-plan')) {
     const planPrompt = 'Create a concise step-by-step plan for this request. List specific files, commands, and order of operations:\n\n' + text;
     const planMessages = [
@@ -4031,9 +4060,6 @@ async function sendMessage(text) {
   }
 
   startAnim('*Thinking*');
-
-  let _planSteps = 0;
-  let _currentStep = 0;
 
   logToTerminal('Sending request to ' + provider + '...', 'info');
 
@@ -4629,8 +4655,11 @@ document.getElementById('btn-terminal-clear').addEventListener('click', () => {
 
 // ==================== THEME TOGGLE ====================
 
+const THEME_CYCLE = ['dark', 'light', 'high-contrast', 'solarized-dark', 'solarized-light'];
+
 document.getElementById('btn-theme-toggle').addEventListener('click', () => {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  const idx = THEME_CYCLE.indexOf(currentTheme);
+  currentTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
   document.getElementById('settings-theme').value = currentTheme;
   applyTheme();
   saveSettingsToDisk({ theme: currentTheme });
@@ -5638,7 +5667,7 @@ document.addEventListener('click', (e) => {
 
 // ==================== INIT ====================
 
-loadSettings();
+loadSettings().catch(e => console.error('loadSettings failed:', e));
 WorkspaceManager.init();
 Favorites.init();
 PermissionManager.init();
@@ -5941,6 +5970,7 @@ const DockerPanel = {
   toggle() {
     const panel = document.getElementById('docker-panel');
     if (!panel) return;
+    if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
     const wasHidden = panel.classList.contains('hidden');
     if (wasHidden) {
       document.getElementById('terminal-panel')?.classList.add('hidden');
@@ -5951,8 +5981,6 @@ const DockerPanel = {
       this.refreshContainers();
       this.refreshImages();
       this._refreshTimer = setInterval(() => { this.refreshContainers(); }, 5000);
-    } else {
-      if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
     }
   },
 

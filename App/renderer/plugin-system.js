@@ -239,32 +239,6 @@ function renderPluginCard(plugin) {
   return div;
 }
 
-function renderPluginMarketplace() {
-  const container = document.getElementById('marketplace-list');
-  if (!container) return;
-  container.innerHTML = '';
-
-  const allPlugins = pluginRegistry.list();
-
-  if (allPlugins.length === 0) {
-    container.innerHTML = '<div style="color:var(--text3);padding:2rem;text-align:center;">No plugins available</div>';
-    return;
-  }
-
-  for (const p of allPlugins) {
-    container.appendChild(renderPluginCard(p));
-  }
-
-  const availableContainer = document.getElementById('available-plugins');
-  if (availableContainer) {
-    availableContainer.innerHTML = '';
-    const futureMarker = document.createElement('div');
-    futureMarker.style.cssText = 'color:var(--text3);padding:1rem;text-align:center;font-size:0.85rem;';
-    futureMarker.textContent = 'More plugins coming soon. Community developers can create plugins using the Florde Plugin API.';
-    availableContainer.appendChild(futureMarker);
-  }
-}
-
 function setupPluginEventHandlers() {
   document.addEventListener('click', (e) => {
     const toggleBtn = e.target.closest('.plugin-toggle[data-action="toggle"]');

@@ -164,6 +164,7 @@ function getActiveTools() {
     { type: 'function', function: { name: 'exec_command', description: 'Execute a shell command in the project sandbox directory', parameters: { type: 'object', properties: { command: { type: 'string', description: 'Shell command to execute' }, description: { type: 'string', description: 'Brief 2-5 word summary of what this command does' } }, required: ['command'] } } },
     { type: 'function', function: { name: 'ask_question', description: 'Ask the user a question when you need clarification, confirmation, or a decision. Always provide clear choices. One choice must always be a custom free-text option.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The question to ask the user' }, choices: { type: 'array', items: { type: 'string' }, description: 'List of answer choices. Always include a free-text option like "Custom answer..."' } }, required: ['question', 'choices'] } } },
     { type: 'function', function: { name: 'rename_file', description: 'Rename a file and optionally update all imports/references across the project', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Current file path relative to project root' }, new_path: { type: 'string', description: 'New file path relative to project root' }, update_imports: { type: 'boolean', description: 'Whether to auto-update imports referencing the old path in all project files' } }, required: ['path', 'new_path'] } } },
+    { type: 'function', function: { name: 'edit_file', description: 'Make a surgical text replacement in an existing file. Use this for small changes instead of rewriting the whole file with write_file.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to project root' }, oldString: { type: 'string', description: 'Exact text to find and replace. Must match the file content exactly.' }, newString: { type: 'string', description: 'Replacement text' }, replaceAll: { type: 'boolean', description: 'If true, replace all occurrences of oldString. If false (default), only replace the first occurrence.' }, description: { type: 'string', description: 'Brief 2-5 word summary of the edit' } }, required: ['path', 'oldString', 'newString'] } } },
     { type: 'function', function: { name: 'take_screenshot', description: 'Capture a screenshot of your screen or a specific window. Useful for visual debugging of web apps. The screenshot becomes visible to vision-capable AI models.', parameters: { type: 'object', properties: { description: { type: 'string', description: 'What to capture (optional hint for the user)' } }, required: [] } } },
     { type: 'function', function: { name: 'schedule_task', description: 'Schedule a background task plan that the AI will continue in the next conversation turn. Use when a task is too large to complete in one round and requires multiple conversation turns.', parameters: { type: 'object', properties: { plan: { type: 'string', description: 'Overall plan for the task' }, steps: { type: 'array', items: { type: 'string' }, description: 'Step-by-step breakdown of remaining work' }, context: { type: 'string', description: 'Key context the AI needs to remember when resuming' } }, required: ['plan', 'steps'] } } },
     { type: 'function', function: { name: 'browser_open', description: 'Open a URL in the embedded browser panel. The browser panel will appear automatically.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'The URL to open' } }, required: ['url'] } } },
@@ -253,7 +254,7 @@ function askUserQuestion(question, choices) {
           customContainer.style.display = 'block';
           customInput.focus();
         } else {
-          modal.classList.add('hidden');
+          hideModal('question-modal');
           resolve(c);
         }
       });
@@ -262,15 +263,15 @@ function askUserQuestion(question, choices) {
     submitBtn.onclick = () => {
       const val = customInput.value.trim();
       if (val) {
-        modal.classList.add('hidden');
+        hideModal('question-modal');
         resolve(val);
       }
     };
     document.getElementById('btn-question-cancel').addEventListener('click', () => {
-      modal.classList.add('hidden');
+      hideModal('question-modal');
       resolve('[User cancelled]');
     }, { once: true });
-    modal.classList.remove('hidden');
+    showModal('question-modal');
   });
 }
 
@@ -384,7 +385,7 @@ class OpenCodeProvider extends OpenAIProvider {
 }
 
 class OllamaProvider {
-  constructor(baseUrl = 'http://localhost:11434', model = 'qwen2.5-coder') { this.baseUrl = baseUrl.replace(/\/+$/, ''); this.model = model; this._useChat = true; this.supportsTools = false; }
+  constructor(baseUrl = 'http://localhost:11434', model = 'qwen2.5-coder') { this.baseUrl = baseUrl.replace(/\/+$/, ''); this.model = model; this._useChat = true; this.supportsTools = undefined; }
   async _post(endpoint, body, timeoutMs = 300000) {
     const r = await fetchWithTimeout(`${this.baseUrl}${endpoint}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1018,7 +1019,7 @@ const PermissionManager = {
   init() {
     const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
     this._rules = settings.permissions || {};
-    const allTools = ['read_file', 'write_file', 'delete_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
+    const allTools = ['read_file', 'write_file', 'delete_file', 'edit_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
     allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
   },
 
@@ -1253,11 +1254,19 @@ function renderPermissionList() {
   const allTools = [
     { id: 'read_file', label: 'Read files' },
     { id: 'write_file', label: 'Write files' },
+    { id: 'edit_file', label: 'Edit files' },
+    { id: 'rename_file', label: 'Rename files' },
     { id: 'delete_file', label: 'Delete files' },
     { id: 'list_files', label: 'List files' },
     { id: 'search_files', label: 'Search files' },
     { id: 'exec_command', label: 'Run commands' },
     { id: 'ask_question', label: 'Ask questions' },
+    { id: 'web_search', label: 'Web search' },
+    { id: 'web_fetch', label: 'Web fetch' },
+    { id: 'browser', label: 'Browser controls' },
+    { id: 'git', label: 'Git operations' },
+    { id: 'terminal', label: 'Terminal operations' },
+    { id: 'mcp', label: 'MCP tools' },
   ];
   container.innerHTML = allTools.map(t => '<div class="permission-row">' +
     '<span>' + t.label + '</span>' +
@@ -1296,7 +1305,7 @@ async function showKeychainManager() {
     '<div class="modal-actions">' +
       '<button id="btn-close-keychain" class="btn btn-secondary">Close</button>' +
     '</div>';
-  modal.classList.remove('hidden');
+  showModal(modal.id);
 
   container.querySelectorAll('.keychain-delete').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -1306,7 +1315,7 @@ async function showKeychainManager() {
       }
     });
   });
-  document.getElementById('btn-close-keychain')?.addEventListener('click', () => modal.classList.add('hidden'));
+  document.getElementById('btn-close-keychain')?.addEventListener('click', () => hideModal(modal.id));
 }
 
 // ==================== SYSTEM PROMPT ====================
@@ -1327,6 +1336,7 @@ function buildSystemPrompt(hasTools) {
 
   const toolList = `- read_file(path): Read file content
 - write_file(path, content): Create or overwrite files
+- edit_file(path, oldString, newString): Make surgical text replacements in existing files (use instead of write_file for small changes)
 - delete_file(path): Delete files
 - list_files(): List all project files
 - search_files(query): Find text in files
@@ -1384,7 +1394,7 @@ JSON format: { "tool": "write_file", "arguments": { "path": "src/main.js", "cont
 Available tools — use these instead of showing code:
 ${toolList}${pluginSection}
 
-The app will parse these tool calls from your text, execute them, and return the results. You can use multiple tool calls in a single response.
+Use ONE tool call at a time. After each tool call result is returned, decide the next step.
 
 RULES:
 1. Always start by listing files to understand the project structure — use [list_files: {}] or {"tool": "list_files", "arguments": {}}
@@ -1392,11 +1402,10 @@ RULES:
 3. You MUST use write_file to create or modify files — never just show the code in chat
 4. Use exec_command to install dependencies, run the project, etc.
 5. After making changes, verify with exec_command if appropriate
-6. Explain what you're doing at each step
+6. Explain what you're doing at each step — use [think]...[/think] blocks for your internal reasoning
 7. Only modify files inside the project — do not access files outside
 8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
-9. Put your internal reasoning in [think]...[/think] blocks. The user sees these as gray italic text. Keep them brief and focused on your plan/investigation.
-10. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
+9. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
 }
 
 function getPluginPromptExtensions() {
@@ -1482,7 +1491,7 @@ const MODEL_META = {
   'mistral-large-latest': { context: 131000, costIn: 2, costOut: 6, free: false },
   'codestral-latest': { context: 256000, costIn: 1, costOut: 3, free: false },
   'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false },
-  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true },
+  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: false },
   'deepseek-v4-flash-free': { context: 128000, costIn: 0, costOut: 0, free: true },
   'deepseek-v4-pro': { context: 128000, costIn: 2, costOut: 8, free: false },
   'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true },
@@ -1584,6 +1593,10 @@ async function loadSettings() {
     const autoStart = await window.electronAPI.getAutoStart();
     document.getElementById('auto-start').checked = autoStart;
   } catch {}
+  if (s.offlineMode) {
+    document.getElementById('offline-mode').checked = true;
+    enableOfflineMode(true);
+  }
   if (s.seeThoughts !== undefined) document.getElementById('see-thoughts').checked = s.seeThoughts;
   else document.getElementById('see-thoughts').checked = true;
   if (s.instantMode !== undefined) document.getElementById('instant-mode').checked = s.instantMode;
@@ -1643,10 +1656,11 @@ async function loadSettings() {
     document.getElementById('auto-exceptions-area').classList.toggle('hidden', !s.autoAccept);
   }
   const ex = s.autoExceptions || {};
-  document.getElementById('exc-shell').checked = ex.shell || false;
-  document.getElementById('exc-outside').checked = ex.outside || false;
-  document.getElementById('exc-git').checked = ex.git || false;
-  document.getElementById('exc-terminal').checked = ex.terminal || false;
+  const excKeys = ['shell', 'outside', 'git', 'terminal', 'write_file', 'delete_file', 'web_search', 'web_fetch', 'browser', 'ask_question'];
+  for (const key of excKeys) {
+    const el = document.getElementById('exc-' + key);
+    if (el) el.checked = ex[key] || false;
+  }
   const ci = document.getElementById('custom-instructions');
   if (ci && s.customInstructions !== undefined) ci.value = s.customInstructions;
   // Restore agent mode preference
@@ -1780,6 +1794,7 @@ async function validateAndSaveSettings() {
   settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
   settings.shortcuts = userShortcuts;
   settings.language = document.getElementById('settings-language').value;
+  settings.offlineMode = document.getElementById('offline-mode').checked;
   settings.seeThoughts = document.getElementById('see-thoughts').checked;
   settings.instantMode = document.getElementById('instant-mode').checked;
   settings.detailedActivity = document.getElementById('detailed-activity').checked;
@@ -1833,13 +1848,15 @@ async function validateAndSaveSettings() {
 
   await window.electronAPI.setAutoStart(document.getElementById('auto-start').checked);
 
+  enableOfflineMode(settings.offlineMode);
+
   updateProviderDropdown();
 
   saveBtn.disabled = false;
   saveBtn.textContent = 'Save';
 
   if (invalidResults.length === 0) {
-    document.getElementById('settings-modal').classList.add('hidden');
+    hideModal('settings-modal');
     if (document.getElementById('app-view').classList.contains('hidden')) showStartMenu();
     showNotification('ready', 'Florde Is Ready \u2014 Settings saved successfully', '\u2713');
   } else {
@@ -1850,6 +1867,39 @@ async function validateAndSaveSettings() {
     const saveBtn = document.getElementById('btn-save-settings');
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
     showNotification('error', 'Settings Error \u2014 ' + err.message, '\u2717');
+  }
+}
+
+// ==================== OFFLINE MODE ====================
+
+let _offlineMode = false;
+let _originalFetch = null;
+let _originalXHROpen = null;
+
+function enableOfflineMode(enabled) {
+  _offlineMode = enabled;
+  if (enabled) {
+    if (!_originalFetch) _originalFetch = window.fetch;
+    window.fetch = function(input, init) {
+      const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : '');
+      const allowed = url.startsWith('file://') || url.startsWith('data:') || url.startsWith('blob:') || url.includes('localhost') || url.includes('127.0.0.1') || url.includes('::1');
+      if (allowed) return _originalFetch.call(window, input, init);
+      logToTerminal('Blocked fetch (offline mode): ' + url.slice(0, 120), 'warn');
+      return Promise.reject(new Error('Offline mode: internet access blocked'));
+    };
+    if (!_originalXHROpen) _originalXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      const urlStr = typeof url === 'string' ? url : (url ? url.toString() : '');
+      const allowed = urlStr.startsWith('file://') || urlStr.startsWith('data:') || urlStr.startsWith('blob:') || urlStr.includes('localhost') || urlStr.includes('127.0.0.1') || urlStr.includes('::1');
+      if (!allowed) {
+        logToTerminal('Blocked XHR (offline mode): ' + urlStr.slice(0, 120), 'warn');
+        throw new Error('Offline mode: internet access blocked');
+      }
+      return _originalXHROpen.apply(this, arguments);
+    };
+  } else {
+    if (_originalFetch) { window.fetch = _originalFetch; _originalFetch = null; }
+    if (_originalXHROpen) { XMLHttpRequest.prototype.open = _originalXHROpen; _originalXHROpen = null; }
   }
 }
 
@@ -1960,6 +2010,7 @@ document.addEventListener('click', (e) => {
 function showModelInfo(providerId, modelName) {
   const cap = capabilityCache[providerId + ':' + modelName];
   const meta = MODEL_META[modelName];
+  document.querySelectorAll('.modal-overlay:not(#command-palette-overlay)').forEach(el => el.remove());
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   const caps = cap ? Object.entries(cap).filter(([k, v]) => typeof v === 'boolean').map(([k, v]) => '<span class="cap-badge ' + (v ? 'cap-yes' : 'cap-no') + '">' + k.replace(/_/g, ' ') + '</span>').join('') : '<span class="cap-badge cap-no">unknown</span>';
@@ -2058,6 +2109,29 @@ function blurMonaco() {
   if (ta) { ta.blur(); ta.setAttribute('tabindex', '-1'); }
 }
 
+// Debug: log which elements exist and their pointer-events state
+['btn-create-project','btn-cancel-new','btn-create-local','btn-cancel-local','new-project-modal','local-project-modal'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    const cs = getComputedStyle(el);
+    console.log(`DEBUG ${id}:`, {pointerEvents: cs.pointerEvents, zIndex: cs.zIndex, display: cs.display, cursor: cs.cursor, webkitAppRegion: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region')});
+  } else console.warn(`DEBUG: #${id} NOT FOUND`);
+});
+
+// Debug: highlight click target on document
+document.addEventListener('click', (e) => {
+  console.log('CLICK target:', e.target.id || e.target.tagName, e.target.className);
+}, true);
+
+// Debug: show hover target info
+document.addEventListener('mouseover', (e) => {
+  const el = e.target;
+  if (el.id && (el.id.includes('btn') || el.id.includes('modal'))) {
+    const cs = getComputedStyle(el);
+    console.log('HOVER on', el.id, {cursor: cs.cursor, pe: cs.pointerEvents, display: cs.display, region: cs.getPropertyValue('-webkit-app-region')});
+  }
+}, true);
+
 function showStartMenu() {
   document.getElementById('start-menu').classList.remove('hidden');
   document.getElementById('app-view').classList.add('hidden');
@@ -2086,6 +2160,7 @@ function getSortedProjects(projects) {
 
 async function loadProjectList() {
   const container = document.getElementById('project-items');
+  if (!window.electronAPI) { container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">App not ready</div>'; return; }
   const projects = getSortedProjects(await window.electronAPI.listProjects());
   container.innerHTML = '';
   document.getElementById('project-list').classList.remove('hidden');
@@ -2122,15 +2197,35 @@ async function loadProjectList() {
   }
 }
 
+function showModal(modalId) {
+  const el = document.getElementById(modalId);
+  if (!el) return;
+  el.classList.remove('hidden');
+}
+function hideModal(modalId) {
+  const el = document.getElementById(modalId);
+  if (!el) return;
+  el.classList.add('hidden');
+}
+function hideAllModals() {
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+  document.querySelectorAll('.modal-overlay:not(#command-palette-overlay)').forEach(el => el.remove());
+}
+
 document.getElementById('btn-start-new')?.addEventListener('click', () => {
-  document.getElementById('new-project-modal')?.classList.remove('hidden');
+  hideAllModals();
+  showModal('new-project-modal');
   const npn = document.getElementById('new-project-name');
   if (npn) { npn.value = ''; requestAnimationFrame(() => npn.focus()); }
   blurMonaco();
 });
 
+document.getElementById('new-project-modal')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideModal('new-project-modal');
+});
+
 document.getElementById('btn-cancel-new')?.addEventListener('click', () => {
-  document.getElementById('new-project-modal')?.classList.add('hidden');
+  hideModal('new-project-modal');
 });
 
 const TEMPLATES = {
@@ -2145,6 +2240,7 @@ function createProjectFromInput() {
   const name = document.getElementById('new-project-name').value.trim();
   const template = document.getElementById('project-template').value;
   if (!name) { alert('Please enter a project name'); return; }
+  if (!window.electronAPI) { alert('App not ready: electronAPI not available'); return; }
   window.electronAPI.createSandboxProject(name).then(async ok => {
     if (ok) {
       if (template && TEMPLATES[template]) {
@@ -2153,58 +2249,88 @@ function createProjectFromInput() {
         }
         logToTerminal(`Created project "${name}" from template`, 'success');
       }
-      document.getElementById('new-project-modal').classList.add('hidden');
+      hideModal('new-project-modal');
       WorkspaceManager.openProject(name, name);
     } else {
       alert('Project already exists');
     }
+  }).catch(err => {
+    alert('Failed to create project: ' + err.message);
   });
 }
 
-document.getElementById('btn-create-project').addEventListener('click', createProjectFromInput);
+const btnCreate = document.getElementById('btn-create-project');
+if (btnCreate) {
+  btnCreate.addEventListener('click', (e) => {
+    console.log('Create clicked');
+    createProjectFromInput();
+  });
+} else console.error('btn-create-project not found');
+
+const btnCancelNew = document.getElementById('btn-cancel-new');
+if (btnCancelNew) {
+  btnCancelNew.addEventListener('click', (e) => {
+    console.log('Cancel clicked');
+    hideModal('new-project-modal');
+  });
+} else console.error('btn-cancel-new not found');
 document.getElementById('new-project-name').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') createProjectFromInput();
 });
 
 // Local Project
 document.getElementById('btn-start-local').addEventListener('click', () => {
-  document.getElementById('local-project-modal').classList.remove('hidden');
+  hideAllModals();
+  showModal('local-project-modal');
   document.getElementById('local-project-name').value = '';
   document.getElementById('local-project-path').value = '';
   blurMonaco();
   requestAnimationFrame(() => document.getElementById('local-project-name').focus());
 });
 
-document.getElementById('btn-cancel-local').addEventListener('click', () => {
-  document.getElementById('local-project-modal').classList.add('hidden');
+document.getElementById('local-project-modal')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideModal('local-project-modal');
 });
+
+const btnCancelLocal = document.getElementById('btn-cancel-local');
+if (btnCancelLocal) {
+  btnCancelLocal.addEventListener('click', () => {
+    console.log('Local cancel clicked');
+    hideModal('local-project-modal');
+  });
+} else console.error('btn-cancel-local not found');
 
 document.getElementById('btn-browse-folder').addEventListener('click', async () => {
   const folder = await window.electronAPI.selectFolder();
   if (folder) document.getElementById('local-project-path').value = folder;
 });
 
-document.getElementById('btn-create-local').addEventListener('click', async () => {
-  const name = document.getElementById('local-project-name').value.trim();
-  const path = document.getElementById('local-project-path').value.trim();
-  if (!name) { alert('Please enter a project name'); return; }
-  if (!path) { alert('Please select a folder'); return; }
-  const result = await window.electronAPI.createLocalProject(name, path);
-  if (result.ok) {
-    document.getElementById('local-project-modal').classList.add('hidden');
-    WorkspaceManager.openProject(name, name);
-  } else if (result.error === 'exists') {
-    alert('Project already exists');
-  } else {
-    alert('Folder not found');
-  }
-});
+const btnCreateLocal = document.getElementById('btn-create-local');
+if (btnCreateLocal) {
+  btnCreateLocal.addEventListener('click', async () => {
+    console.log('Local create clicked');
+    const name = document.getElementById('local-project-name').value.trim();
+    const path = document.getElementById('local-project-path').value.trim();
+    if (!name) { alert('Please enter a project name'); return; }
+    if (!path) { alert('Please select a folder'); return; }
+    const result = await window.electronAPI.createLocalProject(name, path);
+    if (result.ok) {
+      hideModal('local-project-modal');
+      WorkspaceManager.openProject(name, name);
+    } else if (result.error === 'exists') {
+      alert('Project already exists');
+    } else {
+      alert('Folder not found');
+    }
+  });
+} else console.error('btn-create-local not found');
 
 document.getElementById('btn-start-open').addEventListener('click', loadProjectList);
 
 document.getElementById('btn-start-settings').addEventListener('click', () => {
-  document.getElementById('settings-modal').classList.remove('hidden');
-  document.getElementById('start-menu').classList.add('hidden');
+  hideAllModals();
+  showModal('settings-modal');
+  blurMonaco();
 });
 
 // ==================== PROJECT ====================
@@ -2263,17 +2389,19 @@ async function openProject(name) {
 // ==================== PLUGIN MARKETPLACE ====================
 
 document.getElementById('btn-start-plugins').addEventListener('click', () => {
-  document.getElementById('plugin-modal').classList.remove('hidden');
+  hideAllModals();
+  showModal('plugin-modal');
   if (pluginRegistry && pluginRegistry._loaded) renderPluginMarketplace();
 });
 
 document.getElementById('btn-plugins').addEventListener('click', () => {
-  document.getElementById('plugin-modal').classList.remove('hidden');
+  hideAllModals();
+  showModal('plugin-modal');
   if (pluginRegistry && pluginRegistry._loaded) renderPluginMarketplace();
 });
 
 document.getElementById('btn-close-plugins').addEventListener('click', () => {
-  document.getElementById('plugin-modal').classList.add('hidden');
+  hideModal('plugin-modal');
 });
 
 document.getElementById('plugin-search').addEventListener('input', (e) => {
@@ -2290,7 +2418,7 @@ document.getElementById('btn-plugin-docs').addEventListener('click', () => {
 });
 
 document.getElementById('btn-close-plugin-docs').addEventListener('click', () => {
-  document.getElementById('plugin-docs-modal').classList.add('hidden');
+  hideModal('plugin-docs-modal');
 });
 
 document.getElementById('plugin-docs-content').addEventListener('click', (e) => {
@@ -2314,7 +2442,7 @@ document.querySelectorAll('.docs-sidebar a').forEach(a => {
 // Close docs modal on overlay click
 document.getElementById('plugin-docs-modal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) {
-    document.getElementById('plugin-docs-modal').classList.add('hidden');
+    hideModal('plugin-docs-modal');
   }
 });
 
@@ -3128,12 +3256,12 @@ function renderAuditLog() {
 }
 
 document.getElementById('btn-audit-log').addEventListener('click', () => {
-  document.getElementById('audit-modal').classList.remove('hidden');
+  showModal('audit-modal');
   renderAuditLog();
 });
 
 document.getElementById('btn-close-audit').addEventListener('click', () => {
-  document.getElementById('audit-modal').classList.add('hidden');
+  hideModal('audit-modal');
 });
 
 document.getElementById('btn-audit-clear').addEventListener('click', () => {
@@ -3159,7 +3287,7 @@ document.getElementById('btn-git-commit').addEventListener('click', async () => 
   const result = await GitCore.commit(name, desc);
   if (result.ok) {
     logToTerminal('Git commit: ' + name, 'success');
-    document.getElementById('git-modal').classList.add('hidden');
+    hideModal('git-modal');
     document.getElementById('git-commit-name').value = '';
     document.getElementById('git-commit-desc').value = '';
     document.getElementById('git-diff-preview').textContent = '';
@@ -3170,7 +3298,7 @@ document.getElementById('btn-git-commit').addEventListener('click', async () => 
 });
 
 document.getElementById('btn-close-git').addEventListener('click', () => {
-  document.getElementById('git-modal').classList.add('hidden');
+  hideModal('git-modal');
 });
 
 document.getElementById('btn-git-commit-show').addEventListener('click', async () => {
@@ -3181,7 +3309,7 @@ document.getElementById('btn-git-commit-show').addEventListener('click', async (
   if (!status) { logToTerminal('Not a git repository or no changes', 'warn'); return; }
   const diff = await window.electronAPI.gitDiff(projectRoot);
   document.getElementById('git-diff-preview').textContent = diff || 'No changes to commit';
-  document.getElementById('git-modal').classList.remove('hidden');
+  showModal('git-modal');
   document.getElementById('git-commit-name').focus();
 });
 
@@ -3333,6 +3461,47 @@ async function executeToolCall(name, args) {
       if (!args || !args.question) throw new Error('question required for ask_question');
       showNotification('question', 'Florde Has a Question \u2014 Check the question dialog', '\u2753');
       return await askUserQuestion(args.question, args.choices);
+
+    case 'edit_file':
+      if (!args || !args.path || !args.oldString || args.newString === undefined) throw new Error('path, oldString, and newString required for edit_file');
+      if (!project) throw new Error('No project open');
+      addAuditEntry('local', 'Edit_File: ' + sanitizePath(args.path));
+      logToTerminal('Edit_File: ' + sanitizePath(args.path), 'info');
+      {
+        const efPath = sanitizePath(args.path);
+        let content = await window.electronAPI.projectReadFile(project, efPath);
+        const oldStr = args.oldString;
+        const newStr = args.newString;
+        if (args.replaceAll) {
+          if (!content.includes(oldStr)) {
+            throw new Error('oldString not found in ' + efPath);
+          }
+          content = content.split(oldStr).join(newStr);
+        } else {
+          const idx = content.indexOf(oldStr);
+          if (idx === -1) {
+            throw new Error('oldString not found in ' + efPath + '. Provide the exact text to replace.');
+          }
+          content = content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
+        }
+        await window.electronAPI.projectWriteFile(project, efPath, content);
+        const efIdx = openTabs.indexOf(efPath);
+        if (efIdx >= 0) {
+          tabContents[efPath] = content;
+          tabDirty[efPath] = false;
+          if (efIdx === activeTabIndex && editor) {
+            editor.setValue(content);
+          }
+        }
+        renderFileTree();
+        try {
+          const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
+          if (gitDir) {
+            await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'edit ' + efPath).replace(/"/g, "'") + '" 2>nul');
+          }
+        } catch {}
+        return 'File edited: ' + efPath;
+      }
 
     case 'rename_file':
       if (!args || !args.path || !args.new_path) throw new Error('path and new_path required for rename_file');
@@ -3623,7 +3792,7 @@ function getKnownCapabilities(providerId, model) {
     gemini: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: true, function_calling: true, custom_temperature: false, seed: false, context_caching: false },
     grok: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     opencode: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('big-pickle') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
-    ollama: { tool_calling: false, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    ollama: { tool_calling: undefined, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
     lmstudio: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     localai: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     openrouter: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('gpt') || m.includes('claude'), thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
@@ -3655,11 +3824,11 @@ function showPlanModal(plan) {
     editToggle.checked = false;
     editToggle.onchange = () => { textarea.readOnly = !editToggle.checked; };
     stepProgress.textContent = '';
-    modal.classList.remove('hidden');
+    showModal('plan-modal');
     const execute = document.getElementById('btn-plan-execute');
     const cancel = document.getElementById('btn-plan-cancel');
     const cleanup = () => {
-      modal.classList.add('hidden');
+      hideModal('plan-modal');
       editToggle.onchange = null;
       execute.removeEventListener('click', onExecute);
       cancel.removeEventListener('click', onCancel);
@@ -3967,13 +4136,19 @@ async function sendMessage(text) {
         resetRequestTimeout(timeoutMinutes, onTimeout);
 
         if (response.tool_calls && response.tool_calls.length > 0) {
-          messages.push({ role: 'assistant', content: response.content || null, tool_calls: response.tool_calls });
-          logToTerminal('AI is using tools: ' + response.tool_calls.map(t => t.function.name).join(', '), 'ai');
+          // Limit native tool calls per round to 5 to prevent flooding
+          const maxNativeToolsPerRound = 5;
+          const toolCallsToProcess = response.tool_calls.slice(0, maxNativeToolsPerRound);
+          if (response.tool_calls.length > maxNativeToolsPerRound) {
+            logToTerminal('Too many tool calls (' + response.tool_calls.length + '), processing first ' + maxNativeToolsPerRound, 'warn');
+          }
+          messages.push({ role: 'assistant', content: response.content || null, tool_calls: toolCallsToProcess });
+          logToTerminal('AI is using tools: ' + toolCallsToProcess.map(t => t.function.name).join(', '), 'ai');
 
-          const toolNames = response.tool_calls.map(t => t.function.name).join(', ');
+          const toolNames = toolCallsToProcess.map(t => t.function.name).join(', ');
           startAnim('*Running tools', ' (' + toolNames + ')*');
 
-          for (const toolCall of response.tool_calls) {
+          for (const toolCall of toolCallsToProcess) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
             const name = toolCall.function.name;
             const loopMsg = _detectToolLoop(name, args);
@@ -4042,14 +4217,20 @@ async function sendMessage(text) {
 
         const textCalls = parseTextToolCalls(finalContent);
         if (textCalls.length > 0) {
-          logToTerminal('AI is using text tools: ' + textCalls.map(t => t.function.name).join(', '), 'ai');
+          // Limit text tool calls per round to 3 to encourage individual messages
+          const maxTextToolsPerRound = 3;
+          const processedCalls = textCalls.slice(0, maxTextToolsPerRound);
+          if (textCalls.length > maxTextToolsPerRound) {
+            logToTerminal('Too many text tool calls (' + textCalls.length + '), processing first ' + maxTextToolsPerRound, 'warn');
+          }
+          logToTerminal('AI is using text tools: ' + processedCalls.map(t => t.function.name).join(', '), 'ai');
           messages.push({ role: 'assistant', content: finalContent });
-          const toolNames = textCalls.map(t => t.function.name).join(', ');
+          const toolNames = processedCalls.map(t => t.function.name).join(', ');
           startAnim('*Running tools', ' (' + toolNames + ')*');
 
           // strip tool brackets from display
           let displayContent = finalContent;
-          for (const toolCall of textCalls) {
+          for (const toolCall of processedCalls) {
             const args = toolCall.args;
             const name = toolCall.function.name;
             const loopMsg = _detectToolLoop(name, args);
@@ -4336,14 +4517,14 @@ function showDiffView(changes) {
 // ==================== SEARCH ====================
 
 document.getElementById('btn-search-toggle').addEventListener('click', () => {
-  document.getElementById('search-modal').classList.remove('hidden');
+  showModal('search-modal');
   document.getElementById('search-input').value = '';
   document.getElementById('search-results').innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">Type a query and press Enter to search</div>';
   setTimeout(() => document.getElementById('search-input').focus(), 100);
 });
 
 document.getElementById('btn-close-search').addEventListener('click', () => {
-  document.getElementById('search-modal').classList.add('hidden');
+  hideModal('search-modal');
 });
 
 document.getElementById('btn-cmd-palette')?.addEventListener('click', () => {
@@ -4615,11 +4796,12 @@ document.getElementById('btn-close-help').addEventListener('click', () => {
 // ==================== SETTINGS MODAL ====================
 
 document.getElementById('btn-settings').addEventListener('click', () => {
-  document.getElementById('settings-modal').classList.remove('hidden');
+  hideAllModals();
+  showModal('settings-modal');
 });
 
 document.getElementById('btn-close-settings').addEventListener('click', () => {
-  document.getElementById('settings-modal').classList.add('hidden');
+  hideModal('settings-modal');
   if (document.getElementById('app-view').classList.contains('hidden')) showStartMenu();
 });
 
@@ -4938,12 +5120,12 @@ function showAppConnectDialog(app) {
   document.getElementById('app-connect-desc').textContent = app.desc;
   document.getElementById('app-connect-key').value = '';
   document.getElementById('app-connect-help').textContent = app.tokenHelp;
-  document.getElementById('app-connect-modal').classList.remove('hidden');
+  showModal('app-connect-modal');
   setTimeout(() => document.getElementById('app-connect-key').focus(), 100);
 }
 
 function hideAppConnectDialog() {
-  document.getElementById('app-connect-modal').classList.add('hidden');
+  hideModal('app-connect-modal');
   _appsConnectingId = null;
 }
 
@@ -5231,7 +5413,8 @@ document.getElementById('auto-accept')?.addEventListener('change', (e) => {
 });
 
 // Auto-exception checkboxes
-['shell', 'outside', 'git', 'terminal'].forEach(key => {
+const allExcKeys = ['shell', 'outside', 'git', 'terminal', 'write_file', 'delete_file', 'web_search', 'web_fetch', 'browser', 'ask_question'];
+allExcKeys.forEach(key => {
   document.getElementById('exc-' + key)?.addEventListener('change', () => {
     const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
     const ex = s.autoExceptions || {};
@@ -5439,7 +5622,7 @@ function renderQuickResults(items) {
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', (e) => {
     if (e.target === m && !m.id.includes('diff') && !m.id.includes('question')) {
-      m.classList.add('hidden');
+      hideModal(m.id);
       const av = document.getElementById('app-view');
       if (av.classList.contains('hidden')) showStartMenu();
     }
@@ -5449,7 +5632,7 @@ document.querySelectorAll('.modal').forEach(m => {
 // Close modal-container on backdrop click
 document.addEventListener('click', (e) => {
   if (e.target === document.getElementById('modal-container')) {
-    document.getElementById('modal-container').classList.add('hidden');
+    hideModal('modal-container');
   }
 });
 

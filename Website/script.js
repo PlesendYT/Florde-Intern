@@ -106,10 +106,16 @@ document.getElementById('pricing-period-toggle')?.addEventListener('change', fun
   const period = this.checked ? 'yearly' : 'monthly';
   document.querySelectorAll('.toggle-label').forEach(l => l.classList.toggle('active', l.dataset.period === period));
   document.querySelectorAll('.price-amount').forEach(el => {
-    el.textContent = el.dataset[period];
+    const monthlyPrice = parseFloat(el.dataset.monthlyPrice) || 0;
+    if (period === 'yearly') {
+      const yearlyTotal = Math.round(monthlyPrice * 12 * 0.8);
+      el.textContent = '$' + yearlyTotal;
+    } else {
+      el.textContent = '$' + monthlyPrice;
+    }
   });
   document.querySelectorAll('.price-period').forEach(el => {
-    if (el.dataset[period]) el.textContent = el.dataset[period];
+    el.textContent = period === 'yearly' ? '/Year' : (el.dataset.monthlyPeriod || '/month');
   });
 });
 

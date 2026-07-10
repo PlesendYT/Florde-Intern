@@ -320,8 +320,7 @@ const PluginDocs = {
   },
 
   show() {
-    const modal = document.getElementById('plugin-docs-modal');
-    if (modal) modal.classList.remove('hidden');
+    showModal('plugin-docs-modal');
     this.showDoc('getting-started');
   },
 

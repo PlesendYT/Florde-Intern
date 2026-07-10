@@ -728,6 +728,42 @@ h2 {
 .faq-item h4 { font-size: 14px; margin-bottom: 4px; color: #fff; }
 .faq-item p { font-size: 13px; color: #999; }
 
+/* ==================== ENTERPRISE FORMS ==================== */
+#enterprise-forms { padding: 80px 0; }
+#enterprise-forms .container { max-width: 1000px; margin: 0 auto; padding: 0 20px; }
+.forms-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 40px; }
+.form-card {
+  background: #1a1a2e; border: 1px solid #2d2d4a; border-radius: 12px;
+  padding: 32px; position: relative; transition: transform 0.3s;
+}
+.form-card:hover { transform: translateY(-4px); border-color: rgba(124,58,237,0.3); }
+.form-lang-badge {
+  position: absolute; top: -10px; right: 20px;
+  background: linear-gradient(135deg, #7c3aed, #3b82f6); color: #fff;
+  font-size: 13px; font-weight: 700; padding: 4px 14px; border-radius: 8px;
+}
+.form-card h3 { font-size: 20px; margin-bottom: 12px; color: #e0e0e0; }
+.form-desc { font-size: 14px; color: #888; margin-bottom: 20px; line-height: 1.6; }
+.form-contents { list-style: none; padding: 0; margin: 0 0 24px; }
+.form-contents li { padding: 6px 0; font-size: 14px; color: #aaa; }
+.form-contents li::before { content: '\2713  '; color: #4caf50; }
+.form-actions { margin-top: auto; }
+.form-actions .btn { width: 100%; }
+.forms-info {
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.15);
+  border-radius: 12px; padding: 28px 32px;
+}
+.forms-info h3 { font-size: 18px; margin-bottom: 16px; color: #7c3aed; }
+.forms-instructions { padding-left: 20px; margin-bottom: 16px; }
+.forms-instructions li { font-size: 14px; color: #aaa; line-height: 1.8; }
+.forms-instructions a, .forms-note a { color: #7c3aed; text-decoration: none; }
+.forms-instructions a:hover, .forms-note a:hover { text-decoration: underline; }
+.forms-note { font-size: 14px; color: #888; }
+
+@media (max-width: 768px) {
+  .forms-grid { grid-template-columns: 1fr; }
+}
+
 /* FAQ Section */
 #faq .faq-list { max-width: 700px; margin: 0 auto; }
 #faq .faq-item { border: 1px solid #2d2d4a; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }

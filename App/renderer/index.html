@@ -333,7 +333,7 @@
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
-    <div class="modal-content" style="max-width:700px;min-width:550px;max-height:85vh;">
+    <div class="modal-content" style="max-width:700px;min-width:550px;">
       <h2>Settings</h2>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general">General</button>
@@ -369,6 +369,10 @@
             <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
             Launch Florde on Windows startup
           </label>
+          <label>
+            <input type="checkbox" id="offline-mode" style="width:auto;margin-right:0.5rem;" />
+            Offline Mode (block all internet access)
+          </label>
           <label for="settings-timeout" style="margin-top:0.8rem;">Timeout (minutes)</label>
           <input type="number" id="settings-timeout" value="30" min="1" max="360" />
           <label style="margin-top:0.8rem;">
@@ -376,11 +380,16 @@
             Auto Accept (automatisch Bestätigungen erteilen)
           </label>
           <div id="auto-exceptions-area" class="hidden" style="margin-top:0.5rem;padding:0.5rem;background:var(--bg3);border-radius:6px;">
-            <p style="margin:0 0 0.4rem;font-size:0.8rem;color:var(--text3);">Auto-Exceptions (immer Fragen):</p>
             <label><input type="checkbox" id="exc-shell" style="width:auto;margin-right:0.3rem;" /> Shell execution</label>
             <label><input type="checkbox" id="exc-outside" style="width:auto;margin-right:0.3rem;" /> Outside project access</label>
             <label><input type="checkbox" id="exc-git" style="width:auto;margin-right:0.3rem;" /> Git operations</label>
             <label><input type="checkbox" id="exc-terminal" style="width:auto;margin-right:0.3rem;" /> Terminal operations</label>
+            <label><input type="checkbox" id="exc-write_file" style="width:auto;margin-right:0.3rem;" /> Write files</label>
+            <label><input type="checkbox" id="exc-delete_file" style="width:auto;margin-right:0.3rem;" /> Delete files</label>
+            <label><input type="checkbox" id="exc-web_search" style="width:auto;margin-right:0.3rem;" /> Web search</label>
+            <label><input type="checkbox" id="exc-web_fetch" style="width:auto;margin-right:0.3rem;" /> Web fetch</label>
+            <label><input type="checkbox" id="exc-browser" style="width:auto;margin-right:0.3rem;" /> Browser controls</label>
+            <label><input type="checkbox" id="exc-ask_question" style="width:auto;margin-right:0.3rem;" /> Ask questions</label>
           </div>
         </div>
       </div>
@@ -389,7 +398,7 @@
       <div class="settings-tab-content" data-tab="providers">
         <div class="settings-form">
           <div class="provider-group">
-            <div class="provider-header" data-provider="openai">
+            <div class="provider-header collapsed" data-provider="openai">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="openai" /> <span class="toggle-slider"></span></label>
               <span>OpenAI</span>
               <span class="provider-toggle">&#9660;</span>
@@ -419,7 +428,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="deepseek">
+            <div class="provider-header collapsed" data-provider="deepseek">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="deepseek" /> <span class="toggle-slider"></span></label>
               <span>DeepSeek</span>
               <span class="provider-toggle">&#9660;</span>
@@ -440,7 +449,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="mistral">
+            <div class="provider-header collapsed" data-provider="mistral">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="mistral" /> <span class="toggle-slider"></span></label>
               <span>Mistral</span>
               <span class="provider-toggle">&#9660;</span>
@@ -467,7 +476,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="anthropic">
+            <div class="provider-header collapsed" data-provider="anthropic">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="anthropic" /> <span class="toggle-slider"></span></label>
               <span>Anthropic</span>
               <span class="provider-toggle">&#9660;</span>
@@ -490,7 +499,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="gemini">
+            <div class="provider-header collapsed" data-provider="gemini">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="gemini" /> <span class="toggle-slider"></span></label>
               <span>Gemini</span>
               <span class="provider-toggle">&#9660;</span>
@@ -513,7 +522,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="grok">
+            <div class="provider-header collapsed" data-provider="grok">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="grok" /> <span class="toggle-slider"></span></label>
               <span>Grok</span>
               <span class="provider-toggle">&#9660;</span>
@@ -534,7 +543,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="opencode">
+            <div class="provider-header collapsed" data-provider="opencode">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="opencode" /> <span class="toggle-slider"></span></label>
               <span>OpenCode</span>
               <span class="provider-toggle">&#9660;</span>
@@ -560,7 +569,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="ollama">
+            <div class="provider-header collapsed" data-provider="ollama">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="ollama" /> <span class="toggle-slider"></span></label>
               <span>Ollama</span>
               <span class="provider-toggle">&#9660;</span>
@@ -580,7 +589,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="lmstudio">
+            <div class="provider-header collapsed" data-provider="lmstudio">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="lmstudio" /> <span class="toggle-slider"></span></label>
               <span>LM Studio</span>
               <span class="provider-toggle">&#9660;</span>
@@ -594,7 +603,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="localai">
+            <div class="provider-header collapsed" data-provider="localai">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="localai" /> <span class="toggle-slider"></span></label>
               <span>LocalAI</span>
               <span class="provider-toggle">&#9660;</span>
@@ -608,7 +617,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="openrouter">
+            <div class="provider-header collapsed" data-provider="openrouter">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="openrouter" /> <span class="toggle-slider"></span></label>
               <span>OpenRouter</span>
               <span class="provider-toggle">&#9660;</span>
@@ -631,7 +640,7 @@
           </div>
 
           <div class="provider-group">
-            <div class="provider-header" data-provider="custom">
+            <div class="provider-header collapsed" data-provider="custom">
               <label class="provider-toggle-checkbox"><input type="checkbox" class="provider-enabled" data-provider="custom" /> <span class="toggle-slider"></span></label>
               <span>Custom OpenAI-compatible</span>
               <span class="provider-toggle">&#9660;</span>

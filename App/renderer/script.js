@@ -2977,6 +2977,8 @@ function renderChat() {
     const div = document.createElement('div');
     div.className = 'chat-msg ' + msg.role;
     if (msg._question) continue;
+    if (msg.role === 'tool') continue;
+    if (msg.role === 'assistant' && !msg.content && msg.tool_calls) continue;
     const label = msg.role === 'user' ? 'You' : 'Florde AI';
     const modelHint = msg.role === 'assistant' && msg.model ? ` \u00B7 ${msg.model}` : '';
     let msgHtml = '';
@@ -2988,7 +2990,7 @@ function renderChat() {
       msgHtml += '</div>';
     }
     msgHtml += formatMessageContent(msg.content);
-    div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" data-content="${encodeURIComponent(msg.content)}">Copy</button></div>` + msgHtml;
+    div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" data-content="${encodeURIComponent(msg.content || '')}">Copy</button></div>` + msgHtml;
     container.appendChild(div);
     if (msg.role === 'assistant' && msg.content) {
       const continueBtn = document.createElement('button');
@@ -3166,6 +3168,7 @@ function buildVisionMessages(baseMessages, images) {
 }
 
 function formatMessageContent(content) {
+  if (content == null) return '';
   const seeThoughts = document.getElementById('see-thoughts')?.checked !== false;
   let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (seeThoughts) {

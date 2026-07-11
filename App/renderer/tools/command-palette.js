@@ -43,15 +43,49 @@ const CommandPalette = {
 
   _renderAll() {
     const shortcuts = typeof getShortcuts !== 'undefined' ? getShortcuts() : {};
-    const html = Object.entries(shortcuts).map(([id, s]) =>
-      '<div class="cmd-palette-item" data-id="' + id + '"><span class="cmd-label">' + s.label + '</span><span class="cmd-keys">' + s.keys + '</span></div>'
-    ).join('');
+    const registry = typeof COMMAND_REGISTRY !== 'undefined' ? COMMAND_REGISTRY : {};
+
+    const allItems = [];
+    for (const [id, s] of Object.entries(shortcuts)) {
+      allItems.push({ id, label: s.label, keys: s.keys || '', category: 'Shortcuts', type: 'shortcut', ref: s });
+    }
+    for (const [id, c] of Object.entries(registry)) {
+      if (!shortcuts[id]) {
+        allItems.push({ id, label: c.label, keys: '', category: c.category || 'Commands', type: 'command', ref: c });
+      }
+    }
+
+    allItems.sort((a, b) => {
+      if (a.category < b.category) return -1;
+      if (a.category > b.category) return 1;
+      return a.label.localeCompare(b.label);
+    });
+
+    let html = '';
+    let lastCat = '';
+    for (const item of allItems) {
+      if (item.category !== lastCat) {
+        html += '<div class="cmd-palette-category">' + item.category + '</div>';
+        lastCat = item.category;
+      }
+      html += '<div class="cmd-palette-item" data-id="' + item.id + '" data-type="' + item.type + '">';
+      html += '<span class="cmd-label">' + item.label + '</span>';
+      html += '<span class="cmd-keys">' + item.keys + '</span>';
+      html += '</div>';
+    }
     this._list.innerHTML = html;
     this._list.querySelectorAll('.cmd-palette-item').forEach(el => {
       el.addEventListener('click', () => {
         this.hide();
-        const s = shortcuts[el.dataset.id];
-        if (s && s.fn) s.fn();
+        const id = el.dataset.id;
+        const type = el.dataset.type;
+        if (type === 'shortcut') {
+          const s = shortcuts[id];
+          if (s && s.fn) s.fn();
+        } else {
+          const c = registry[id];
+          if (c && c.fn) c.fn();
+        }
       });
     });
     const first = this._list.querySelector('.cmd-palette-item');

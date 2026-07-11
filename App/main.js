@@ -50,6 +50,23 @@ ipcMain.handle('show-notification', (event, title, body) => {
   n.show();
 });
 
+// ==================== FULLSCREEN ====================
+
+ipcMain.handle('set-fullscreen', (event, fs) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setFullScreen(fs);
+    return mainWindow.isFullScreen();
+  }
+  return false;
+});
+
+ipcMain.handle('is-full-screen', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow.isFullScreen();
+  }
+  return false;
+});
+
 // ==================== SETTINGS ====================
 
 ipcMain.handle('get-settings', () => {
@@ -538,6 +555,15 @@ ipcMain.handle('git-checkout', (event, repoPath, name) => {
   } catch (e) { return { ok: false, error: e.stderr || e.message }; }
 });
 
+ipcMain.handle('git:exec', (event, repoPath, args) => {
+  try {
+    const r = spawnSync('git', args, { cwd: repoPath, timeout: 15000, encoding: 'utf-8', shell: false });
+    return { stdout: r.stdout || '', stderr: r.stderr || '', error: r.error ? r.error.message : null };
+  } catch (e) {
+    return { stdout: '', stderr: e.stderr || '', error: e.message };
+  }
+});
+
 ipcMain.handle('git-log', (event, repoPath, limit = 50) => {
   const out = gitExec(repoPath, `git log --oneline --decorate -${limit} --pretty=format:"%H|%h|%an|%ae|%ad|%s" --date=short`);
   if (out.error) return [];
@@ -599,9 +625,11 @@ ipcMain.handle('open-external', async (event, url) => {
 
 // ==================== DOCKER ====================
 
-function dockerExec(args, timeout = 30000) {
+function dockerExec(args, timeout = 30000, cwd) {
   try {
-    const r = require('child_process').spawnSync('docker', args, { timeout, encoding: 'utf-8' });
+    const opts = { timeout, encoding: 'utf-8' };
+    if (cwd) opts.cwd = cwd;
+    const r = require('child_process').spawnSync('docker', args, opts);
     if (r.error) throw r.error;
     return { ok: true, stdout: r.stdout.trim(), stderr: r.stderr.trim() };
   } catch (e) {
@@ -653,6 +681,21 @@ ipcMain.handle('docker:restart', (event, id) => {
 ipcMain.handle('docker:logs', (event, id, lines = 50) => {
   const r = dockerExec(['logs', '--tail', String(lines), id]);
   return r.ok ? { ok: true, logs: r.stdout } : { ok: false, error: r.error };
+});
+
+ipcMain.handle('docker:compose-up', (event, filePath) => {
+  const dir = path.dirname(filePath);
+  return dockerExec(['compose', '-f', filePath, 'up', '-d'], 30000, dir);
+});
+
+ipcMain.handle('docker:compose-down', (event, filePath) => {
+  const dir = path.dirname(filePath);
+  return dockerExec(['compose', '-f', filePath, 'down'], 30000, dir);
+});
+
+ipcMain.handle('docker:compose-logs', (event, filePath) => {
+  const dir = path.dirname(filePath);
+  return dockerExec(['compose', '-f', filePath, 'logs', '--tail=100'], 30000, dir);
 });
 
 // ==================== TERMINAL ====================

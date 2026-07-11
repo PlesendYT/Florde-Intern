@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation - Florde</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .docs-container { max-width: 900px; margin: 0 auto; padding: 4rem 2rem; }
+    .docs-container h1 { font-size: 2.5rem; margin-bottom: 2rem; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .docs-container h2 { font-size: 1.5rem; margin: 2rem 0 1rem; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .docs-container h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: var(--text2); }
+    .docs-container p { margin: 0.5rem 0; line-height: 1.7; }
+    .docs-container ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+    .docs-container li { margin: 0.3rem 0; }
+    .docs-container code { background: var(--bg1); padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.9rem; }
+    .docs-container pre { background: var(--bg1); padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 1rem 0; }
+    .docs-sidebar { position: fixed; left: 2rem; top: 8rem; width: 200px; }
+    .docs-sidebar a { display: block; padding: 0.3rem 0; color: var(--text3); text-decoration: none; font-size: 0.85rem; }
+    .docs-sidebar a:hover { color: var(--accent); }
+    @media (max-width: 768px) { .docs-sidebar { display: none; } }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .feature-card { background: var(--bg1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .feature-card h4 { margin: 0 0 0.3rem; color: var(--accent); }
+    .feature-card p { margin: 0; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">Florde</a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="docs.html" class="active">Docs</a>
+        <a href="showcase.html">Showcase</a>
+        <a href="comparison.html">Comparison</a>
+        <a href="index.html#download" class="nav-cta">Download</a>
+        <button id="lang-toggle" title="Toggle Language">&#127760;</button>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="docs-container">
+    <aside class="docs-sidebar">
+      <a href="#getting-started">Getting Started</a>
+      <a href="#chat">Chat Interface</a>
+      <a href="#git">Git Integration</a>
+      <a href="#terminal">Terminal</a>
+      <a href="#docker">Docker</a>
+      <a href="#rag">Knowledge Base (RAG)</a>
+      <a href="#keybindings">Keybindings</a>
+      <a href="#plugins">Plugins</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </aside>
+    
+    <h1>Documentation</h1>
+    
+    <section id="getting-started">
+      <h2>Getting Started</h2>
+      <p>Florde is an AI-powered development environment. To get started:</p>
+      <ol>
+        <li><strong>Download</strong> Florde from the <a href="index.html#download">homepage</a></li>
+        <li><strong>Install</strong> using the installer for your platform</li>
+        <li><strong>Launch</strong> Florde and create a new project or open an existing one</li>
+        <li><strong>Configure</strong> an AI provider in Settings (Ollama, OpenAI, Anthropic, etc.)</li>
+        <li><strong>Start chatting</strong> with the AI to build your project</li>
+      </ol>
+    </section>
+
+    <section id="chat">
+      <h2>Chat Interface</h2>
+      <p>Florde's primary interface is a chat panel where you interact with an AI assistant. The AI can read/write files, run terminal commands, and manage your project.</p>
+      <h3>Writing Files</h3>
+      <p>When the AI writes files, they appear in the <strong>Diff Viewer</strong> at the bottom of the chat panel. You can review changes before they are applied.</p>
+      <h3>Code Execution</h3>
+      <p>The AI can execute code in the terminal panel. Commands are run in a sandboxed environment for security.</p>
+    </section>
+
+    <section id="git">
+      <h2>Git Integration</h2>
+      <p>Florde includes a full Git panel with:</p>
+      <ul>
+        <li><strong>Status</strong> — View changed files, stage/unstage changes</li>
+        <li><strong>Commit</strong> — Write commit messages and commit with a single click</li>
+        <li><strong>Branches</strong> — Create, switch, merge branches</li>
+        <li><strong>History</strong> — Browse commit history with search</li>
+        <li><strong>Graph</strong> — Visual branch graph showing all branches and merges</li>
+        <li><strong>GitHub</strong> — Push, pull, and manage remotes</li>
+      </ul>
+    </section>
+
+    <section id="terminal">
+      <h2>Terminal</h2>
+      <p>The integrated terminal supports:</p>
+      <ul>
+        <li><strong>Split panes</strong> — Split horizontally or vertically for multiple terminals</li>
+        <li><strong>Multiple shells</strong> — Each split runs its own shell process</li>
+        <li><strong>Docker integration</strong> — View and manage containers, images, and Docker Compose</li>
+      </ul>
+    </section>
+
+    <section id="docker">
+      <h2>Docker</h2>
+      <p>The Docker panel provides:</p>
+      <ul>
+        <li><strong>Containers</strong> — List, start, stop, restart containers</li>
+        <li><strong>Images</strong> — List and manage Docker images</li>
+        <li><strong>Compose</strong> — Manage Docker Compose projects with up/down/logs commands</li>
+      </ul>
+    </section>
+
+    <section id="rag">
+      <h2>Knowledge Base (RAG)</h2>
+      <p>Florde can index your project files and use them as context for AI responses. Enable the Knowledge Base panel to:</p>
+      <ul>
+        <li><strong>Auto-index</strong> — Automatically index project files on open</li>
+        <li><strong>Search</strong> — Search through indexed chunks</li>
+        <li><strong>Context injection</strong> — Relevant code is automatically included in AI prompts</li>
+        <li><strong>Configurable</strong> — Adjust chunk size, max chunks, include/exclude patterns</li>
+      </ul>
+    </section>
+
+    <section id="keybindings">
+      <h2>Keybindings</h2>
+      <p>Customize keyboard shortcuts in Settings → Keybindings. Click any binding to record a new key combination.</p>
+      <p>Default shortcuts:</p>
+      <ul>
+        <li><code>Ctrl+K</code> — Open Command Palette</li>
+        <li><code>Ctrl+Shift+P</code> — Toggle Notes Preview</li>
+        <li><code>F11</code> — Toggle Fullscreen</li>
+        <li><code>Ctrl+S</code> — Save current note</li>
+      </ul>
+    </section>
+
+    <section id="plugins">
+      <h2>Plugins</h2>
+      <p>Florde supports a plugin system for extending functionality. Open the Plugins panel from the start screen or settings to browse and install plugins.</p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <h3>Ollama Connection Refused</h3>
+      <p>If you see <code>net::ERR_CONNECTION_REFUSED</code> for <code>localhost:11434</code>, Ollama is not running. Start Ollama or configure a different provider.</p>
+      <h3>Buttons Not Clickable</h3>
+      <p>If titlebar buttons are unclickable, ensure the window frame is properly loaded. This can happen if the preload script fails.</p>
+      <h3>Git Not Found</h3>
+      <p>Ensure Git is installed and available in your system PATH.</p>
+    </section>
+  </div>
+
+  <script src="lang.js"></script>
+</body>
+</html>

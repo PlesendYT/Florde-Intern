@@ -10,22 +10,21 @@
   <nav class="navbar">
     <div class="nav-brand">Florde</div>
     <div class="nav-links">
-      <a href="#how-it-works">How It Works</a>
-      <a href="#features">Features</a>
-      <a href="#privacy">Privacy</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#install">Install</a>
-      <a href="#enterprise-forms">Enterprise</a>
-      <a href="#faq">FAQ</a>
+      <a href="index.html" lang-key="nav_home">Home</a>
+      <a href="docs.html" lang-key="nav_docs">Docs</a>
+      <a href="showcase.html" lang-key="nav_showcase">Showcase</a>
+      <a href="comparison.html" lang-key="nav_comparison">Comparison</a>
+      <a href="#pricing" lang-key="nav_download">Download</a>
       <a href="#" id="btn-signin" class="btn-nav">Sign In</a>
       <a href="#" id="btn-signup" class="btn-nav btn-nav-primary">Sign Up</a>
+      <button id="lang-toggle" title="Toggle Language">&#127760;</button>
     </div>
   </nav>
 
   <section id="hero">
     <div class="hero-content">
-      <h1>Build real software<br />from <span class="gradient-text">plain language</span></h1>
-      <p class="hero-sub">Describe your idea. Get a working project. Understand every line.</p>
+      <h1 lang-key="hero_title">Build real software<br />from <span class="gradient-text">plain language</span></h1>
+      <p class="hero-sub" lang-key="hero_sub">Describe your idea. Get a working project. Understand every line.</p>
       <div class="hero-cta">
         <a href="#pricing" class="btn btn-primary">Get Started</a>
         <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
@@ -56,7 +55,7 @@
   </section>
 
   <section id="features">
-    <h2>Everything You Need</h2>
+    <h2 lang-key="features_title">Everything You Need</h2>
     <div class="features-grid">
       <div class="feature-card">
         <h3>Multi-Provider AI</h3>
@@ -120,8 +119,8 @@
   <div id="download-modal" class="auth-modal hidden">
     <div class="auth-modal-content download-modal-content">
       <button class="auth-close" id="btn-close-download">&times;</button>
-      <h2>Download Florde</h2>
-      <p class="section-sub" id="download-detected-os">Select your operating system</p>
+      <h2 lang-key="download_title">Download Florde</h2>
+      <p class="section-sub" id="download-detected-os" lang-key="download_sub">Select your operating system</p>
       <div class="download-modal-grid">
         <button class="download-option" data-os="windows">
           <svg class="dl-icon" viewBox="0 0 448 512"><path fill="#00adef" d="M0 32h199.2v199.2H0V32zM248.8 32H448v199.2H248.8V32zM0 280.8h199.2V480H0V280.8zM248.8 280.8H448V480H248.8V280.8z"/></svg>
@@ -415,5 +414,6 @@
   </footer>
 
   <script src="script.js"></script>
+  <script src="lang.js"></script>
 </body>
 </html>

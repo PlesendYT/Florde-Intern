@@ -1,0 +1,17 @@
+const COMMAND_REGISTRY = {
+  'settings.open': { label: 'Open Settings', category: 'Settings', fn: () => document.getElementById('btn-start-settings')?.click() },
+  'project.new': { label: 'New Project', category: 'Project', fn: () => document.getElementById('btn-start-new')?.click() },
+  'project.open': { label: 'Open Local Project', category: 'Project', fn: () => document.getElementById('btn-start-local')?.click() },
+  'terminal.toggle': { label: 'Toggle Terminal', category: 'Terminal', fn: () => document.getElementById('btn-terminal-toggle')?.click() },
+  'docker.toggle': { label: 'Toggle Docker', category: 'Docker', fn: () => document.getElementById('btn-docker-toggle')?.click() },
+  'git.toggle': { label: 'Toggle Git Panel', category: 'Git', fn: () => document.getElementById('btn-git-toggle')?.click() },
+  'fullscreen.toggle': { label: 'Toggle Fullscreen', category: 'View', fn: () => { const btn = document.getElementById('btn-fullscreen'); if (btn) btn.click(); } },
+  'theme.cycle': { label: 'Cycle Theme', category: 'View', fn: () => document.getElementById('btn-theme-toggle')?.click() },
+  'diff.toggle': { label: 'Toggle Diff Viewer', category: 'View', fn: () => document.getElementById('btn-toggle-diff')?.click() },
+  'chat.clear': { label: 'Clear Chat', category: 'Chat', fn: () => { if (confirm('Clear chat history?')) { document.getElementById('chat-messages').innerHTML = ''; chatHistory = []; } } },
+  'session.save': { label: 'Save Session', category: 'Project', fn: () => { if (typeof saveCurrentSession === 'function') saveCurrentSession(); } },
+  'project.switch': { label: 'Switch Project', category: 'Project', fn: () => { hideAllModals(); document.getElementById('btn-start-new')?.click(); } },
+  'browser.toggle': { label: 'Toggle Browser', category: 'View', fn: () => document.getElementById('btn-browser-toggle')?.click() },
+  'plugins.open': { label: 'Open Plugins', category: 'Settings', fn: () => document.getElementById('btn-start-plugins')?.click() },
+  'audit.show': { label: 'Show Audit Log', category: 'View', fn: () => document.getElementById('btn-audit-log')?.click() },
+};

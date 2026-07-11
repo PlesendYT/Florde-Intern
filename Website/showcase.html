@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Showcase - Florde</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .showcase-container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+    .showcase-container h1 { font-size: 2.5rem; margin-bottom: 2rem; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .showcase-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
+    .showcase-card { background: var(--bg1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: transform 0.2s; }
+    .showcase-card:hover { transform: translateY(-2px); }
+    .showcase-card-img { height: 180px; background: linear-gradient(135deg, var(--bg2), var(--bg1)); display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 3rem; }
+    .showcase-card-body { padding: 1rem; }
+    .showcase-card-body h3 { margin: 0 0 0.5rem; color: var(--accent); }
+    .showcase-card-body p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+    .showcase-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .showcase-tag { padding: 0.15rem 0.5rem; background: var(--bg2); border: 1px solid var(--border2); border-radius: 4px; font-size: 0.7rem; color: var(--text3); }
+    .showcase-screenshot { width: 100%; height: 180px; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">Florde</a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="showcase.html" class="active">Showcase</a>
+        <a href="comparison.html">Comparison</a>
+        <a href="index.html#download" class="nav-cta">Download</a>
+        <button id="lang-toggle" title="Toggle Language">&#127760;</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="showcase-container">
+    <h1 lang-key="showcase_title">What You Can Build</h1>
+    <p lang-key="showcase_sub" style="margin-bottom:2rem;color:var(--text3);">Florde helps you build anything — from web apps to CLI tools.</p>
+
+    <div class="showcase-grid">
+      <div class="showcase-card">
+        <div class="showcase-card-img">🌐</div>
+        <div class="showcase-card-body">
+          <h3>Web Application</h3>
+          <p>Build a full-stack web app with React, Node.js, and a database. Florde handles file creation, routing, and boilerplate.</p>
+          <div class="showcase-tags"><span class="showcase-tag">React</span><span class="showcase-tag">Node.js</span><span class="showcase-tag">PostgreSQL</span></div>
+        </div>
+      </div>
+
+      <div class="showcase-card">
+        <div class="showcase-card-img">🐍</div>
+        <div class="showcase-card-body">
+          <h3>Python Data Pipeline</h3>
+          <p>Create data processing pipelines with Python, Pandas, and visualization libraries.</p>
+          <div class="showcase-tags"><span class="showcase-tag">Python</span><span class="showcase-tag">Pandas</span><span class="showcase-tag">Matplotlib</span></div>
+        </div>
+      </div>
+
+      <div class="showcase-card">
+        <div class="showcase-card-img">📱</div>
+        <div class="showcase-card-body">
+          <h3>CLI Tool</h3>
+          <p>Build command-line interfaces with argument parsing, file I/O, and colorful output.</p>
+          <div class="showcase-tags"><span class="showcase-tag">Go</span><span class="showcase-tag">Rust</span><span class="showcase-tag">CLI</span></div>
+        </div>
+      </div>
+
+      <div class="showcase-card">
+        <div class="showcase-card-img">🐳</div>
+        <div class="showcase-card-body">
+          <h3>Dockerized Microservices</h3>
+          <p>Generate Docker Compose configurations for multi-service applications with Florde's Docker integration.</p>
+          <div class="showcase-tags"><span class="showcase-tag">Docker</span><span class="showcase-tag">Compose</span><span class="showcase-tag">Microservices</span></div>
+        </div>
+      </div>
+
+      <div class="showcase-card">
+        <div class="showcase-card-img">🗄️</div>
+        <div class="showcase-card-body">
+          <h3>Database Schema</h3>
+          <p>Design and generate database schemas, migrations, and seed data with AI assistance.</p>
+          <div class="showcase-tags"><span class="showcase-tag">SQL</span><span class="showcase-tag">Migrations</span><span class="showcase-tag">Schema</span></div>
+        </div>
+      </div>
+
+      <div class="showcase-card">
+        <div class="showcase-card-img">📊</div>
+        <div class="showcase-card-body">
+          <h3>Dashboard</h3>
+          <p>Create interactive dashboards with charts, tables, and real-time data updates.</p>
+          <div class="showcase-tags"><span class="showcase-tag">Charts</span><span class="showcase-tag">D3.js</span><span class="showcase-tag">Dashboard</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="lang.js"></script>
+</body>
+</html>

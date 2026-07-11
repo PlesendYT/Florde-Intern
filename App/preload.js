@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   selectNewFolder: () => ipcRenderer.invoke('select-new-folder'),
 
+  setFullscreen: (fs) => ipcRenderer.invoke('set-fullscreen', fs),
+  isFullScreen: () => ipcRenderer.invoke('is-full-screen'),
+
   getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
   setAutoStart: (e) => ipcRenderer.invoke('set-auto-start', e),
 
@@ -65,6 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   gitBlame: (p, f) => ipcRenderer.invoke('git-blame', p, f),
   gitPush: (p, r, b) => ipcRenderer.invoke('git-push', p, r, b),
   gitPull: (p, r, b) => ipcRenderer.invoke('git-pull', p, r, b),
+  gitExec: (p, args) => ipcRenderer.invoke('git:exec', p, args),
 
   showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body),
 
@@ -104,6 +108,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     restart: (id) => ipcRenderer.invoke('docker:restart', id),
     logs: (id, lines) => ipcRenderer.invoke('docker:logs', id, lines),
     info: () => ipcRenderer.invoke('docker:info'),
+    composeUp: (file) => ipcRenderer.invoke('docker:compose-up', file),
+    composeDown: (file) => ipcRenderer.invoke('docker:compose-down', file),
+    composeLogs: (file) => ipcRenderer.invoke('docker:compose-logs', file),
   },
 
   terminal: {

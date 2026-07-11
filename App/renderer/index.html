@@ -35,15 +35,6 @@
       <div class="settings-form">
         <label for="new-project-name">Project Name</label>
         <input type="text" id="new-project-name" placeholder="my-project" autofocus />
-        <label for="project-template">Template (optional)</label>
-        <select id="project-template">
-          <option value="">Blank project</option>
-          <option value="web-app">Web App (HTML/CSS/JS)</option>
-          <option value="python-script">Python Script</option>
-          <option value="node-api">Node.js API</option>
-          <option value="react-app">React App</option>
-          <option value="cli-tool">CLI Tool (Python)</option>
-        </select>
       </div>
       <div class="modal-actions">
         <button id="btn-create-project" class="btn btn-primary">Create</button>
@@ -127,8 +118,14 @@
             <div class="dev-utils-footer">Online only</div>
           </div>
         </div>
+        <button id="btn-toggle-diff" title="Toggle Diff Viewer" class="hidden">&#128196;</button>
         <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
+        <button id="btn-layout-snap" title="Snap Layout" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.7rem;border-radius:5px;cursor:pointer;font-size:0.8rem;opacity:0.5;">&#8862;</button>
+        <button id="btn-fullscreen" title="Toggle Fullscreen (F11)">&#9974;</button>
         <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
+        <button id="btn-todo-toggle" title="Toggle To-Do List" class="titlebar-btn">&#9745;</button>
+        <button id="btn-notes-toggle" title="Toggle Notes" class="titlebar-btn">&#128221;</button>
+        <button id="btn-rag-toggle" title="Toggle Knowledge Base" class="titlebar-btn">&#129504;</button>
         <button id="btn-plugins" title="Plugin Marketplace">&#9889;</button>
         <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
@@ -171,15 +168,28 @@
             <span>Source Control</span>
             <button id="btn-git-panel-refresh" title="Refresh" class="sidebar-btn">&#8635;</button>
           </div>
+          <div style="display:flex;gap:0.4rem;padding:0.2rem 0.5rem;align-items:center;">
+            <input type="text" id="git-search-input" placeholder="Search commits..." style="flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border2);color:var(--text);padding:0.3rem 0.5rem;border-radius:4px;font-size:0.8rem;max-width:200px;" />
+            <select id="git-search-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:0.2rem;font-size:0.8rem;">
+              <option value="message">Message</option>
+              <option value="author">Author</option>
+              <option value="file">File</option>
+              <option value="content">Content</option>
+            </select>
+          </div>
           <div class="git-panel-header">
             <span class="git-branch-name">master</span>
             <span class="git-changes-count">0 changes</span>
           </div>
           <div id="git-changes-list" class="git-changes-list"></div>
+          <div id="git-graph" class="hidden" style="border-top:1px solid var(--border);overflow:auto;">
+            <canvas id="git-graph-canvas" style="width:100%;height:400px;"></canvas>
+          </div>
           <div class="git-panel-actions">
             <button id="btn-git-panel-commit" class="btn btn-sm btn-primary">Commit</button>
             <button id="btn-git-panel-branches" class="btn btn-sm btn-secondary">Branches</button>
             <button id="btn-git-panel-history" class="btn btn-sm btn-secondary">History</button>
+            <button id="btn-git-panel-graph" class="btn btn-sm btn-secondary">Graph</button>
             <button id="btn-git-panel-sync" class="btn btn-sm btn-secondary">Sync</button>
           </div>
         </div>
@@ -239,6 +249,21 @@
               </div>
             </div>
           </div>
+
+        <!-- Diff Viewer -->
+        <div id="diff-viewer" class="hidden">
+          <div id="tab-group-bar">
+            <span class="tab-group-label">Groups:</span>
+            <div id="tab-groups-container" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+            <button id="btn-add-tab-group" title="New Group">+</button>
+          </div>
+          <div id="diff-viewer-header">
+            <span id="diff-viewer-badge">&#128274; Read-Only View</span>
+            <div id="diff-viewer-tabs"></div>
+            <button id="btn-close-diff" title="Close Diff Viewer">&#10006;</button>
+          </div>
+          <div id="diff-viewer-content"></div>
+        </div>
         </div>
 
         <!-- Docker Panel -->
@@ -246,6 +271,7 @@
           <div id="docker-tab-bar">
             <div class="docker-tab active" data-docker-panel="containers">Containers</div>
             <div class="docker-tab" data-docker-panel="images">Images</div>
+            <div class="docker-tab" data-docker-panel="compose">Compose</div>
             <div class="docker-tab" data-docker-panel="logs">Logs</div>
             <div style="flex:1"></div>
             <span id="docker-status" class="docker-status" title="Docker status">&#9679;</span>
@@ -254,19 +280,25 @@
           </div>
           <div id="docker-containers" class="docker-panel-content"></div>
           <div id="docker-images" class="docker-panel-content hidden"></div>
+          <div id="docker-compose" class="docker-panel-content hidden">
+            <div id="docker-compose-files"></div>
+            <div id="docker-compose-output" style="margin-top:0.5rem;font-family:monospace;font-size:0.8rem;white-space:pre-wrap;color:var(--text2);"></div>
+          </div>
           <div id="docker-logs" class="docker-panel-content hidden"><pre id="docker-log-content" class="docker-log-content"></pre></div>
         </div>
 
         <!-- Terminal / Output Panel -->
         <div id="terminal-panel" class="hidden">
-          <div id="terminal-tab-bar">
-            <div class="terminal-tab active" data-id="1">Terminal 1</div>
-            <button id="btn-new-terminal" title="New Terminal">+</button>
+          <div id="terminal-toolbar">
+            <button id="btn-terminal-split-h" title="Split Horizontal">&#9472;</button>
+            <button id="btn-terminal-split-v" title="Split Vertical">&#9474;</button>
+            <span id="terminal-active-label" style="font-size:0.75rem;color:var(--text3);margin-left:0.5rem;"></span>
             <div style="flex:1"></div>
             <div id="terminal-output-tab" class="terminal-tab" data-panel="log">Log</div>
             <button id="btn-terminal-clear" class="terminal-clear" title="Clear log">Clear</button>
             <button id="btn-terminal-minimize" class="terminal-clear" title="Minimize terminal">&#8212;</button>
           </div>
+          <div id="terminal-splits"></div>
           <div id="terminal-container"></div>
           <div id="terminal-output" class="hidden"></div>
         </div>
@@ -337,6 +369,7 @@
       <h2>Settings</h2>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general">General</button>
+        <button class="settings-tab" data-tab="keybindings">Keybindings</button>
         <button class="settings-tab" data-tab="providers">AI Providers</button>
         <button class="settings-tab" data-tab="apps">Connected Apps</button>
         <button class="settings-tab" data-tab="appearance">Appearance</button>
@@ -394,6 +427,12 @@
             <label><input type="checkbox" id="exc-ask_question" style="width:auto;margin-right:0.3rem;" /> Ask questions</label>
           </div>
         </div>
+      </div>
+
+      <!-- Keybindings Tab -->
+      <div class="settings-tab-content" data-tab="keybindings">
+        <div id="keybindings-list" style="max-height:50vh;overflow-y:auto;"></div>
+        <button id="btn-reset-keybindings" class="btn btn-secondary" style="margin-top:1rem;">Reset to Defaults</button>
       </div>
 
       <!-- Providers Tab -->
@@ -876,11 +915,80 @@
     </div>
   </div>
 
+  <!-- To-Do Panel -->
+  <div id="todo-panel" class="hidden">
+    <div id="todo-panel-header">
+      <span>To-Do List</span>
+      <button id="btn-todo-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+    </div>
+    <div id="todo-input-row">
+      <input type="text" id="todo-input" placeholder="Add a task..." />
+    </div>
+    <div id="todo-list"></div>
+    <div id="todo-actions">
+      <select id="todo-filter">
+        <option value="all">All</option>
+        <option value="active">Active</option>
+        <option value="done">Done</option>
+      </select>
+      <button id="btn-todo-clear-done">Clear Done</button>
+    </div>
+  </div>
+
+  <!-- Notes Panel -->
+  <div id="notes-panel" class="hidden">
+    <div id="notes-panel-header">
+      <span>Markdown Notes</span>
+      <button id="btn-notes-new" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:1rem;">+</button>
+      <button id="btn-notes-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+    </div>
+    <div id="notes-sidebar">
+      <div id="notes-list"></div>
+    </div>
+    <div id="notes-editor-area">
+      <textarea id="notes-editor" placeholder="Write markdown here..."></textarea>
+      <div id="notes-preview"></div>
+    </div>
+  </div>
+
+  <!-- RAG Panel -->
+  <div id="rag-panel" class="hidden">
+    <div id="rag-panel-header">
+      <span>Knowledge Base (RAG)</span>
+      <button id="btn-rag-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+    </div>
+    <div id="rag-status-row">
+      <span id="rag-status">Idle</span>
+      <button id="btn-rag-reindex">Re-index</button>
+      <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
+        <input type="checkbox" id="rag-auto" checked /> Auto
+      </label>
+    </div>
+    <div id="rag-stats">
+      <span id="rag-file-count">0 files</span>
+      <span id="rag-chunk-count">0 chunks</span>
+      <span id="rag-token-estimate">0 tokens</span>
+    </div>
+    <div id="rag-search-row">
+      <input type="text" id="rag-search" placeholder="Search knowledge base..." />
+    </div>
+    <div id="rag-results"></div>
+    <div id="rag-config">
+      <label>Max chunks: <input type="number" id="rag-max-chunks" value="5" min="1" max="20" style="width:50px;" /></label>
+      <label>Chunk size: <input type="number" id="rag-chunk-size" value="500" min="100" max="2000" style="width:60px;" /></label>
+      <label>Include: <input type="text" id="rag-include" value="*.{js,ts,jsx,tsx,py,rs,go,java,c,cpp,h,hpp,md,txt,json,yaml,yml,toml,xml,html,css,scss}" /></label>
+      <label>Exclude: <input type="text" id="rag-exclude" value="node_modules,dist,build,.git,venv,__pycache__" /></label>
+    </div>
+  </div>
+
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
   <script src="plugin-system.js"></script>
   <script src="mcp-client.js"></script>
+  <script src="time-tracking.js"></script>
+  <script src="tools/command-registry.js"></script>
+  <script src="tools/keybindings.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

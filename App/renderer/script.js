@@ -3238,7 +3238,9 @@ function toggleSendStop() {
     _stoppedByUser = true;
     _isRequestActive = false;
     resetSendButton();
-    if (_requestAborter) { _requestAborter.abort(); _requestAborter = null; }
+    const aborter = _requestAborter;
+    _requestAborter = null;
+    if (aborter) aborter.abort();
     if (typeof BrowserPanel !== 'undefined' && BrowserPanel.abortAll) BrowserPanel.abortAll();
     return;
   }
@@ -3958,6 +3960,7 @@ async function sendMessage(text) {
   const input = document.getElementById('chat-input');
   if (!text) text = input.value.trim();
   if (!text) return;
+  if (_isRequestActive) { logToTerminal('Request already in progress. Stop it first or wait.', 'warn'); return; }
 
   // Reset sources tracking for this request
   window._aiSources = [];
@@ -3978,6 +3981,8 @@ async function sendMessage(text) {
   if (!providers[provider]) { logToTerminal('Please configure API key for ' + provider + ' in Settings', 'error'); return; }
 
   // Toggle button to Stop mode
+  const _currentAborter = new AbortController();
+  _requestAborter = _currentAborter;
   _isRequestActive = true;
   const sendBtn = document.getElementById('btn-send');
   sendBtn.textContent = 'Stop';
@@ -4085,7 +4090,7 @@ async function sendMessage(text) {
     let _timedOut = false;
     const onTimeout = () => {
       _timedOut = true;
-      if (_requestAborter) _requestAborter.abort();
+      if (_requestAborter === _currentAborter && _requestAborter) _requestAborter.abort();
       stopAnim();
       cancelRequestWithTimeout('Request cancelled after ' + timeoutMinutes + ' minutes.');
       logToTerminal('Request timed out after ' + timeoutMinutes + ' minutes', 'error');
@@ -4413,7 +4418,7 @@ async function sendMessage(text) {
   } finally {
     clearActivity();
     _isRequestActive = false;
-    _requestAborter = null;
+    if (_requestAborter === _currentAborter) _requestAborter = null;
     resetSendButton();
   }
 }

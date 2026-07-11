@@ -198,10 +198,9 @@ function getActiveTools() {
 
 function buildToolReminder() {
   const tools = getActiveTools();
-  if (!tools || tools.length === 0) return 'Du hast keine Tools verfügbar.';
+  if (!tools || tools.length === 0) return 'Keine Tools verfügbar.';
   const names = tools.map(t => t.function?.name).filter(Boolean);
-  const lines = names.map(n => '- ' + n);
-  return 'Du hast diese Tools:\n' + lines.join('\n') + '\n\nRegeln:\n- Wenn du ein Tool brauchst: antworte NUR mit dem Tool-Call (KEIN Text)\n- Wenn du fertig bist: antworte NUR mit Text (KEIN Tool-Call)\n- Du darfst mehrere Tools nacheinander benutzen, aber immer nur EINS pro Antwort';
+  return 'Tools: ' + names.join(', ') + '\nRegel: NUR Tool-Call ODER NUR Text, nie beides. Max 1 Tool-Call pro Antwort.';
 }
 
 window.__updateTools = function() {
@@ -4193,10 +4192,7 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        const reminder = { role: 'user', content: buildToolReminder() };
-        const msgsWithReminder = [reminder, ...messages];
-
-        const response = await fetchWithBackoff(() => prov.sendWithTools(msgsWithReminder, getActiveTools()));
+        const response = await fetchWithBackoff(() => prov.sendWithTools(messages, getActiveTools()));
         if (_timedOut) return;
         stopAnim();
         resetRequestTimeout(timeoutMinutes, onTimeout);
@@ -4209,7 +4205,7 @@ async function sendMessage(text) {
           const hasText = response.content && response.content.trim().length > 0;
           if (hasText) {
             messages.push({ role: 'assistant', content: response.content });
-            messages.push({ role: 'user', content: 'Bitte sende NUR den Tool-Call oder NUR Text, nicht beides. Wenn du ein Tool brauchst, antworte nur mit dem Tool-Call (kein Text).' });
+            messages.push({ role: 'user', content: 'Fehler: entweder Tool-Call ODER Text, nicht beides.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
@@ -4250,7 +4246,7 @@ async function sendMessage(text) {
           } catch (err) {
             result = 'Error: ' + err.message;
           }
-          messages.push(getToolResultMsg(toolCall.id, name, result));
+          messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
 
           chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider });
           chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
@@ -4263,7 +4259,7 @@ async function sendMessage(text) {
           const hasCodeBlock = /```[\s\S]*?```/.test(text);
           if (hasCodeBlock) {
             messages.push({ role: 'assistant', content: text });
-            messages.push({ role: 'user', content: 'Du hast Code in der Chat-Antwort ausgegeben, statt write_file/edit_file zu benutzen. Bitte benutze das entsprechende Tool, um die Datei zu schreiben oder zu bearbeiten. Danach kannst du deine Antwort als Text geben.' });
+            messages.push({ role: 'user', content: 'Code in Chat statt write_file/edit_file. Benutze das passende Tool.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
@@ -4342,7 +4338,7 @@ async function sendMessage(text) {
             } catch (err) {
               result = 'Error: ' + err.message;
             }
-            messages.push(getToolResultMsg(toolCall.id, name, result));
+            messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
             // Audit trail
             if (_planSteps) {
               chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });

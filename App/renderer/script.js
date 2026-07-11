@@ -196,6 +196,14 @@ function getActiveTools() {
   return [...baseTools, ...appTools, ...pluginTools, ...mcpTools];
 }
 
+function buildToolReminder() {
+  const tools = getActiveTools();
+  if (!tools || tools.length === 0) return 'Du hast keine Tools verfügbar.';
+  const names = tools.map(t => t.function?.name).filter(Boolean);
+  const lines = names.map(n => '- ' + n);
+  return 'Du hast diese Tools:\n' + lines.join('\n') + '\n\nRegeln:\n- Wenn du ein Tool brauchst: antworte NUR mit dem Tool-Call (KEIN Text)\n- Wenn du fertig bist: antworte NUR mit Text (KEIN Tool-Call)\n- Du darfst mehrere Tools nacheinander benutzen, aber immer nur EINS pro Antwort';
+}
+
 window.__updateTools = function() {
   if (typeof pluginRegistry !== 'undefined' && pluginRegistry._loaded) {
     if (document.getElementById('marketplace-list')) renderPluginMarketplace();
@@ -1629,7 +1637,14 @@ async function loadSettings() {
     const radio = document.querySelector('.layout-option input[value="' + s.layout + '"]');
     if (radio) radio.checked = true;
   }
-  if (s.shortcuts) userShortcuts = s.shortcuts;
+  if (s.shortcuts) {
+    // Migration alter Shortcuts zu KeybindManager
+    if (typeof KeybindManager !== 'undefined') {
+      for (const [id, sc] of Object.entries(s.shortcuts)) {
+        KeybindManager.setBinding(id, sc.keys);
+      }
+    }
+  }
   // Add temperature sliders to each provider body
   const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of tempProviders) {
@@ -1811,7 +1826,6 @@ async function validateAndSaveSettings() {
   }
   settings.theme = document.getElementById('settings-theme').value;
   settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
-  settings.shortcuts = userShortcuts;
   settings.language = document.getElementById('settings-language').value;
   settings.offlineMode = document.getElementById('offline-mode').checked;
   settings.seeThoughts = document.getElementById('see-thoughts').checked;
@@ -4724,10 +4738,8 @@ const DEFAULT_SHORTCUTS = {
   showHelp: { label: 'Toggle shortcuts help', keys: '?', ctrl: false, key: '?', shift: false, alt: false, fn: () => { renderHelpShortcuts(); document.getElementById('help-modal').classList.toggle('hidden'); } },
 };
 
-let userShortcuts = {};
-
 function getShortcuts() {
-  return { ...DEFAULT_SHORTCUTS, ...userShortcuts };
+  return { ...DEFAULT_SHORTCUTS };
 }
 
 function shortcutMatch(e, s) {
@@ -4739,79 +4751,25 @@ function shortcutMatch(e, s) {
   return (e.ctrlKey || e.metaKey) === s.ctrl && e.key === s.key && e.shiftKey === s.shift && e.altKey === s.alt;
 }
 
-function renderShortcutsEditor() {
-  const container = document.getElementById('shortcuts-list');
-  if (!container) return;
-  const shortcuts = getShortcuts();
-  container.innerHTML = Object.entries(shortcuts).map(([id, s]) => `
-    <div class="shortcut-editor-row" data-id="${id}">
-      <span class="shortcut-label">${s.label}</span>
-      <button class="shortcut-record-btn" data-id="${id}">${s.keys}</button>
-      <button class="shortcut-reset-btn" data-id="${id}" title="Reset to default">↺</button>
-    </div>
-  `).join('');
-
-  container.querySelectorAll('.shortcut-record-btn').forEach(btn => {
-    let recording = false;
-    btn.addEventListener('click', () => {
-      recording = true;
-      btn.classList.add('recording');
-      btn.textContent = 'Press keys...';
-      const handler = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const parts = [];
-        if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
-        if (e.shiftKey) parts.push('Shift');
-        if (e.altKey) parts.push('Alt');
-        let key = e.key;
-        if (key === ' ') key = 'Space';
-        else if (key.length === 1) key = key.toUpperCase();
-        parts.push(key);
-        const combo = parts.join('+');
-        const id = btn.dataset.id;
-        const existing = { ...(userShortcuts[id] || DEFAULT_SHORTCUTS[id]) };
-        existing.keys = combo;
-        existing.ctrl = e.ctrlKey || e.metaKey;
-        existing.shift = e.shiftKey;
-        existing.alt = e.altKey;
-        existing.key = e.key;
-        userShortcuts[id] = existing;
-        btn.textContent = combo;
-        btn.classList.remove('recording');
-        recording = false;
-        saveSettingsToDisk({ shortcuts: userShortcuts });
-        document.removeEventListener('keydown', handler);
-      };
-      document.addEventListener('keydown', handler);
-      setTimeout(() => {
-        if (recording) {
-          recording = false;
-          btn.classList.remove('recording');
-          btn.textContent = userShortcuts[btn.dataset.id]?.keys || DEFAULT_SHORTCUTS[btn.dataset.id]?.keys || '—';
-          document.removeEventListener('keydown', handler);
-        }
-      }, 5000);
-    });
-  });
-
-  container.querySelectorAll('.shortcut-reset-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      delete userShortcuts[id];
-      const def = DEFAULT_SHORTCUTS[id];
-      if (def) {
-        const recordBtn = container.querySelector(`.shortcut-record-btn[data-id="${id}"]`);
-        if (recordBtn) recordBtn.textContent = def.keys;
-      }
-      saveSettingsToDisk({ shortcuts: userShortcuts });
-    });
-  });
-}
-
 document.addEventListener('keydown', (e) => {
+  const bindings = typeof KeybindManager !== 'undefined' ? KeybindManager.getBindings() : [];
+  const combo = [];
+  if (e.ctrlKey || e.metaKey) combo.push('Ctrl');
+  if (e.shiftKey) combo.push('Shift');
+  if (e.altKey) combo.push('Alt');
+  combo.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+  const pressed = combo.join('+');
+  for (const b of bindings) {
+    if (b.keys === pressed) {
+      const sc = DEFAULT_SHORTCUTS[b.id];
+      if (sc) { e.preventDefault(); sc.fn(); return; }
+      const cmd = typeof COMMAND_REGISTRY !== 'undefined' ? COMMAND_REGISTRY[b.id] : null;
+      if (cmd) { e.preventDefault(); cmd.fn(); return; }
+    }
+  }
   const shortcuts = getShortcuts();
   for (const [id, s] of Object.entries(shortcuts)) {
+    if (bindings.find(b => b.id === id)) continue;
     if (shortcutMatch(e, s)) {
       e.preventDefault();
       s.fn();
@@ -4840,12 +4798,12 @@ function renderKeybindings() {
   const allItems = [];
   for (const [id, s] of Object.entries(shortcuts)) {
     const custom = bindings.find(b => b.id === id);
-    allItems.push({ id, label: s.label, category: 'Shortcuts', keys: custom ? custom.keys : s.keys });
+    allItems.push({ id, label: s.label, category: 'Allgemein', keys: custom ? custom.keys : s.keys, isCustom: !!custom });
   }
   for (const [id, c] of Object.entries(registry)) {
     if (!shortcuts[id]) {
       const custom = bindings.find(b => b.id === id);
-      allItems.push({ id, label: c.label, category: c.category || 'Commands', keys: custom ? custom.keys : '' });
+      allItems.push({ id, label: c.label, category: c.category || 'Befehle', keys: custom ? custom.keys : '', isCustom: !!custom });
     }
   }
 
@@ -4864,28 +4822,38 @@ function renderKeybindings() {
     }
     html += '<div class="keybinding-row" data-id="' + item.id + '" style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border);cursor:pointer;">';
     html += '<span style="font-size:0.85rem;">' + item.label + '</span>';
-    html += '<kbd style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--text2);min-width:60px;text-align:center;">' + (item.keys || 'None') + '</kbd>';
-    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:0.4rem;">';
+    html += '<kbd style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--text2);min-width:60px;text-align:center;">' + (item.keys || '—') + '</kbd>';
+    if (item.isCustom) html += '<button class="keybinding-reset-btn" data-id="' + item.id + '" title="Zurücksetzen" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.9rem;">↺</button>';
+    html += '</div></div>';
   }
   container.innerHTML = html;
 
   container.querySelectorAll('.keybinding-row').forEach(row => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.keybinding-reset-btn')) return;
       const id = row.dataset.id;
       const kbd = row.querySelector('kbd');
-      kbd.textContent = 'Press keys...';
+      const prevText = kbd.textContent;
+      kbd.textContent = 'Taste drücken...';
       kbd.style.borderColor = 'var(--accent)';
       kbd.style.color = 'var(--text)';
       const handler = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (e.key === 'Escape') {
+          kbd.textContent = prevText;
+          kbd.style.borderColor = '';
+          kbd.style.color = '';
+          document.removeEventListener('keydown', handler);
+          return;
+        }
         const parts = [];
         if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
         if (e.shiftKey) parts.push('Shift');
         if (e.altKey) parts.push('Alt');
         let key = e.key;
         if (key === ' ') key = 'Space';
-        else if (key === 'Escape') { kbd.textContent = 'Cancelled'; kbd.style.borderColor = ''; kbd.style.color = ''; document.removeEventListener('keydown', handler); return; }
         else if (key.length === 1) key = key.toUpperCase();
         parts.push(key);
         const combo = parts.join('+');
@@ -4894,11 +4862,28 @@ function renderKeybindings() {
         kbd.style.borderColor = '';
         kbd.style.color = '';
         document.removeEventListener('keydown', handler);
+        const resetBtn = row.querySelector('.keybinding-reset-btn');
+        if (!resetBtn) {
+          const div = row.querySelector('div:last-child');
+          const btn = document.createElement('button');
+          btn.className = 'keybinding-reset-btn';
+          btn.dataset.id = id;
+          btn.title = 'Zurücksetzen';
+          btn.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.9rem;';
+          btn.textContent = '↺';
+          btn.addEventListener('click', (e2) => {
+            e2.stopPropagation();
+            KeybindManager.resetBinding(id);
+            const sc = shortcuts[id];
+            kbd.textContent = sc ? sc.keys : '—';
+            btn.remove();
+          });
+          div.appendChild(btn);
+        }
       };
       document.addEventListener('keydown', handler);
       setTimeout(() => {
-        const current = bindings.find(b => b.id === id);
-        kbd.textContent = current ? current.keys : (shortcuts[id]?.keys || '');
+        kbd.textContent = prevText;
         kbd.style.borderColor = '';
         kbd.style.color = '';
         document.removeEventListener('keydown', handler);
@@ -4906,14 +4891,26 @@ function renderKeybindings() {
     });
   });
 
+  container.querySelectorAll('.keybinding-reset-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      KeybindManager.resetBinding(id);
+      const row = btn.closest('.keybinding-row');
+      const kbd = row.querySelector('kbd');
+      const sc = shortcuts[id];
+      kbd.textContent = sc ? sc.keys : '—';
+      btn.remove();
+    });
+  });
+
   document.getElementById('btn-reset-keybindings')?.addEventListener('click', () => {
-    if (confirm('Reset all keybindings to defaults?')) {
+    if (confirm('Alle Tastenkürzel zurücksetzen?')) {
       KeybindManager.resetAll();
       renderKeybindings();
     }
   }, { once: true });
 }
-
 document.getElementById('btn-close-help').addEventListener('click', () => {
   document.getElementById('help-modal').classList.add('hidden');
 });
@@ -4944,9 +4941,6 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     }
     if (tab.dataset.tab === 'mcp') {
       renderMcpServers();
-    }
-    if (tab.dataset.tab === 'shortcuts') {
-      renderShortcutsEditor();
     }
     if (tab.dataset.tab === 'keybindings') {
       renderKeybindings();

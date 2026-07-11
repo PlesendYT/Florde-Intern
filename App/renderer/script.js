@@ -7081,7 +7081,6 @@ TimeTracking.init();
 initConnectedApps();
 if (typeof KeybindManager !== 'undefined') KeybindManager.init();
 if (typeof SkillsManager !== 'undefined') SkillsManager.init();
-ExecutionManager.init();
 if (typeof OllamaManager !== 'undefined') OllamaManager.init();
 
 // Hook Ollama Hub download button
@@ -7410,6 +7409,8 @@ const ExecutionManager = {
     return d.innerHTML;
   }
 };
+
+ExecutionManager.init();
 
 // Diff viewer toggle button
 document.getElementById('btn-toggle-diff')?.addEventListener('click', () => {

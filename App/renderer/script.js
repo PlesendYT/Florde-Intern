@@ -4180,67 +4180,82 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        const response = await fetchWithBackoff(() => prov.sendWithTools(messages, getActiveTools()));
+        const reminder = { role: 'user', content: buildToolReminder() };
+        const msgsWithReminder = [reminder, ...messages];
+
+        const response = await fetchWithBackoff(() => prov.sendWithTools(msgsWithReminder, getActiveTools()));
         if (_timedOut) return;
         stopAnim();
         resetRequestTimeout(timeoutMinutes, onTimeout);
 
         if (response.tool_calls && response.tool_calls.length > 0) {
-          // Limit native tool calls per round to 5 to prevent flooding
-          const maxNativeToolsPerRound = 5;
-          const toolCallsToProcess = response.tool_calls.slice(0, maxNativeToolsPerRound);
-          if (response.tool_calls.length > maxNativeToolsPerRound) {
-            logToTerminal('Too many tool calls (' + response.tool_calls.length + '), processing first ' + maxNativeToolsPerRound, 'warn');
-          }
-          messages.push({ role: 'assistant', content: response.content || null, tool_calls: toolCallsToProcess });
-          logToTerminal('AI is using tools: ' + toolCallsToProcess.map(t => t.function.name).join(', '), 'ai');
+          const toolCall = response.tool_calls[0];
+          const args = JSON.parse(toolCall.function.arguments || '{}');
+          const name = toolCall.function.name;
 
-          const toolNames = toolCallsToProcess.map(t => t.function.name).join(', ');
-          startAnim('*Running tools', ' (' + toolNames + ')*');
-
-          for (const toolCall of toolCallsToProcess) {
-            const args = JSON.parse(toolCall.function.arguments || '{}');
-            const name = toolCall.function.name;
-            const loopMsg = _detectToolLoop(name, args);
-            if (loopMsg) {
-              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-              logToTerminal(loopMsg, 'warn');
-              continue;
-            }
-            // Step tracking
-            if (_planSteps) {
-              _currentStep = Math.min(_currentStep + 1, _planSteps);
-              const stepEl = document.getElementById('plan-step-progress');
-              if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
-              // Add step indicator div to latest AI message
-              const aiMsg = document.querySelector('.chat-msg.ai:last-child');
-              if (aiMsg) {
-                const sd = document.createElement('div');
-                sd.className = 'agent-step';
-                sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
-                aiMsg.appendChild(sd);
-              }
-            }
-            stopAnim('*' + formatToolActivity(name, args) + '*');
-            let result;
-            try {
-              result = await executeToolCall(name, args);
-            } catch (err) {
-              result = 'Error: ' + err.message;
-            }
-            messages.push(getToolResultMsg(toolCall.id, name, result));
-            // Audit trail
-            if (_planSteps) {
-              chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });
-            }
-            startAnim('*Running tools', ' (' + toolNames + ')*');
-            resetRequestTimeout(timeoutMinutes, onTimeout);
+          const hasText = response.content && response.content.trim().length > 0;
+          if (hasText) {
+            messages.push({ role: 'assistant', content: response.content });
+            messages.push({ role: 'user', content: 'Bitte sende NUR den Tool-Call oder NUR Text, nicht beides. Wenn du ein Tool brauchst, antworte nur mit dem Tool-Call (kein Text).' });
+            toolRounds++;
+            startAnim('*Waiting for AI*');
+            continue;
           }
-          stopAnim();
+
+          const loopMsg = _detectToolLoop(name, args);
+          if (loopMsg) {
+            messages.push({ role: 'assistant', content: null, tool_calls: [toolCall] });
+            messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
+            logToTerminal(loopMsg, 'warn');
+            chatHistory.push({ role: 'system', content: '[Tool] ' + name + ' → Loop detected' });
+            toolRounds++;
+            startAnim('*Waiting for AI*');
+            continue;
+          }
+
+          messages.push({ role: 'assistant', content: null, tool_calls: [toolCall] });
+          logToTerminal('AI uses tool: ' + name, 'ai');
+          startAnim('*Running tool: ' + name + '*');
+
+          if (_planSteps) {
+            _currentStep = Math.min(_currentStep + 1, _planSteps);
+            const stepEl = document.getElementById('plan-step-progress');
+            if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
+            const aiMsg = document.querySelector('.chat-msg.ai:last-child');
+            if (aiMsg) {
+              const sd = document.createElement('div');
+              sd.className = 'agent-step';
+              sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
+              aiMsg.appendChild(sd);
+            }
+          }
+
+          stopAnim('*' + formatToolActivity(name, args) + '*');
+          let result;
+          try {
+            result = await executeToolCall(name, args);
+          } catch (err) {
+            result = 'Error: ' + err.message;
+          }
+          messages.push(getToolResultMsg(toolCall.id, name, result));
+
+          chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider });
+          chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
+          trimChatHistory();
+
           toolRounds++;
           startAnim('*Waiting for AI*');
         } else {
-          finalContent = response.content || '';
+          const text = response.content || '';
+          const hasCodeBlock = /```[\s\S]*?```/.test(text);
+          if (hasCodeBlock) {
+            messages.push({ role: 'assistant', content: text });
+            messages.push({ role: 'user', content: 'Du hast Code in der Chat-Antwort ausgegeben, statt write_file/edit_file zu benutzen. Bitte benutze das entsprechende Tool, um die Datei zu schreiben oder zu bearbeiten. Danach kannst du deine Antwort als Text geben.' });
+            toolRounds++;
+            startAnim('*Waiting for AI*');
+            continue;
+          }
+          finalContent = text;
           break;
         }
       }
@@ -4257,7 +4272,9 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        finalContent = await fetchWithBackoff(() => prov.sendMessage(messages, (chunk) => {
+        const reminder = { role: 'user', content: buildToolReminder() };
+        const msgsWithReminder = [reminder, ...messages];
+        finalContent = await fetchWithBackoff(() => prov.sendMessage(msgsWithReminder, (chunk) => {
           stopAnim(chunk);
           resetRequestTimeout(timeoutMinutes, onTimeout);
         }));

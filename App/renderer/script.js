@@ -4114,7 +4114,13 @@ async function sendMessage(text) {
     }
     const MAX_MSG_CHARS = 100000;
     const allImages = chatHistory.filter(m => m._images).flatMap(m => m._images);
-    let messages = [systemMsg, ...chatHistory.map(m => ({ role: m.role, content: m.content }))];
+    let messages = [systemMsg, ...chatHistory.map(m => {
+      const base = { role: m.role, content: m.content || '' };
+      if (m.tool_calls) base.tool_calls = m.tool_calls;
+      if (m.tool_call_id) base.tool_call_id = m.tool_call_id;
+      if (m.name) base.name = m.name;
+      return base;
+    })];
     if (allImages.length > 0) {
       if (provider === 'ollama') {
         prov._pendingImages = allImages.map(i => i.dataUrl.replace(/^data:image\/\w+;base64,/, ''));

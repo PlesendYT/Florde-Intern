@@ -380,13 +380,12 @@
       <h2>Settings</h2>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general">General</button>
-        <button class="settings-tab" data-tab="keybindings">Keybindings</button>
+        <button class="settings-tab" data-tab="keybindings">Keybinds</button>
         <button class="settings-tab" data-tab="providers">AI Providers</button>
         <button class="settings-tab" data-tab="apps">Connected Apps</button>
         <button class="settings-tab" data-tab="appearance">Appearance</button>
         <button class="settings-tab" data-tab="security">Security</button>
         <button class="settings-tab" data-tab="mcp">MCP Servers</button>
-        <button class="settings-tab" data-tab="shortcuts">Shortcuts</button>
       </div>
 
       <!-- General Tab -->
@@ -440,7 +439,7 @@
         </div>
       </div>
 
-      <!-- Keybindings Tab -->
+      <!-- Keybinds Tab -->
       <div class="settings-tab-content" data-tab="keybindings">
         <div id="keybindings-list" style="max-height:50vh;overflow-y:auto;"></div>
         <button id="btn-reset-keybindings" class="btn btn-secondary" style="margin-top:1rem;">Reset to Defaults</button>
@@ -803,14 +802,6 @@
         </p>
         <div id="mcp-server-list"></div>
         <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Add Server</button>
-      </div>
-
-      <!-- Shortcuts Tab -->
-      <div class="settings-tab-content" data-tab="shortcuts">
-        <div class="settings-form">
-          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">Click a shortcut to record a new key combination. Changes save automatically.</p>
-          <div id="shortcuts-list"></div>
-        </div>
       </div>
 
       <div id="settings-validation" class="settings-validation hidden"></div>

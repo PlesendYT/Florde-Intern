@@ -3,8 +3,6 @@ const KeybindManager = {
 
   init() {
     this._load();
-    this._apply();
-    document.addEventListener('keydown', (e) => this._handleKeydown(e));
   },
 
   _load() {

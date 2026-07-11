@@ -3990,7 +3990,6 @@ async function sendMessage(text) {
   const sendBtn = document.getElementById('btn-send');
   sendBtn.textContent = 'Stop';
   sendBtn.classList.add('is-stopping');
-  _requestAborter = new AbortController();
 
   const isCloud = provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'localai';
   addAuditEntry(isCloud ? 'cloud' : 'local', 'Nachricht gesendet an ' + provider);

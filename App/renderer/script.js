@@ -4985,6 +4985,15 @@ const CONNECTED_APPS = [
   { id: 'supabase', name: 'Supabase', icon: '⚡', desc: 'Postgres DB, auth, realtime, storage & edge functions', baseUrl: 'https://api.supabase.com', authType: 'Bearer', tokenLabel: 'Supabase Service Role Key', tokenHelp: 'Find in Supabase dashboard > Settings > API > service_role key. Also need project reference ID.' },
   { id: 'railway', name: 'Railway', icon: '🚂', desc: 'Full-stack deployment with database provisioning', baseUrl: 'https://api.railway.app/graphql/v2', authType: 'Bearer', tokenLabel: 'Railway API Token', tokenHelp: 'Generate at railway.com > Account > Tokens' },
   { id: 'render', name: 'Render', icon: '🖥️', desc: 'Cloud hosting for web services, static sites & cron', baseUrl: 'https://api.render.com/v1', authType: 'Bearer', tokenLabel: 'Render API Key', tokenHelp: 'Find at dashboard.render.com > Account Settings > API Keys' },
+  { id: 'stripe', name: 'Stripe', icon: '💳', desc: 'Payments, subscriptions, invoices & billing', baseUrl: 'https://api.stripe.com/v1', authType: 'Bearer', tokenLabel: 'Stripe Secret Key', tokenHelp: 'Find at dashboard.stripe.com > Developers > API keys. Use the secret key (sk_live_... or sk_test_...). Never share your secret key.' },
+  { id: 'slack', name: 'Slack', icon: '💬', desc: 'Messaging, channels, files & workplace collaboration', baseUrl: 'https://slack.com/api', authType: 'Bearer', tokenLabel: 'Slack User/App Token', tokenHelp: 'Create at api.slack.com > Apps > Your App > OAuth & Permissions. Needs scopes: channels:read, chat:write, files:read, users:read.' },
+  { id: 'notion', name: 'Notion', icon: '📝', desc: 'Pages, databases, comments & search', baseUrl: 'https://api.notion.com/v1', authType: 'Bearer', tokenLabel: 'Notion Internal Integration Token', tokenHelp: 'Create at notion.so/my-integrations. Must be added to workspace and granted page/database access.' },
+  { id: 'googledrive', name: 'Google Drive', icon: '📁', desc: 'Files, folders, docs & cloud storage', baseUrl: 'https://www.googleapis.com/drive/v3', authType: 'Bearer', tokenLabel: 'Google OAuth 2.0 Access Token', tokenHelp: 'Get from Google Cloud Console > APIs & Services > Credentials. Requires Drive API enabled. Use OAuth 2.0 with scopes: drive.readonly or drive.file.' },
+  { id: 'linear', name: 'Linear', icon: '📋', desc: 'Issue tracking, sprints, roadmaps & projects', baseUrl: 'https://api.linear.app/graphql', authType: 'Bearer', tokenLabel: 'Linear API Key', tokenHelp: 'Generate at linear.app > Settings > API > Personal API Key. No additional scopes needed.' },
+  { id: 'sentry', name: 'Sentry', icon: '🐛', desc: 'Error tracking, performance monitoring & releases', baseUrl: 'https://sentry.io/api/0', authType: 'Bearer', tokenLabel: 'Sentry Auth Token', tokenHelp: 'Create at sentry.io > Settings > Developer Settings > Auth Tokens. Needs scopes: project:read, event:read, event:write, org:read.' },
+  { id: 'datadog', name: 'Datadog', icon: '📊', desc: 'Infrastructure monitoring, logs, APM & dashboards', baseUrl: 'https://api.datadoghq.com/api/v1', authType: 'Bearer', tokenLabel: 'Datadog API + App Key', tokenHelp: 'Find at app.datadoghq.com > Organization Settings > API Keys. Also needs an Application Key from the same page. Format: api_key:app_key' },
+  { id: 'openai', name: 'OpenAI', icon: '🧠', desc: 'GPT models, embeddings, assistants & fine-tuning', baseUrl: 'https://api.openai.com/v1', authType: 'Bearer', tokenLabel: 'OpenAI API Key', tokenHelp: 'Generate at platform.openai.com > API Keys. Can also be used as a secondary AI provider alongside the app providers.' },
+  { id: 'anthropic', name: 'Anthropic', icon: '🌿', desc: 'Claude models, messages API & tool use', baseUrl: 'https://api.anthropic.com/v1', authType: 'Bearer', tokenLabel: 'Anthropic API Key', tokenHelp: 'Get from console.anthropic.com > API Keys. Can also be used as a secondary AI provider alongside the app providers.' },
 ];
 
 // === Manus-style App Capabilities ===
@@ -5141,6 +5150,125 @@ const APP_CAPABILITIES = {
       { n: 'trigger_deploy', d: 'Trigger a new deploy', m: 'POST', p: '/services/{serviceId}/deploys', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
       { n: 'list_domains', d: 'List custom domains for a service', m: 'GET', p: '/services/{serviceId}/custom-domains', ps: { serviceId: { t: 'string', d: 'Service ID' } }, r: ['serviceId'] },
       { n: 'add_domain', d: 'Add a custom domain', m: 'POST', p: '/services/{serviceId}/custom-domains', ps: { serviceId: { t: 'string', d: 'Service ID' }, name: { t: 'string', d: 'Domain name' } }, r: ['serviceId', 'name'] },
+    ]
+  },
+  stripe: {
+    auth: 'Bearer', baseUrl: 'https://api.stripe.com/v1',
+    desc: 'Stripe payments & billing platform',
+    tools: [
+      { n: 'list_charges', d: 'List recent charges/payments', m: 'GET', p: '/charges', ps: { limit: { t: 'number', d: 'Max results (1-100)' }, customer: { t: 'string', d: 'Filter by customer ID' } }, r: [] },
+      { n: 'create_payment_intent', d: 'Create a payment intent', m: 'POST', p: '/payment_intents', ps: { amount: { t: 'number', d: 'Amount in cents' }, currency: { t: 'string', d: 'Currency code (usd, eur)' }, customer: { t: 'string', d: 'Customer ID (optional)' }, description: { t: 'string', d: 'Description' } }, r: ['amount', 'currency'] },
+      { n: 'list_customers', d: 'List customers', m: 'GET', p: '/customers', ps: { limit: { t: 'number', d: 'Max results' }, email: { t: 'string', d: 'Filter by email' } }, r: [] },
+      { n: 'create_customer', d: 'Create a customer', m: 'POST', p: '/customers', ps: { email: { t: 'string', d: 'Customer email' }, name: { t: 'string', d: 'Customer name' }, description: { t: 'string', d: 'Description' } }, r: ['email'] },
+      { n: 'list_subscriptions', d: 'List subscriptions', m: 'GET', p: '/subscriptions', ps: { limit: { t: 'number', d: 'Max results' }, customer: { t: 'string', d: 'Filter by customer ID' }, status: { t: 'string', d: 'all|active|canceled|incomplete|past_due|trialing' } }, r: [] },
+      { n: 'create_subscription', d: 'Create a subscription', m: 'POST', p: '/subscriptions', ps: { customer: { t: 'string', d: 'Customer ID' }, items: { t: 'array', d: 'Price items [{price: "price_xxx"}]', it: { t: 'object' } }, trial_period_days: { t: 'number', d: 'Trial period in days' } }, r: ['customer', 'items'] },
+      { n: 'list_invoices', d: 'List invoices', m: 'GET', p: '/invoices', ps: { limit: { t: 'number', d: 'Max results' }, customer: { t: 'string', d: 'Filter by customer ID' }, status: { t: 'string', d: 'draft|open|paid|uncollectible|void' } }, r: [] },
+      { n: 'create_invoice', d: 'Create an invoice', m: 'POST', p: '/invoices', ps: { customer: { t: 'string', d: 'Customer ID' }, collection_method: { t: 'string', d: 'charge_automatically|send_invoice' }, days_until_due: { t: 'number', d: 'Due days for send_invoice' } }, r: ['customer'] },
+      { n: 'get_balance', d: 'Get account balance', m: 'GET', p: '/balance', ps: {}, r: [] },
+      { n: 'list_products', d: 'List products', m: 'GET', p: '/products', ps: { limit: { t: 'number', d: 'Max results' }, active: { t: 'boolean', d: 'Only active products' } }, r: [] },
+      { n: 'create_product', d: 'Create a product', m: 'POST', p: '/products', ps: { name: { t: 'string', d: 'Product name' }, description: { t: 'string', d: 'Description' }, active: { t: 'boolean', d: 'Whether active' } }, r: ['name'] },
+    ]
+  },
+  slack: {
+    auth: 'Bearer', baseUrl: 'https://slack.com/api',
+    desc: 'Slack workplace messaging & collaboration',
+    tools: [
+      { n: 'list_channels', d: 'List public channels', m: 'GET', p: '/conversations.list', ps: { limit: { t: 'number', d: 'Max results' }, types: { t: 'string', d: 'public_channel,private_channel' } }, r: [] },
+      { n: 'post_message', d: 'Send a message to a channel', m: 'POST', p: '/chat.postMessage', ps: { channel: { t: 'string', d: 'Channel ID or name' }, text: { t: 'string', d: 'Message text' }, as_user: { t: 'boolean', d: 'Post as the authenticated user' } }, r: ['channel', 'text'] },
+      { n: 'create_channel', d: 'Create a public channel', m: 'POST', p: '/conversations.create', ps: { name: { t: 'string', d: 'Channel name (no spaces)' }, is_private: { t: 'boolean', d: 'Private channel' } }, r: ['name'] },
+      { n: 'get_channel_info', d: 'Get channel information', m: 'GET', p: '/conversations.info', ps: { channel: { t: 'string', d: 'Channel ID' } }, r: ['channel'] },
+      { n: 'list_users', d: 'List workspace users', m: 'GET', p: '/users.list', ps: { limit: { t: 'number', d: 'Max results' } }, r: [] },
+      { n: 'get_user_info', d: 'Get user information', m: 'GET', p: '/users.info', ps: { user: { t: 'string', d: 'User ID' } }, r: ['user'] },
+      { n: 'list_files', d: 'List shared files', m: 'GET', p: '/files.list', ps: { channel: { t: 'string', d: 'Filter by channel' }, limit: { t: 'number', d: 'Max results' } }, r: [] },
+      { n: 'search_messages', d: 'Search messages (Slack search syntax)', m: 'GET', p: '/search.messages', ps: { query: { t: 'string', d: 'Search query' }, count: { t: 'number', d: 'Results count' } }, r: ['query'] },
+    ]
+  },
+  notion: {
+    auth: 'Bearer', baseUrl: 'https://api.notion.com/v1',
+    desc: 'Notion workspace, pages & databases',
+    tools: [
+      { n: 'get_page', d: 'Get page content', m: 'GET', p: '/pages/{pageId}', ps: { pageId: { t: 'string', d: 'Page UUID' } }, r: ['pageId'] },
+      { n: 'create_page', d: 'Create a new page', m: 'POST', p: '/pages', ps: { parent: { t: 'object', d: 'Parent {type:"page_id"|"database_id", page_id/database_id: "..."}' }, properties: { t: 'object', d: 'Page properties' }, children: { t: 'array', d: 'Block children (optional)' } }, r: ['parent', 'properties'] },
+      { n: 'update_page', d: 'Update page properties', m: 'PATCH', p: '/pages/{pageId}', ps: { pageId: { t: 'string', d: 'Page UUID' }, properties: { t: 'object', d: 'Properties to update' } }, r: ['pageId', 'properties'] },
+      { n: 'list_databases', d: 'List accessible databases', m: 'GET', p: '/databases', ps: {}, r: [] },
+      { n: 'get_database', d: 'Get database schema', m: 'GET', p: '/databases/{databaseId}', ps: { databaseId: { t: 'string', d: 'Database UUID' } }, r: ['databaseId'] },
+      { n: 'query_database', d: 'Query a database', m: 'POST', p: '/databases/{databaseId}/query', ps: { databaseId: { t: 'string', d: 'Database UUID' }, filter: { t: 'object', d: 'Filter conditions' }, sorts: { t: 'array', d: 'Sort definitions' }, page_size: { t: 'number', d: 'Results per page' } }, r: ['databaseId'] },
+      { n: 'search', d: 'Search Notion workspace', m: 'POST', p: '/search', ps: { query: { t: 'string', d: 'Search query' }, sort: { t: 'object', d: 'Sort options' }, page_size: { t: 'number', d: 'Results per page' } }, r: ['query'] },
+      { n: 'get_block', d: 'Get content block', m: 'GET', p: '/blocks/{blockId}', ps: { blockId: { t: 'string', d: 'Block UUID' } }, r: ['blockId'] },
+      { n: 'append_blocks', d: 'Append block children', m: 'PATCH', p: '/blocks/{blockId}/children', ps: { blockId: { t: 'string', d: 'Parent block UUID' }, children: { t: 'array', d: 'Blocks to append' } }, r: ['blockId', 'children'] },
+    ]
+  },
+  googledrive: {
+    auth: 'Bearer', baseUrl: 'https://www.googleapis.com/drive/v3',
+    desc: 'Google Drive file storage & docs',
+    tools: [
+      { n: 'list_files', d: 'List files and folders', m: 'GET', p: '/files', ps: { q: { t: 'string', d: 'Search query' }, pageSize: { t: 'number', d: 'Results per page' }, orderBy: { t: 'string', d: 'modifiedTime desc|name|createdTime' } }, r: [] },
+      { n: 'get_file', d: 'Get file metadata', m: 'GET', p: '/files/{fileId}', ps: { fileId: { t: 'string', d: 'File ID' } }, r: ['fileId'] },
+      { n: 'create_folder', d: 'Create a folder', m: 'POST', p: '/files', ps: { name: { t: 'string', d: 'Folder name' }, parents: { t: 'array', d: 'Parent folder IDs (optional)', it: { t: 'string' } } }, r: ['name'] },
+      { n: 'search_files', d: 'Search for files by name/content', m: 'GET', p: '/files', ps: { query: { t: 'string', d: 'Search text' }, pageSize: { t: 'number', d: 'Results per page' } }, r: ['query'] },
+      { n: 'export_file', d: 'Export file in alternative format', m: 'GET', p: '/files/{fileId}/export', ps: { fileId: { t: 'string', d: 'File ID' }, mimeType: { t: 'string', d: 'Target MIME type (text/plain, application/pdf)' } }, r: ['fileId', 'mimeType'] },
+    ]
+  },
+  linear: {
+    auth: 'Bearer', baseUrl: 'https://api.linear.app/graphql',
+    desc: 'Linear issue tracking & project management',
+    tools: [
+      { n: 'list_issues', d: 'List issues', m: 'POST', p: '/graphql', ps: { teamId: { t: 'string', d: 'Team ID (optional)' }, assigneeId: { t: 'string', d: 'Assignee ID (optional)' }, status: { t: 'string', d: 'Filter by status (optional)' } }, r: [], isGraphQL: true, gql: 'query($teamId:String,$assigneeId:String){issues(filter:{team:{id:{eq:$teamId}}}){nodes{id title description state{name} priority assignee{id name}}}}' },
+      { n: 'create_issue', d: 'Create an issue', m: 'POST', p: '/graphql', ps: { teamId: { t: 'string', d: 'Team ID' }, title: { t: 'string', d: 'Issue title' }, description: { t: 'string', d: 'Issue description' }, priority: { t: 'number', d: '0=none,1=urgent,2=high,3=medium,4=low' }, assigneeId: { t: 'string', d: 'Assignee ID (optional)' } }, r: ['teamId', 'title'], isGraphQL: true, gql: 'mutation($teamId:String!,$title:String!,$description:String,$priority:Float){issueCreate(input:{teamId:$teamId,title:$title,description:$description,priority:$priority}){success issue{id title}} }', gqlVars: ['teamId', 'title', 'description', 'priority'] },
+      { n: 'update_issue', d: 'Update an issue', m: 'POST', p: '/graphql', ps: { issueId: { t: 'string', d: 'Issue ID' }, title: { t: 'string', d: 'New title (optional)' }, description: { t: 'string', d: 'New description (optional)' }, stateId: { t: 'string', d: 'New status ID (optional)' }, priority: { t: 'number', d: 'New priority (optional)' } }, r: ['issueId'], isGraphQL: true, gql: 'mutation($issueId:String!,$title:String,$description:String,$stateId:String,$priority:Float){issueUpdate(id:$issueId,input:{title:$title,description:$description,stateId:$stateId,priority:$priority}){success}}', gqlVars: ['issueId', 'title', 'description', 'stateId', 'priority'] },
+      { n: 'list_teams', d: 'List teams', m: 'POST', p: '/graphql', ps: {}, r: [], isGraphQL: true, gql: 'query{teams{nodes{id name key description memberCount}} }' },
+      { n: 'list_projects', d: 'List projects', m: 'POST', p: '/graphql', ps: {}, r: [], isGraphQL: true, gql: 'query{projects{nodes{id name description state status}} }' },
+      { n: 'get_user', d: 'Get current user info', m: 'POST', p: '/graphql', ps: {}, r: [], isGraphQL: true, gql: 'query{viewer{id name email}}' },
+    ]
+  },
+  sentry: {
+    auth: 'Bearer', baseUrl: 'https://sentry.io/api/0',
+    desc: 'Sentry error tracking & performance monitoring',
+    tools: [
+      { n: 'list_projects', d: 'List organization projects', m: 'GET', p: '/projects/', ps: {}, r: [] },
+      { n: 'list_issues', d: 'List issues for a project', m: 'GET', p: '/projects/{orgSlug}/{projectSlug}/issues/', ps: { orgSlug: { t: 'string', d: 'Organization slug' }, projectSlug: { t: 'string', d: 'Project slug' }, statsPeriod: { t: 'string', d: '24h|14d|30d' }, query: { t: 'string', d: 'Search query' } }, r: ['orgSlug', 'projectSlug'] },
+      { n: 'get_issue', d: 'Get issue details with events', m: 'GET', p: '/issues/{issueId}/', ps: { issueId: { t: 'string', d: 'Issue ID' } }, r: ['issueId'] },
+      { n: 'update_issue', d: 'Update issue status/assignment', m: 'PUT', p: '/issues/{issueId}/', ps: { issueId: { t: 'string', d: 'Issue ID' }, status: { t: 'string', d: 'resolved|unresolved|ignored' }, assignedTo: { t: 'string', d: 'Assignee username (optional)' }, isPublic: { t: 'boolean', d: 'Make issue publicly visible' } }, r: ['issueId', 'status'] },
+      { n: 'list_events', d: 'List events for an issue', m: 'GET', p: '/issues/{issueId}/events/', ps: { issueId: { t: 'string', d: 'Issue ID' }, per_page: { t: 'number', d: 'Results per page' } }, r: ['issueId'] },
+      { n: 'list_releases', d: 'List project releases', m: 'GET', p: '/projects/{orgSlug}/{projectSlug}/releases/', ps: { orgSlug: { t: 'string', d: 'Organization slug' }, projectSlug: { t: 'string', d: 'Project slug' } }, r: ['orgSlug', 'projectSlug'] },
+      { n: 'create_release', d: 'Create a release', m: 'POST', p: '/projects/{orgSlug}/{projectSlug}/releases/', ps: { orgSlug: { t: 'string', d: 'Organization slug' }, projectSlug: { t: 'string', d: 'Project slug' }, version: { t: 'string', d: 'Release version string' }, ref: { t: 'string', d: 'Git commit ref (optional)' } }, r: ['orgSlug', 'projectSlug', 'version'] },
+    ]
+  },
+  datadog: {
+    auth: 'Bearer', baseUrl: 'https://api.datadoghq.com/api/v1',
+    desc: 'Datadog infrastructure monitoring & APM',
+    tools: [
+      { n: 'list_monitors', d: 'List all monitors', m: 'GET', p: '/monitor', ps: { group: { t: 'string', d: 'Filter by group' }, name: { t: 'string', d: 'Filter by name' }, tags: { t: 'string', d: 'Comma-separated tags' } }, r: [] },
+      { n: 'get_monitor', d: 'Get monitor details', m: 'GET', p: '/monitor/{monitorId}', ps: { monitorId: { t: 'number', d: 'Monitor ID' } }, r: ['monitorId'] },
+      { n: 'create_monitor', d: 'Create a metric monitor', m: 'POST', p: '/monitor', ps: { type: { t: 'string', d: 'metric alert|service check|event alert|log alert|process alert' }, query: { t: 'string', d: 'Monitor query' }, name: { t: 'string', d: 'Monitor name' }, message: { t: 'string', d: 'Notification message' }, tags: { t: 'array', d: 'Tags', it: { t: 'string' } } }, r: ['type', 'query', 'name', 'message'] },
+      { n: 'mute_monitor', d: 'Mute/unmute a monitor', m: 'POST', p: '/monitor/{monitorId}/mute', ps: { monitorId: { t: 'number', d: 'Monitor ID' } }, r: ['monitorId'] },
+      { n: 'search_events', d: 'Search events stream', m: 'GET', p: '/events', ps: { start: { t: 'number', d: 'Start timestamp' }, end: { t: 'number', d: 'End timestamp' }, priority: { t: 'string', d: 'all|normal|low' }, tags: { t: 'string', d: 'Comma-separated tags' } }, r: [] },
+      { n: 'list_dashboards', d: 'List all dashboards', m: 'GET', p: '/dashboard', ps: { filter: { t: 'string', d: 'Filter by name' } }, r: [] },
+      { n: 'search_logs', d: 'Search logs (requires Datadog Logs)', m: 'POST', p: '/logs-queries/list', ps: { query: { t: 'string', d: 'Log search query' }, time: { t: 'object', d: 'Time range {from, to}' }, limit: { t: 'number', d: 'Results limit' } }, r: ['query'] },
+      { n: 'list_hosts', d: 'List hosts reporting to Datadog', m: 'GET', p: '/hosts', ps: { filter: { t: 'string', d: 'Filter by hostname' } }, r: [] },
+    ]
+  },
+  openai: {
+    auth: 'Bearer', baseUrl: 'https://api.openai.com/v1',
+    desc: 'OpenAI GPT models & API tools',
+    tools: [
+      { n: 'list_models', d: 'List available GPT models', m: 'GET', p: '/models', ps: {}, r: [] },
+      { n: 'get_model', d: 'Get model details', m: 'GET', p: '/models/{modelId}', ps: { modelId: { t: 'string', d: 'Model ID (gpt-4o, gpt-4o-mini)' } }, r: ['modelId'] },
+      { n: 'create_completion', d: 'Send a text completion request', m: 'POST', p: '/chat/completions', ps: { model: { t: 'string', d: 'Model to use' }, messages: { t: 'array', d: 'Chat messages [{role, content}]', it: { t: 'object' } }, temperature: { t: 'number', d: '0-2, creativity' }, max_tokens: { t: 'number', d: 'Max tokens to generate' } }, r: ['model', 'messages'] },
+      { n: 'create_embedding', d: 'Create text embeddings', m: 'POST', p: '/embeddings', ps: { model: { t: 'string', d: 'text-embedding-3-small|text-embedding-3-large' }, input: { t: 'array', d: 'Text inputs to embed', it: { t: 'string' } } }, r: ['model', 'input'] },
+      { n: 'list_assistants', d: 'List OpenAI assistants', m: 'GET', p: '/assistants', ps: { limit: { t: 'number', d: 'Max results' } }, r: [] },
+      { n: 'create_assistant', d: 'Create a new assistant', m: 'POST', p: '/assistants', ps: { name: { t: 'string', d: 'Assistant name' }, instructions: { t: 'string', d: 'System instructions' }, model: { t: 'string', d: 'Model ID' }, tools: { t: 'array', d: 'Tool definitions [{type:"code_interpreter"}]', it: { t: 'object' } } }, r: ['name', 'instructions', 'model'] },
+      { n: 'list_files', d: 'List uploaded files', m: 'GET', p: '/files', ps: { purpose: { t: 'string', d: 'assistants|fine-tune|vision' } }, r: [] },
+      { n: 'upload_file', d: 'Upload a file for assistants/fine-tuning', m: 'POST', p: '/files', ps: { purpose: { t: 'string', d: 'assistants|fine-tune' }, content: { t: 'string', d: 'File content as string' } }, r: ['purpose', 'content'] },
+    ]
+  },
+  anthropic: {
+    auth: 'Bearer', baseUrl: 'https://api.anthropic.com/v1',
+    desc: 'Anthropic Claude models & API',
+    tools: [
+      { n: 'list_models', d: 'List available Claude models', m: 'GET', p: '/models', ps: {}, r: [] },
+      { n: 'get_model', d: 'Get model details', m: 'GET', p: '/models/{modelId}', ps: { modelId: { t: 'string', d: 'Model ID (claude-opus-4, claude-sonnet-4)' } }, r: ['modelId'] },
+      { n: 'create_message', d: 'Send a message to Claude', m: 'POST', p: '/messages', ps: { model: { t: 'string', d: 'Claude model' }, messages: { t: 'array', d: 'Messages [{role, content}]', it: { t: 'object' } }, system: { t: 'string', d: 'System prompt (optional)' }, max_tokens: { t: 'number', d: 'Max tokens' }, temperature: { t: 'number', d: '0-1, creativity' } }, r: ['model', 'messages', 'max_tokens'] },
     ]
   }
 };
@@ -6936,6 +7064,14 @@ DockerPanel.init();
 TimeTracking.init();
 initConnectedApps();
 if (typeof KeybindManager !== 'undefined') KeybindManager.init();
+if (typeof SkillsManager !== 'undefined') SkillsManager.init();
+ExecutionManager.init();
+if (typeof OllamaManager !== 'undefined') OllamaManager.init();
+
+// Hook Ollama Hub download button
+document.getElementById('btn-ollama-hub-download')?.addEventListener('click', () => {
+  if (typeof showOllamaDownloadModal === 'function') showOllamaDownloadModal();
+});
 
 // === Browser Panel Toggle ===
 document.getElementById('btn-browser-toggle').addEventListener('click', async () => {
@@ -7061,6 +7197,202 @@ const DiffViewer = {
       padding: { top: 8, bottom: 8 },
     });
   },
+};
+
+// ==================== EXECUTION MANAGER (Manus-style) ====================
+
+const ExecutionManager = {
+  _queue: [],
+  _running: false,
+  _currentTask: null,
+  _history: [],
+
+  init() {
+    this._loadHistory();
+    document.getElementById('btn-exec-toggle')?.addEventListener('click', () => this.togglePanel());
+    document.getElementById('btn-exec-close')?.addEventListener('click', () => this.hidePanel());
+    document.getElementById('btn-exec-clear')?.addEventListener('click', () => {
+      this._history = [];
+      this._saveHistory();
+      this._render();
+    });
+  },
+
+  togglePanel() {
+    const panel = document.getElementById('execution-panel');
+    panel?.classList.toggle('hidden');
+    if (!panel?.classList.contains('hidden')) this._render();
+  },
+
+  hidePanel() {
+    document.getElementById('execution-panel')?.classList.add('hidden');
+  },
+
+  async executeGoal(goal, steps) {
+    const execution = {
+      id: 'exec-' + Date.now(),
+      goal,
+      steps: steps || [],
+      status: 'running',
+      currentStep: 0,
+      startedAt: Date.now(),
+      completedAt: null,
+      results: []
+    };
+    this._queue.push(execution);
+    this._history.push(execution);
+    this._saveHistory();
+    this._render();
+    this._showNotification(execution);
+
+    const panel = document.getElementById('execution-panel');
+    if (panel?.classList.contains('hidden')) this.togglePanel();
+
+    if (!steps || steps.length === 0) {
+      execution.steps = await this._decomposeGoal(goal);
+    }
+
+    this._running = true;
+    for (let i = 0; i < execution.steps.length; i++) {
+      if (!this._running) break;
+      execution.currentStep = i;
+      const step = execution.steps[i];
+      this._render();
+
+      const chat = document.getElementById('chat-messages');
+      if (chat) {
+        const div = document.createElement('div');
+        div.className = 'chat-msg system exec-step';
+        div.innerHTML = `<strong>Step ${i + 1}/${execution.steps.length}:</strong> ${this._escapeHtml(step)}`;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      await this._executeStep(execution, i);
+
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    execution.status = this._running ? 'completed' : 'cancelled';
+    execution.completedAt = Date.now();
+    this._running = false;
+    this._saveHistory();
+    this._render();
+
+    const chat = document.getElementById('chat-messages');
+    if (chat) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg system exec-done';
+      div.innerHTML = execution.status === 'completed'
+        ? '<strong>Goal completed:</strong> ' + this._escapeHtml(goal)
+        : '<strong>Execution cancelled:</strong> ' + this._escapeHtml(goal);
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  },
+
+  async _decomposeGoal(goal) {
+    const steps = [
+      'Analyze requirements: ' + goal,
+      'Plan the implementation approach',
+      'Implement the solution',
+      'Test and verify the implementation'
+    ];
+    return steps;
+  },
+
+  async _executeStep(execution, stepIndex) {
+    const step = execution.steps[stepIndex];
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('btn-send') || document.querySelector('[data-action="send"]');
+    if (input && sendBtn) {
+      input.value = `[Execution Step ${stepIndex + 1}/${execution.steps.length}]: ${step}`;
+      sendBtn.click();
+      await new Promise(r => setTimeout(r, 2000));
+      while (document.querySelector('.chat-activity') || document.querySelector('.thinking')) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  },
+
+  cancel() {
+    this._running = false;
+    if (this._currentTask) {
+      if (typeof cancelRequestWithTimeout === 'function') {
+        cancelRequestWithTimeout('Execution cancelled by user.');
+      }
+    }
+    this._render();
+  },
+
+  _render() {
+    const container = document.getElementById('execution-list');
+    if (!container) return;
+
+    const running = this._queue.find(e => e.status === 'running');
+    if (running) {
+      container.innerHTML = `
+        <div class="exec-current">
+          <div class="exec-header">${this._escapeHtml(running.goal)}</div>
+          <div class="exec-progress">
+            <div class="exec-progress-bar" style="width:${((running.currentStep + 1) / running.steps.length * 100)}%"></div>
+          </div>
+          <div class="exec-step-label">Step ${running.currentStep + 1} of ${running.steps.length}</div>
+          <div class="exec-steps">
+            ${running.steps.map((s, i) => `
+              <div class="exec-step-item ${i < running.currentStep ? 'done' : i === running.currentStep ? 'active' : ''}">
+                ${i < running.currentStep ? '+' : i === running.currentStep ? '>' : '-'}
+                ${this._escapeHtml(s)}
+              </div>
+            `).join('')}
+          </div>
+          <button class="btn btn-sm btn-secondary" id="btn-exec-cancel" style="margin-top:0.5rem;">Cancel</button>
+        </div>
+      `;
+      document.getElementById('btn-exec-cancel')?.addEventListener('click', () => this.cancel());
+    } else {
+      const recent = this._history.slice(-10).reverse();
+      container.innerHTML = recent.length
+        ? recent.map(e => `
+          <div class="exec-history-item">
+            <span class="exec-status-icon">${e.status === 'completed' ? '+' : e.status === 'cancelled' ? 'x' : '!'}</span>
+            <span class="exec-goal">${this._escapeHtml(e.goal)}</span>
+            <span class="exec-time">${new Date(e.completedAt || e.startedAt).toLocaleTimeString()}</span>
+          </div>
+        `).join('')
+        : '<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;">No executions yet</div>';
+    }
+
+    const badge = document.getElementById('exec-badge');
+    if (badge) {
+      const active = this._queue.filter(e => e.status === 'running').length;
+      badge.textContent = active > 0 ? active : '';
+      badge.style.display = active > 0 ? 'flex' : 'none';
+    }
+  },
+
+  _showNotification(exec) {
+    showNotification('info', 'Execution started: ' + exec.goal, 'info');
+  },
+
+  _loadHistory() {
+    try {
+      const data = localStorage.getItem('florde-exec-history');
+      if (data) this._history = JSON.parse(data);
+    } catch { this._history = []; }
+  },
+
+  _saveHistory() {
+    try {
+      localStorage.setItem('florde-exec-history', JSON.stringify(this._history.slice(-50)));
+    } catch {}
+  },
+
+  _escapeHtml(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
 };
 
 // Diff viewer toggle button

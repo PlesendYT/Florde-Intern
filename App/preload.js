@@ -56,6 +56,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webSearch: (q, n) => ipcRenderer.invoke('web-search', q, n),
   ollamaList: () => ipcRenderer.invoke('ollama-list'),
 
+  ollama: {
+    list: () => ipcRenderer.invoke('ollama-list'),
+    pull: (name) => ipcRenderer.invoke('ollama-pull', name),
+    delete: (name) => ipcRenderer.invoke('ollama-delete', name),
+    show: (name) => ipcRenderer.invoke('ollama-show', name),
+    ps: () => ipcRenderer.invoke('ollama-ps'),
+  },
+
   gitStatus: (p) => ipcRenderer.invoke('git-status', p),
   gitDiff: (p) => ipcRenderer.invoke('git-diff', p),
   gitDiffFile: (p, f) => ipcRenderer.invoke('git-diff-file', p, f),

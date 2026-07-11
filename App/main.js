@@ -442,6 +442,45 @@ ipcMain.handle('ollama-list', async () => {
   } catch { return []; }
 });
 
+ipcMain.handle('ollama-pull', async (event, modelName) => {
+  try {
+    execSync('ollama pull ' + modelName, { timeout: 600000, encoding: 'utf-8' });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('ollama-delete', async (event, modelName) => {
+  try {
+    execSync('ollama rm ' + modelName, { timeout: 30000, encoding: 'utf-8' });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('ollama-show', async (event, modelName) => {
+  try {
+    const out = execSync('ollama show ' + modelName, { timeout: 10000, encoding: 'utf-8' });
+    return { success: true, output: out };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('ollama-ps', async () => {
+  try {
+    const out = execSync('ollama ps', { timeout: 5000, encoding: 'utf-8' });
+    const lines = out.trim().split('\n').slice(1).filter(Boolean);
+    const models = lines.map(l => {
+      const parts = l.split(/\s+/);
+      return { name: parts[0] || '', pid: parts[1] || '', cpu: parts[2] || '', mem: parts[3] || '' };
+    });
+    return models;
+  } catch { return []; }
+});
+
 ipcMain.handle('web-search', async (event, query, numResults = 5) => {
   try {
     const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;

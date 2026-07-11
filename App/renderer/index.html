@@ -127,6 +127,15 @@
         <button id="btn-notes-toggle" title="Toggle Notes" class="titlebar-btn">&#128221;</button>
         <button id="btn-rag-toggle" title="Toggle Knowledge Base" class="titlebar-btn">&#129504;</button>
         <button id="btn-plugins" title="Plugin Marketplace">&#9889;</button>
+        <button id="btn-skills-toggle" title="Toggle Skills" class="titlebar-btn">&#9889;</button>
+        <button id="btn-ollama-hub" title="Ollama Model Hub" class="titlebar-btn" style="position:relative;">
+          &#129302;
+          <span id="ollama-hub-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#22c55e;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;font-weight:bold;"></span>
+        </button>
+        <button id="btn-exec-toggle" title="Execution History" class="titlebar-btn" style="position:relative;">
+          &#9678;
+          <span id="exec-badge" class="exec-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#ef4444;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;"></span>
+        </button>
         <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
         <button id="btn-git-commit-show">Git Commit</button>
@@ -236,9 +245,11 @@
             <div id="chat-messages" class="chat-messages"></div>
              <div class="chat-input-area">
               <div id="chat-image-preview" class="chat-image-preview hidden"></div>
-              <div class="chat-input-row">
-                <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
-                <button id="btn-send">Send</button>
+              <div id="chat-input-container" style="position:relative;">
+                <div class="chat-input-row">
+                  <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
+                  <button id="btn-send">Send</button>
+                </div>
               </div>
               <div class="chat-input-footer">
                 <button id="btn-agentic-mode" class="agentic-btn agentic-build" title="Build mode: AI executes directly">Build</button>
@@ -981,6 +992,50 @@
     </div>
   </div>
 
+  <!-- Skills Panel -->
+  <div id="skills-panel" class="hidden">
+    <div id="skills-panel-header">
+      <span>&#9889; Skills</span>
+      <button id="btn-skill-create" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Create</button>
+      <button id="btn-skill-import" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.85rem;">Import</button>
+      <button id="btn-skills-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#10005;</button>
+    </div>
+    <div id="skills-list"></div>
+  </div>
+
+  <!-- Execution Panel -->
+  <div id="execution-panel" class="hidden">
+    <div id="execution-panel-header">
+      <span>&#9678; Execution</span>
+      <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;">Clear</button>
+      <button id="btn-exec-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#10005;</button>
+    </div>
+    <div id="execution-list"></div>
+  </div>
+
+  <!-- Ollama Hub Panel -->
+  <div id="ollama-hub-panel" class="hidden">
+    <div id="ollama-hub-header">
+      <span>&#129302; Ollama Model Hub</span>
+      <button id="btn-ollama-hub-download" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Download</button>
+      <button id="btn-ollama-hub-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#215;</button>
+    </div>
+    <div id="ollama-hub-controls">
+      <input type="text" id="ollama-hub-search" placeholder="Search models..." />
+      <select id="ollama-hub-category">
+        <option value="all">All</option>
+        <option value="llama">Llama Family</option>
+        <option value="qwen">Qwen Family</option>
+        <option value="mistral">Mistral Family</option>
+        <option value="code">Code Models</option>
+        <option value="embedding">Embeddings</option>
+        <option value="vision">Vision</option>
+      </select>
+    </div>
+    <div id="ollama-hub-stats" style="padding:0.25rem 0.75rem;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);"></div>
+    <div id="ollama-hub-list"></div>
+  </div>
+
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
@@ -989,6 +1044,8 @@
   <script src="time-tracking.js"></script>
   <script src="tools/command-registry.js"></script>
   <script src="tools/keybindings.js"></script>
+  <script src="tools/skills.js"></script>
+  <script src="tools/ollama-manager.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

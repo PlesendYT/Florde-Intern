@@ -200,7 +200,7 @@ function buildToolReminder() {
   const tools = getActiveTools();
   if (!tools || tools.length === 0) return 'Keine Tools verfügbar.';
   const names = tools.map(t => t.function?.name).filter(Boolean);
-  return 'Tools: ' + names.join(', ') + '\nRegel: NUR Tool-Call ODER NUR Text, nie beides. Max 1 Tool-Call pro Antwort.';
+  return 'Tools: ' + names.join(', ') + '\nRegel: NUR Tool-Call ODER NUR Text. Keine Selbstfragen. >>| Gedanken in solche Blöcke |<<';
 }
 
 window.__updateTools = function() {
@@ -1404,31 +1404,34 @@ RULES:
 
   return basePrompt + `
 
+WICHTIG — Du MUSST Tools benutzen um Code zu schreiben. Zeige Code NIEMALS nur im Chat.
 
-CRITICAL — You MUST use tools to write code. Never just show code in chat.
+Tool-Formate (eines reicht):
+  [write_file: {"path": "src/main.js", "content": "..."}]
+  { "tool": "write_file", "arguments": { "path": "...", "content": "..." } }
+  write_file: {"path": "...", "content": "..."}
 
-When you write code, you MUST use the write_file tool — do NOT just show the code in chat.
+Regeln:
+- Benutze write_file für Code-Änderungen — zeige Code nie im Chat
+- Starte immer mit list_files um die Struktur zu sehen
+- Lies Dateien mit read_file vor Änderungen
+- Nutze exec_command zum Testen/Ausführen
+- >>| Denke hier nach, der Benutzer sieht das als grauen Text |<<
+- Stelle dir keine Selbstfragen — handle direkt
+- NUR Tool-Calls oder NUR Text, nie beides gemischt
 
-To call a tool, embed one of these formats in your response:
-
-Bracket format: [write_file: {"path": "src/main.js", "content": "console.log('hello');"}]
-JSON format: { "tool": "write_file", "arguments": { "path": "src/main.js", "content": "console.log('hello');" } }
-
-Available tools — use these instead of showing code:
+Verfügbare Tools:
 ${toolList}${pluginSection}
 
-Use ONE tool call at a time. After each tool call result is returned, decide the next step.
-
 RULES:
-1. Always start by listing files to understand the project structure — use [list_files: {}] or {"tool": "list_files", "arguments": {}}
-2. Read files before making changes — use [read_file: {"path": "..."}] or {"tool": "read_file", "arguments": {"path": "..."}}
+1. Always start by listing files to understand the project structure
+2. Read files before making changes
 3. You MUST use write_file to create or modify files — never just show the code in chat
 4. Use exec_command to install dependencies, run the project, etc.
 5. After making changes, verify with exec_command if appropriate
-6. Explain what you're doing at each step — use [think]...[/think] blocks for your internal reasoning
-7. Only modify files inside the project — do not access files outside
-8. When to use ask_question: if you are unsure about something, need permission, or need the user to make a choice — ALWAYS use it. Provide clear options including a custom answer choice.
-9. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
+6. Put thoughts in >>| ... |<< blocks
+7. Do NOT self-question. Do NOT write QA-style answers. Just build.
+8. When using write_file, delete_file, rename_file, or exec_command, always provide a brief "description" parameter summarizing the action in 2-5 words.`;
 }
 
 function getPluginPromptExtensions() {
@@ -1497,6 +1500,33 @@ function parseTextToolCalls(text) {
             _raw: rawJson
           });
         }
+      } catch (e) {}
+    }
+  }
+  // Plain format: tool_name: { json } (no brackets — common in Ollama output)
+  const plainRe = /^(\w+):\s*(\{)/gm;
+  let pm;
+  while ((pm = plainRe.exec(text)) !== null) {
+    const name = pm[1];
+    let depth = 1;
+    let idx = pm.index + pm[0].length;
+    const startLine = text.lastIndexOf('\n', pm.index) + 1;
+    while (idx < text.length && depth > 0) {
+      if (text[idx] === '{') depth++;
+      if (text[idx] === '}') depth--;
+      idx++;
+    }
+    if (depth === 0) {
+      try {
+        const jsonStr = text.slice(pm.index + pm[0].length - 1, idx);
+        const args = JSON.parse(jsonStr);
+        const raw = text.slice(startLine, idx).trim();
+        calls.push({
+          function: { name, arguments: jsonStr },
+          id: 'plain_' + Date.now() + '_' + calls.length,
+          args,
+          _raw: raw
+        });
       } catch (e) {}
     }
   }
@@ -3193,8 +3223,10 @@ function formatMessageContent(content) {
   let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (seeThoughts) {
     html = html.replace(/\[think\]([\s\S]*?)\[\/think\]/g, '<div class="think-block">$1</div>');
+    html = html.replace(/>>\|([\s\S]*?)\|<</g, '<div class="think-block">$1</div>');
   } else {
     html = html.replace(/\[think\][\s\S]*?\[\/think\]/g, '');
+    html = html.replace(/>>\|[\s\S]*?\|<</g, '');
   }
   html = html.replace(/```file:([^\n]+)\n([\s\S]*?)```/g, (m, file, code) => {
     const id = 'fb-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);

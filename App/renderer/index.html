@@ -146,6 +146,7 @@
           &#129302;
           <span id="ollama-hub-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#22c55e;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;font-weight:bold;"></span>
         </button>
+        <button id="btn-ci-toggle" title="Code Intelligence" class="titlebar-btn">&#129302;</button>
         <button id="btn-exec-toggle" title="Execution History" class="titlebar-btn" style="position:relative;">
           &#9678;
           <span id="exec-badge" class="exec-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#ef4444;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;"></span>
@@ -1041,6 +1042,16 @@
     <div id="ollama-hub-list"></div>
   </div>
 
+  <div id="ci-panel" class="hidden">
+    <div id="ci-panel-header">
+      <span>&#129302; Code Intelligence</span>
+      <button id="btn-ci-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#215;</button>
+    </div>
+    <div id="ci-keys" style="flex-shrink:0;"></div>
+    <div id="ci-tabs" style="display:flex;flex-wrap:wrap;gap:2px;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);overflow-y:auto;"></div>
+    <div id="ci-results" style="flex:1;overflow-y:auto;"></div>
+  </div>
+
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
@@ -1051,6 +1062,8 @@
   <script src="tools/keybindings.js"></script>
   <script src="tools/skills.js"></script>
   <script src="tools/ollama-manager.js"></script>
+  <script src="tools/api-keys.js"></script>
+  <script src="tools/code-intelligence.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

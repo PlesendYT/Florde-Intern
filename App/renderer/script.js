@@ -6499,6 +6499,8 @@ ChatManager.init();
 TodoList.init();
 Notes.init();
 RagManager.init();
+if (typeof ApiKeyManager !== 'undefined') ApiKeyManager.init();
+if (typeof CodeIntelligence !== 'undefined') CodeIntelligence.init();
 TabGroupManager.init();
 pluginRegistry.init().then(() => {
   window.__updateTools();

@@ -2238,7 +2238,28 @@ function hideModal(modalId) {
 }
 function hideAllModals() {
   document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
-  document.querySelectorAll('.modal-overlay:not(#command-palette-overlay)').forEach(el => el.remove());
+}
+
+function showPromptDialog(title, text, placeholder, defaultValue) {
+  return new Promise(resolve => {
+    document.getElementById('prompt-title').textContent = title;
+    document.getElementById('prompt-text').textContent = text;
+    const input = document.getElementById('prompt-input');
+    input.value = defaultValue || '';
+    input.placeholder = placeholder || '...';
+    input.focus();
+    input.select();
+    showModal('prompt-modal');
+    function cleanup() {
+      hideModal('prompt-modal');
+      document.getElementById('btn-prompt-ok').removeEventListener('click', onOk);
+      document.getElementById('btn-prompt-cancel').removeEventListener('click', onCancel);
+    }
+    function onOk() { cleanup(); resolve(input.value); }
+    function onCancel() { cleanup(); resolve(null); }
+    document.getElementById('btn-prompt-ok').addEventListener('click', onOk);
+    document.getElementById('btn-prompt-cancel').addEventListener('click', onCancel);
+  });
 }
 
 document.getElementById('btn-start-new')?.addEventListener('click', () => {
@@ -4192,7 +4213,9 @@ async function sendMessage(text) {
       const maxRounds = 15;
 
       while (toolRounds < maxRounds) {
-        const response = await fetchWithBackoff(() => prov.sendWithTools(messages, getActiveTools()));
+        const reminder = { role: 'user', content: buildToolReminder() };
+        const msgsWithReminder = [reminder, ...messages];
+        const response = await fetchWithBackoff(() => prov.sendWithTools(msgsWithReminder, getActiveTools()));
         if (_timedOut) return;
         stopAnim();
         resetRequestTimeout(timeoutMinutes, onTimeout);

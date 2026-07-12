@@ -206,14 +206,13 @@ const SkillsManager = {
     }
   },
 
-  createFromChat() {
-    const name = prompt('Skill name:');
+  async createFromChat() {
+    const name = await showPromptDialog('Create Skill', 'Skill name:', 'e.g. code-review');
     if (!name) return;
-    // Get recent chat messages for context
     const chat = document.getElementById('chat-messages');
     const recentMessages = chat ? Array.from(chat.querySelectorAll('.chat-msg')).slice(-10).map(m => m.textContent).join('\n') : '';
-    const desc = prompt('Short description:') || 'Custom skill';
-    const instructions = prompt('Instructions for the AI (what should it do):') || 'Execute the task based on context.';
+    const desc = await showPromptDialog('Create Skill', 'Short description:', 'e.g. Reviews code for bugs and style issues') || 'Custom skill';
+    const instructions = await showPromptDialog('Create Skill', 'Instructions for the AI (what should it do):', 'e.g. Review the provided code for bugs...') || 'Execute the task based on context.';
     this._skills.push({
       id: 'skill-' + Date.now(),
       name, description: desc,

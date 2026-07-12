@@ -81,6 +81,20 @@
     </div>
   </div>
 
+  <div id="prompt-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:450px;">
+      <h2 id="prompt-title">Input required</h2>
+      <p id="prompt-text" style="color:var(--text2);margin-bottom:1rem;line-height:1.5;"></p>
+      <input id="prompt-input" type="text" placeholder="..."
+        style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter')document.getElementById('btn-prompt-ok').click()">
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button id="btn-prompt-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="btn-prompt-ok" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main App -->
   <div id="app-view" class="hidden">
     <div class="titlebar">

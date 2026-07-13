@@ -2926,9 +2926,9 @@ function renderTreeNode(node, parent, path) {
   }
 }
 
-document.getElementById('btn-close-all-tabs').addEventListener('click', closeAllTabs);
+document.getElementById('btn-close-all-tabs')?.addEventListener('click', closeAllTabs);
 
-document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
+document.getElementById('btn-sidebar-toggle')?.addEventListener('click', () => {
   const sb = document.getElementById('sidebar');
   const resizer = document.getElementById('sidebar-resizer');
   sb.classList.toggle('hidden');
@@ -4995,7 +4995,7 @@ const DEFAULT_SHORTCUTS = {
   closeTab: { label: 'Close current tab', keys: 'Ctrl+W', ctrl: true, key: 'w', shift: false, alt: false, fn: () => { if (activeTabIndex >= 0) closeTab(activeTabIndex); } },
   commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+P', ctrl: true, key: 'p', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
   searchFiles: { label: 'Search in files', keys: 'Ctrl+Shift+F', ctrl: true, key: 'f', shift: true, alt: false, fn: () => { document.getElementById('btn-search-toggle').click(); } },
-  toggleSidebar: { label: 'Toggle sidebar', keys: 'Ctrl+B', ctrl: true, key: 'b', shift: false, alt: false, fn: () => { document.getElementById('btn-sidebar-toggle').click(); } },
+  toggleSidebar: { label: 'Toggle sidebar', keys: 'Ctrl+B', ctrl: true, key: 'b', shift: false, alt: false, fn: () => { const sb = document.getElementById('sidebar'); const resizer = document.getElementById('sidebar-resizer'); sb.classList.toggle('hidden'); if (resizer) resizer.classList.toggle('hidden'); localStorage.setItem('florde-sidebar-hidden', sb.classList.contains('hidden') ? '1' : '0'); } },
   nextTab: { label: 'Next tab', keys: 'Ctrl+Tab', ctrl: true, key: 'Tab', shift: false, alt: false, fn: () => { if (openTabs.length > 1) { const next = (activeTabIndex + 1 + openTabs.length) % openTabs.length; switchTab(next); } } },
   prevTab: { label: 'Previous tab', keys: 'Ctrl+Shift+Tab', ctrl: true, key: 'Tab', shift: true, alt: false, fn: () => { if (openTabs.length > 1) { const prev = (activeTabIndex - 1 + openTabs.length) % openTabs.length; switchTab(prev); } } },
   toggleTerminal: { label: 'Toggle terminal', keys: 'Ctrl+`', ctrl: true, key: '`', shift: false, alt: false, fn: () => { document.getElementById('btn-terminal-toggle').click(); } },
@@ -6553,6 +6553,12 @@ const ManagementPanel = {
       case 'todo': TodoList.render(); break;
       case 'notes': Notes._renderList(); if (Notes._activeNote) Notes._loadNote(Notes._activeNote); break;
       case 'decisions': DecisionLog.render(); break;
+      case 'ci':
+        if (typeof CodeIntelligence !== 'undefined') {
+          CodeIntelligence._resultsEl = document.getElementById('ci-results');
+          CodeIntelligence._renderTools();
+        }
+        break;
     }
   }
 };

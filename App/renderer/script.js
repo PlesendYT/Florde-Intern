@@ -1160,24 +1160,96 @@ function _toolAuditType(toolName) {
   return 'unknown';
 }
 
+function _permToolInfo(toolName, args) {
+  const info = { icon: '', action: '', path: '', linesAdded: 0, linesRemoved: 0, hasLines: false, reason: '', risk: '', riskLabel: '', riskExplanation: '' };
+  const reason = args.description || '';
+  info.reason = reason;
+  switch (toolName) {
+    case 'read_file':
+      info.icon = '📖'; info.action = 'Lesen'; info.path = args.path || '';
+      info.risk = 'low'; info.riskLabel = 'Niedrig'; info.riskExplanation = 'Die KI möchte eine Datei lesen. Keine Änderungen am Projekt.';
+      break;
+    case 'write_file':
+      info.icon = '✏️'; info.action = 'Schreiben'; info.path = args.path || '';
+      if (args.content) info.linesAdded = args.content.split('\n').length;
+      info.hasLines = true;
+      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Datei schreiben. Dies kann bestehenden Code überschreiben.';
+      break;
+    case 'edit_file':
+      info.icon = '🔧'; info.action = 'Bearbeiten'; info.path = args.path || '';
+      if (args.oldString) info.linesRemoved = args.oldString.split('\n').length;
+      if (args.newString) info.linesAdded = args.newString.split('\n').length;
+      info.hasLines = true;
+      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte bestehenden Code durch neuen ersetzen.';
+      break;
+    case 'delete_file':
+      info.icon = '🗑️'; info.action = 'Löschen'; info.path = args.path || '';
+      info.risk = 'high'; info.riskLabel = 'Hoch'; info.riskExplanation = 'Die KI möchte eine Datei unwiderruflich löschen.';
+      break;
+    case 'rename_file':
+      info.icon = '📝'; info.action = 'Umbenennen'; info.path = (args.path || '') + ' → ' + (args.new_path || '');
+      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Datei umbenennen. Verweise könnten brechen.';
+      break;
+    case 'exec_command': {
+      info.icon = '⚡'; info.action = 'Ausführen'; info.path = args.command || '';
+      const shellRisk = assessShellRisk(args.command || '');
+      if (shellRisk === 'critical') { info.risk = 'critical'; info.riskLabel = 'Kritisch'; }
+      else if (shellRisk === 'high') { info.risk = 'high'; info.riskLabel = 'Hoch'; }
+      else if (shellRisk === 'medium') { info.risk = 'medium'; info.riskLabel = 'Mittel'; }
+      else if (shellRisk === 'low') { info.risk = 'low'; info.riskLabel = 'Niedrig'; }
+      else { info.risk = 'safe'; info.riskLabel = 'Sicher'; }
+      info.riskExplanation = 'Risikobewertung basierend auf Shell-Befehl: ' + info.riskLabel;
+      break;
+    }
+    case 'ask_question':
+      info.icon = '❓'; info.action = 'Fragen'; info.path = args.question || '';
+      info.risk = 'low'; info.riskLabel = 'Niedrig'; info.riskExplanation = 'Die KI möchte eine Frage stellen. Keine Dateiänderung.';
+      break;
+    default:
+      info.icon = '🔧'; info.action = toolName; info.path = Object.values(args).filter(v => typeof v === 'string').join(', ').slice(0, 80);
+      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Aktion ausführen.';
+  }
+  return info;
+}
+
 function showPermissionPrompt(toolName, args, callback) {
   const existing = document.querySelector('.permission-prompt-overlay');
   if (existing) existing.remove();
 
   const overlay = document.createElement('div');
   overlay.className = 'permission-prompt-overlay';
+  const info = _permToolInfo(toolName, args);
   const act = formatToolActivity(toolName, args);
   showNotification('warning', 'Action Required: ' + act, '\u{1F512}');
-  const desc = args.description ? '<div class="perm-desc"><strong>Summary:</strong> ' + escapeHtml(args.description) + '</div>' : '';
+
+  let linesHtml = '';
+  if (info.hasLines) {
+    const parts = [];
+    if (info.linesAdded > 0) parts.push('<span class="perm-prompt-lines added">+' + info.linesAdded + ' Zeilen</span>');
+    if (info.linesRemoved > 0) parts.push('<span class="perm-prompt-lines removed">-' + info.linesRemoved + ' Zeilen</span>');
+    if (parts.length) linesHtml = '<div class="perm-prompt-detail"><strong>📊 Änderungen:</strong> ' + parts.join(', ') + '</div>';
+  }
+
   overlay.innerHTML = '<div class="permission-prompt">' +
-    '<h3>\u{1F512} AI Action Required</h3>' +
-    '<p>The AI wants to <strong>' + escapeHtml(act) + '</strong></p>' +
-    desc +
+    '<h3>\u{1F512} AI-Zugriffsanfrage</h3>' +
+    '<div class="perm-prompt-icon">' + info.icon + '</div>' +
+    '<div class="perm-prompt-action">' + escapeHtml(info.action) + '</div>' +
+    (info.path ? '<div class="perm-prompt-detail"><strong>📄 Datei:</strong> ' + escapeHtml(info.path) + '</div>' : '') +
+    linesHtml +
+    (info.reason ? '<div class="perm-prompt-reason"><strong>💬 Grund:</strong> ' + escapeHtml(info.reason) + '</div>' : '') +
+    '<div class="perm-prompt-risk"><strong>⚠️ Risiko:</strong> <span class="perm-risk-badge ' + info.risk + '">' + info.riskLabel + '</span></div>' +
+    '<div class="perm-prompt-explain">' + escapeHtml(info.riskExplanation) + '</div>' +
+    '<div id="perm-detail-area"></div>' +
+    '<div class="perm-prompt-extra-btns">' +
+      '<button id="btn-perm-edit">✏️ Ändern</button>' +
+      '<button id="btn-perm-explain">🔍 Detailierter erklären</button>' +
+    '</div>' +
+    '<hr class="perm-prompt-divider">' +
     '<div class="permission-actions">' +
-      '<button class="btn-allow-once">Allow Once</button>' +
-      '<button class="btn-allow-always">Always Allow</button>' +
-      '<button class="btn-block-once">Block Once</button>' +
-      '<button class="btn-block-always">Always Block</button>' +
+      '<button class="btn-allow-once" style="background:var(--accent);color:#fff;">✅ Allow Once</button>' +
+      '<button class="btn-allow-always">✅ Always Allow</button>' +
+      '<button class="btn-block-once" style="background:#ef4444;color:#fff;">❌ Block Once</button>' +
+      '<button class="btn-block-always">❌ Always Block</button>' +
     '</div>' +
   '</div>';
   document.body.appendChild(overlay);
@@ -1204,6 +1276,89 @@ function showPermissionPrompt(toolName, args, callback) {
     AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'blocked', summary: act + ' (immer blockieren)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     callback(false);
   };
+
+  document.getElementById('btn-perm-edit').onclick = () => _permEditFlow(overlay, toolName, args, callback);
+  document.getElementById('btn-perm-explain').onclick = () => _permExplainFlow(overlay, toolName, args);
+}
+
+function _permEditFlow(overlay, toolName, args, callback) {
+  const detailArea = overlay.querySelector('#perm-detail-area');
+  detailArea.innerHTML =
+    '<textarea id="perm-edit-textarea" class="perm-prompt-textarea" placeholder="Was soll anders sein? (z.B. \'Mach Buy Now statt Buy\')"></textarea>' +
+    '<div class="perm-prompt-textarea-row">' +
+      '<button id="btn-perm-edit-submit" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Senden</button>' +
+      '<button id="btn-perm-edit-cancel" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Abbrechen</button>' +
+      '<span id="perm-edit-status" style="font-size:0.75rem;color:var(--text3);margin-left:auto;"></span>' +
+    '</div>';
+
+  document.getElementById('btn-perm-edit-submit').onclick = async () => {
+    const input = document.getElementById('perm-edit-textarea');
+    const status = document.getElementById('perm-edit-status');
+    const submitBtn = document.getElementById('btn-perm-edit-submit');
+    if (!input.value.trim()) return;
+    submitBtn.disabled = true;
+    status.textContent = '⏳ Wird an KI gesendet...';
+    try {
+      const providerId = document.getElementById('provider-select')?.value;
+      const prov = providerId ? providers[providerId] : null;
+      if (!prov || !prov.sendPlain) { status.textContent = '❌ Kein aktiver Provider.'; submitBtn.disabled = false; return; }
+      const recentMsgs = (typeof chatHistory !== 'undefined' ? chatHistory : []).filter(m => m.role !== 'system').slice(-3);
+      const promptText = 'Du hast einen Tool-Call vorbereitet. Der Benutzer möchte eine Änderung:\n\n' +
+        'Tool: ' + toolName + '\n' +
+        'Aktuelle Argumente: ' + JSON.stringify(args, null, 2) + '\n\n' +
+        'Benutzerwunsch: ' + input.value.trim() + '\n\n' +
+        'Antworte NUR mit einem gültigen JSON-Objekt, das die neuen Argumente für denselben Tool-Call enthält. ' +
+        'Behalte alle Felder bei, die der Benutzer nicht explizit ändern wollte.';
+      const allMsgs = recentMsgs.concat([{ role: 'user', content: promptText }]);
+      const resp = await prov.sendPlain(allMsgs, { signal: AbortSignal.timeout(30000) });
+      const text = typeof resp === 'string' ? resp : (resp?.content || resp?.message?.content || JSON.stringify(resp));
+      const jsonStart = text.indexOf('{');
+      const jsonEnd = text.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('Kein JSON in Antwort');
+      const newArgs = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+      status.textContent = '✅ Aktualisiert!';
+      setTimeout(() => { overlay.remove(); showPermissionPrompt(toolName, newArgs, callback); }, 500);
+    } catch (e) {
+      status.textContent = '❌ Fehler: ' + (e.message || e);
+      submitBtn.disabled = false;
+    }
+  };
+  document.getElementById('btn-perm-edit-cancel').onclick = () => {
+    detailArea.innerHTML = '';
+  };
+}
+
+function _permExplainFlow(overlay, toolName, args) {
+  const detailArea = overlay.querySelector('#perm-detail-area');
+  if (detailArea.querySelector('.perm-prompt-detail-section')) {
+    detailArea.innerHTML = '';
+    return;
+  }
+  detailArea.innerHTML = '<div class="perm-prompt-detail-section loading">⏳ Lade detaillierte Erklärung...</div>';
+  document.getElementById('btn-perm-explain').disabled = true;
+
+  (async () => {
+    try {
+      const providerId = document.getElementById('provider-select')?.value;
+      const prov = providerId ? providers[providerId] : null;
+      if (!prov || !prov.sendPlain) {
+        detailArea.innerHTML = '<div class="perm-prompt-detail-section">❌ Kein aktiver Provider verfügbar.</div>';
+        document.getElementById('btn-perm-explain').disabled = false;
+        return;
+      }
+      const recentMsgs = (typeof chatHistory !== 'undefined' ? chatHistory : []).filter(m => m.role !== 'system').slice(-3);
+      const promptText = 'Erkläre detailliert, was du mit folgendem Tool-Call erreichen willst. Beschreibe den Zweck, die Auswirkungen und warum dieser Schritt notwendig ist.\n\n' +
+        'Tool: ' + toolName + '\n' +
+        'Argumente: ' + JSON.stringify(args, null, 2);
+      const allMsgs = recentMsgs.concat([{ role: 'user', content: promptText }]);
+      const resp = await prov.sendPlain(allMsgs, { signal: AbortSignal.timeout(30000) });
+      const text = typeof resp === 'string' ? resp : (resp?.content || resp?.message?.content || JSON.stringify(resp));
+      detailArea.innerHTML = '<div class="perm-prompt-detail-section">' + escapeHtml(text) + '</div>';
+    } catch (e) {
+      detailArea.innerHTML = '<div class="perm-prompt-detail-section">❌ Fehler: ' + escapeHtml(e.message || e) + '</div>';
+    }
+    document.getElementById('btn-perm-explain').disabled = false;
+  })();
 }
 
 function showSandboxDeniedUI(toolName, args, callback) {
@@ -1214,14 +1369,16 @@ function showSandboxDeniedUI(toolName, args, callback) {
   overlay.className = 'permission-prompt-overlay';
   const path = args.path || args.command || args.query || 'unknown';
   overlay.innerHTML = '<div class="permission-prompt" style="border-color:#ef4444;">' +
-    '<h3>\u{1F512} Sandbox Access Denied</h3>' +
-    '<p>The agent wants to access <strong>' + escapeHtml(path) + '</strong></p>' +
+    '<h3>\u{1F512} Sandbox-Zugriff verweigert</h3>' +
+    '<div class="perm-prompt-icon">🚫</div>' +
+    '<div class="perm-prompt-action">Zugriff auf: ' + escapeHtml(path) + '</div>' +
     '<pre>' + escapeHtml(JSON.stringify(args, null, 2)) + '</pre>' +
+    '<hr class="perm-prompt-divider">' +
     '<div class="permission-actions">' +
-      '<button class="btn-allow-once" style="background:#ef4444;">Allow Once</button>' +
-      '<button class="btn-allow-always" style="background:#ef4444;">Always Allow</button>' +
-      '<button class="btn-block-once">Deny Once</button>' +
-      '<button class="btn-block-always">Always Block</button>' +
+      '<button class="btn-allow-once" style="background:#ef4444;color:#fff;">✅ Allow Once</button>' +
+      '<button class="btn-allow-always" style="background:#ef4444;color:#fff;">✅ Always Allow</button>' +
+      '<button class="btn-block-once">❌ Deny Once</button>' +
+      '<button class="btn-block-always">❌ Always Block</button>' +
     '</div>' +
   '</div>';
   document.body.appendChild(overlay);

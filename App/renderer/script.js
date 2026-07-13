@@ -7633,7 +7633,7 @@ function initXtermTerminal() {
       document.getElementById('terminal-container').style.display = 'none';
       document.getElementById('terminal-output').classList.remove('hidden');
     });
-    document.querySelectorAll('.terminal-tab').forEach(tab => {
+    document.querySelectorAll('.terminal-tab:not(#terminal-output-tab)').forEach(tab => {
       tab.addEventListener('click', () => {
         document.getElementById('terminal-output').classList.add('hidden');
         document.getElementById('terminal-splits').style.display = '';

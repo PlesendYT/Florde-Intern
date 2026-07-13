@@ -32,7 +32,7 @@ try {
       if (e.key === 'Enter') {
         let url = urlInput.value.trim();
         if (url && !url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
-          url = 'https://' + url;
+          url = 'http://' + url;
         }
         if (url) ipcRenderer.send('browser-nav-url', url);
       }

@@ -90,9 +90,11 @@ function getProjectRoot(name) {
   if (!name) return null;
   const metaPath = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(metaPath)) return null;
-  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-  if (meta.type === 'local') return meta.path;
-  return path.join(getProjectsDir(), name);
+  try {
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+    if (meta.type === 'local') return meta.path;
+    return path.join(getProjectsDir(), name);
+  } catch { return null; }
 }
 
 function getProjectMeta(name) {
@@ -151,7 +153,7 @@ ipcMain.handle('load-session', (event, name) => {
   try {
     return JSON.parse(fs.readFileSync(p, 'utf-8'));
   } catch {
-    return { sessions: [] };
+    return { history: [] };
   }
 });
 
@@ -273,7 +275,7 @@ ipcMain.handle('export-zip', async (event, name) => {
   if (result.canceled || !result.filePath) return false;
   try {
     const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
-    const psScript = `param([string]$$src,[string]$$dst)\nCompress-Archive -Path "$$src\\*" -DestinationPath "$$dst" -Force`;
+    const psScript = `param([string]$src,[string]$dst)\nCompress-Archive -Path "$src\\*" -DestinationPath "$dst" -Force`;
     fs.writeFileSync(tmpScript, psScript, 'utf-8');
     execSync(`powershell -NoProfile -File "${tmpScript}" "${root}" "${result.filePath}"`, { timeout: 30000 });
     fs.rmSync(tmpScript, { force: true });
@@ -289,7 +291,8 @@ ipcMain.handle('export-zip', async (event, name) => {
 ipcMain.handle('get-sandbox-dir', () => getSandboxDir());
 
 ipcMain.handle('sandbox-list-files', (event, sandboxPath) => {
-  if (!sandboxPath || !fs.existsSync(sandboxPath)) return [];
+  const allowed = getSandboxDir();
+  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed) || !fs.existsSync(sandboxPath)) return [];
   const files = [];
   function walk(d, prefix) {
     const entries = fs.readdirSync(d, { withFileTypes: true });
@@ -304,12 +307,16 @@ ipcMain.handle('sandbox-list-files', (event, sandboxPath) => {
 });
 
 ipcMain.handle('sandbox-read-file', (event, sandboxPath, filePath) => {
+  const allowed = getSandboxDir();
+  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return null;
   const full = resolveSafe(sandboxPath, filePath);
   if (!full || !fs.existsSync(full)) return null;
   return fs.readFileSync(full, 'utf-8');
 });
 
 ipcMain.handle('sandbox-write-file', (event, sandboxPath, filePath, content) => {
+  const allowed = getSandboxDir();
+  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return false;
   const full = resolveSafe(sandboxPath, filePath);
   if (!full) return false;
   const dir = path.dirname(full);
@@ -319,6 +326,8 @@ ipcMain.handle('sandbox-write-file', (event, sandboxPath, filePath, content) => 
 });
 
 ipcMain.handle('sandbox-delete-file', (event, sandboxPath, filePath) => {
+  const allowed = getSandboxDir();
+  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return false;
   const full = resolveSafe(sandboxPath, filePath);
   if (!full) return false;
   if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
@@ -444,7 +453,8 @@ ipcMain.handle('ollama-list', async () => {
 
 ipcMain.handle('ollama-pull', async (event, modelName) => {
   try {
-    execSync('ollama pull ' + modelName, { timeout: 600000, encoding: 'utf-8' });
+    const r = spawnSync('ollama', ['pull', modelName], { timeout: 600000, encoding: 'utf-8' });
+    if (r.error) throw r.error;
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -453,7 +463,8 @@ ipcMain.handle('ollama-pull', async (event, modelName) => {
 
 ipcMain.handle('ollama-delete', async (event, modelName) => {
   try {
-    execSync('ollama rm ' + modelName, { timeout: 30000, encoding: 'utf-8' });
+    const r = spawnSync('ollama', ['rm', modelName], { timeout: 30000, encoding: 'utf-8' });
+    if (r.error) throw r.error;
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -462,7 +473,9 @@ ipcMain.handle('ollama-delete', async (event, modelName) => {
 
 ipcMain.handle('ollama-show', async (event, modelName) => {
   try {
-    const out = execSync('ollama show ' + modelName, { timeout: 10000, encoding: 'utf-8' });
+    const r = spawnSync('ollama', ['show', modelName], { timeout: 10000, encoding: 'utf-8' });
+    if (r.error) throw r.error;
+    const out = r.stdout;
     return { success: true, output: out };
   } catch (e) {
     return { success: false, error: e.message };
@@ -655,6 +668,10 @@ ipcMain.handle('git-pull', (event, repoPath, remote = 'origin', branch) => {
 
 ipcMain.handle('open-external', async (event, url) => {
   try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+      return { success: false, error: 'Blocked: only http, https, and mailto protocols are allowed' };
+    }
     await shell.openExternal(url);
     return { success: true };
   } catch (e) {
@@ -739,14 +756,15 @@ ipcMain.handle('docker:compose-logs', (event, filePath) => {
 
 // ==================== TERMINAL ====================
 
-const { spawn } = require('node-pty');
+let ptySpawn;
+try { ptySpawn = require('node-pty').spawn; } catch { ptySpawn = null; }
 let terminalProcesses = {};
 let terminalIdCounter = 0;
 
 ipcMain.handle('terminal:create', (event, { projectPath }) => {
   const id = ++terminalIdCounter;
   const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
-  const pty = spawn(shell, [], {
+  const pty = ptySpawn(shell, [], {
     name: 'xterm-color', cols: 80, rows: 24,
     cwd: projectPath || process.cwd(),
     env: process.env
@@ -879,7 +897,7 @@ ipcMain.handle('browser:navigate', (event, url) => {
   if (browserWindow && !browserWindow.isDestroyed()) browserWindow.loadURL(url);
 });
 ipcMain.handle('browser:evaluate', async (event, js) => {
-  if (!browserWindow || browserWindow.isDestroyed()) throw new Error('Browser window not open. Use browser_open first.');
+  if (!browserWindow || browserWindow.isDestroyed()) throw new Error('No page loaded in browser. Use browser:open first.');
   try {
     return await Promise.race([
       browserWindow.webContents.executeJavaScript(js),

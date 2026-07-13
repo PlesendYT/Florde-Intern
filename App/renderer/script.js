@@ -130,10 +130,13 @@ async function validateApiKey(providerId, key, url, model) {
   if (!prov) return { status: 'invalid', message: 'Provider not configured' };
   try {
     const testMsg = [{ role: 'user', content: 'Say yes' }];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 180000);
+    let endpoint = (url || prov.baseUrl || '').replace(/\/+$/, '');
+    if (!/\/(chat\/completions|messages|api\/chat|generateContent|v\d+\/chat\/completions)(\?|$)/.test(endpoint)) {
+      if (providerId === 'ollama') endpoint += '/api/chat';
+      else endpoint += '/chat/completions';
+    }
     const r = await fetchWithTimeout(
-      (url || prov.baseUrl || '').replace(/\/+$/, '') + '/chat/completions',
+      endpoint,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
@@ -141,7 +144,6 @@ async function validateApiKey(providerId, key, url, model) {
       },
       180000
     );
-    clearTimeout(timer);
     if (r.status === 429 || r.status === 402) return { status: 'limited', message: 'Valid but rate limited (' + r.status + ')' };
     if (r.status === 401 || r.status === 403) return { status: 'invalid', message: 'Invalid API key (' + r.status + ')' };
     if (!r.ok) return { status: 'invalid', message: 'HTTP ' + r.status };
@@ -208,9 +210,11 @@ window.__updateTools = function() {
     if (document.getElementById('marketplace-list')) renderPluginMarketplace();
   }
   // Force tool refresh on next AI request by clearing any cached tool state
-  if (typeof prov !== 'undefined' && prov) {
+  const providerId = document.getElementById('provider-select')?.value;
+  const prov = providerId ? providers[providerId] : null;
+  if (prov) {
     prov.supportsTools = undefined;
-    detectToolSupport(prov).then(s => { prov.supportsTools = s; });
+    checkToolSupport(prov, providerId).then(s => { prov.supportsTools = s; });
   }
 };
 
@@ -314,11 +318,15 @@ class OpenAIProvider {
   async _stream(r, onChunk) {
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
+    let buffer = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
       for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') continue;
         try { const p = JSON.parse(data); const c = p.choices?.[0]?.delta?.content || ''; full += c; onChunk(full); } catch {}
@@ -369,7 +377,9 @@ class MistralProvider extends OpenAIProvider {
 
 class OpenCodeProvider extends OpenAIProvider {
   constructor(apiKey, model = 'big-pickle') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://opencode.ai/zen/v1/chat/completions'; }
-  async _post(url, body, timeoutMs = 120000) {
+  _timeoutMs() { return (parseInt(document.getElementById('settings-timeout')?.value) || 30) * 60 * 1000; }
+  async _post(url, body, timeoutMs) {
+    if (timeoutMs === undefined) timeoutMs = this._timeoutMs();
     const r = await fetchWithTimeout(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify(body),
@@ -557,11 +567,15 @@ class LocalAIProvider {
     const r = await this._post('/v1/chat/completions', this._withTemp({ model: this.model, messages, stream: true }), 300000);
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
+    let buffer = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
       for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') continue;
         try { const p = JSON.parse(data); const c = p.choices?.[0]?.delta?.content || ''; full += c; onChunk(full); } catch {}
@@ -624,7 +638,11 @@ class AnthropicProvider {
     const msgs = [], sys = [];
     for (const m of messages) {
       if (m.role === 'system') { sys.push(m.content); continue; }
-      msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
+      if (m.role === 'tool') {
+        msgs.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content || '' }] });
+      } else {
+        msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
+      }
     }
     return { system: sys.join('\n'), messages: msgs };
   }
@@ -692,19 +710,22 @@ class GeminiProvider {
   }
   _toGemini(messages) {
     const contents = [];
+    const systemParts = [];
     for (const m of messages) {
-      if (m.role === 'system') continue;
+      if (m.role === 'system') { systemParts.push(m.content || ''); continue; }
       contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content || '' }] });
     }
-    return contents;
+    return { contents, systemInstruction: systemParts.length > 0 ? { parts: [{ text: systemParts.join('\n') }] } : undefined };
   }
   _fromGemini(data) {
     const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).filter(Boolean).join('') || '';
     return { content: text, role: 'assistant' };
   }
   async sendMessage(messages, onChunk) {
-    const contents = this._toGemini(messages);
-    const r = await this._post(`streamGenerateContent?alt=sse`, { contents }, CLOUD_TIMEOUT);
+    const { contents, systemInstruction } = this._toGemini(messages);
+    const body = { contents };
+    if (systemInstruction) body.systemInstruction = systemInstruction;
+    const r = await this._post(`streamGenerateContent?alt=sse`, body, CLOUD_TIMEOUT);
     const reader = r.body.getReader(), decoder = new TextDecoder();
     let full = '';
     let buffer = '';
@@ -724,14 +745,19 @@ class GeminiProvider {
     return full;
   }
   async sendWithTools(messages, tools) {
-    const contents = this._toGemini(messages);
-    const r = await this._post(`generateContent`, { contents });
+    const { contents, systemInstruction } = this._toGemini(messages);
+    const body = { contents };
+    if (systemInstruction) body.systemInstruction = systemInstruction;
+    if (tools) body.tools = [{ function_declarations: tools.map(t => t.function) }];
+    const r = await this._post(`generateContent`, body);
     const data = await r.json();
     return this._fromGemini(data);
   }
   async sendPlain(messages) {
-    const contents = this._toGemini(messages);
-    const r = await this._post(`generateContent`, { contents });
+    const { contents, systemInstruction } = this._toGemini(messages);
+    const body = { contents };
+    if (systemInstruction) body.systemInstruction = systemInstruction;
+    const r = await this._post(`generateContent`, body);
     const data = await r.json();
     return this._fromGemini(data).content;
   }
@@ -857,7 +883,7 @@ document.addEventListener('keydown', (e) => {
 // ==================== STATE ====================
 
 let providers = {};
-let capabilityCache = JSON.parse(localStorage.getItem('florde-capability-cache') || '{}');
+let capabilityCache = (() => { try { return JSON.parse(localStorage.getItem('florde-capability-cache') || '{}'); } catch { return {}; } })();
 // Clear stale cache so tool support is properly detected
 for (const key of Object.keys(capabilityCache)) {
   if (key.startsWith('ollama:') || key.startsWith('opencode:')) {
@@ -897,7 +923,7 @@ const WorkspaceManager = {
   _activeWorkspaceId: null,
 
   init() {
-    const saved = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const saved = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     this._workspaces = saved.workspaces || [];
     if (this._workspaces.length === 0) {
       this._workspaces.push({ id: 'default', name: 'Default', path: null });
@@ -948,16 +974,22 @@ const WorkspaceManager = {
     if (!ws) return;
     if (!ws.path) { showStartMenu(); return; }
     if (currentProject && currentProject !== ws.path) {
-      await saveSession();
+      try { await saveSession(); } catch (e) { console.error('saveSession error:', e); }
     }
-    await openProject(ws.path);
+    try {
+      await openProject(ws.path);
+    } catch (e) {
+      console.error('openProject failed:', e);
+      showAppView();
+      logToTerminal('Fehler beim Öffnen des Projekts: ' + (e.message || e), 'error');
+    }
   },
 
   _renderTabs() {
     const bar = document.getElementById('workspace-tab-bar');
     if (!bar) return;
     bar.innerHTML = this._workspaces.map(w => `<div class="ws-tab ${w.id === this._activeWorkspaceId ? 'active' : ''}" data-id="${w.id}">
-      <span class="ws-tab-name">${w.name}</span>
+      <span class="ws-tab-name">${escapeHtml(w.name)}</span>
       <button class="ws-tab-close" data-id="${w.id}">&times;</button>
     </div>`).join('') + '<button id="btn-open-project-ws" title="Open Project">+</button>';
     bar.querySelectorAll('.ws-tab').forEach(tab => {
@@ -978,7 +1010,7 @@ const WorkspaceManager = {
   },
 
   _persist() {
-    const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     settings.workspaces = this._workspaces.map(w => ({ id: w.id, name: w.name, path: w.path }));
     localStorage.setItem('florde-settings', JSON.stringify(settings));
   }
@@ -990,7 +1022,7 @@ const Favorites = {
   _favorites: [],
 
   init() {
-    const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     this._favorites = settings.favoriteProjects || [];
   },
 
@@ -1014,7 +1046,7 @@ const Favorites = {
   },
 
   _persist() {
-    const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     settings.favoriteProjects = this._favorites;
     localStorage.setItem('florde-settings', JSON.stringify(settings));
   },
@@ -1037,25 +1069,36 @@ const PermissionManager = {
   _rules: {},
 
   init() {
-    const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     this._rules = settings.permissions || {};
     const allTools = ['read_file', 'write_file', 'delete_file', 'edit_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
     allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
   },
 
+  _resolveGroup(toolName) {
+    if (toolName.startsWith('browser_')) return 'browser';
+    if (toolName.startsWith('git_')) return 'git';
+    if (toolName === 'exec_command') return 'terminal';
+    if (typeof APP_TOOL_NAMES !== 'undefined' && APP_TOOL_NAMES.includes(toolName)) return 'mcp';
+    return null;
+  },
+
   getPermission(toolName) {
-    return this._rules[toolName] || 'allow';
+    if (this._rules[toolName] !== undefined) return this._rules[toolName];
+    const group = this._resolveGroup(toolName);
+    if (group && this._rules[group] !== undefined) return this._rules[group];
+    return 'allow';
   },
 
   setPermission(toolName, level) {
     this._rules[toolName] = level;
-    const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     settings.permissions = this._rules;
     localStorage.setItem('florde-settings', JSON.stringify(settings));
   },
 
   _getAutoExceptions() {
-    const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    const s = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     return s.autoExceptions || {};
   },
 
@@ -1071,7 +1114,7 @@ const PermissionManager = {
   async checkTool(toolName, args) {
     // ask_question is always allowed — it's a user interaction, not a file operation
     if (toolName === 'ask_question') return true;
-    const autoAccept = JSON.parse(localStorage.getItem('florde-settings') || '{}').autoAccept === true;
+    const autoAccept = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })().autoAccept === true;
     if (autoAccept && !this._isToolExcepted(toolName, args)) {
       // auto-accept write/read/edit/create operations, for shell check risk
       if (toolName === 'exec_command' && args?.command) {
@@ -1182,12 +1225,15 @@ function showCriticalWarning(command, callback) {
   const holdProgress = holdBtn.querySelector('.hold-progress');
   let holdTimer = null;
   let holdSeconds = 0;
+  let holdCompleted = false;
   let holdText = document.createTextNode('Hold 10s to Confirm');
   holdBtn.appendChild(holdText);
 
   holdBtn.addEventListener('mousedown', () => {
+    if (holdCompleted) return;
     if (holdTimer) return;
     holdSeconds = 0;
+    holdCompleted = false;
     holdProgress.style.width = '0%';
     holdTimer = setInterval(() => {
       holdSeconds++;
@@ -1196,6 +1242,7 @@ function showCriticalWarning(command, callback) {
       holdText.textContent = 'Hold ' + (10 - holdSeconds) + 's';
       if (holdSeconds >= 10) {
         clearInterval(holdTimer); holdTimer = null;
+        holdCompleted = true;
         holdText.textContent = 'Confirm Execution';
         holdBtn.style.background = '#dc2626';
         holdBtn.onclick = () => { overlay.remove(); callback(true); };
@@ -1203,17 +1250,17 @@ function showCriticalWarning(command, callback) {
     }, 1000);
   });
   holdBtn.addEventListener('mouseup', () => {
+    if (holdCompleted) return;
     if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
     holdProgress.style.width = '0%';
     holdText.textContent = 'Hold 10s to Confirm';
-    holdBtn.onclick = null;
     holdBtn.style.background = '';
   });
   holdBtn.addEventListener('mouseleave', () => {
+    if (holdCompleted) return;
     if (holdTimer) { clearInterval(holdTimer); holdTimer = null; }
     holdProgress.style.width = '0%';
     holdText.textContent = 'Hold 10s to Confirm';
-    holdBtn.onclick = null;
     holdBtn.style.background = '';
   });
   cancelBtn.addEventListener('click', () => { overlay.remove(); callback(false); });
@@ -1701,7 +1748,7 @@ async function loadSettings() {
     wrap.appendChild(valSpan);
     body.appendChild(wrap);
   }
-  autoFillAllKeys();
+  await autoFillAllKeys();
   if (s.chatFontSize) {
     document.getElementById('chat-font-size').value = s.chatFontSize;
     document.getElementById('chat-font-size-label').textContent = s.chatFontSize + 'px';
@@ -1766,6 +1813,9 @@ async function validateAndSaveSettings() {
     { id: 'opencode', key: document.getElementById('key-opencode').value, model: document.getElementById('model-opencode').value, test: async () => (new OpenCodeProvider(document.getElementById('key-opencode').value, document.getElementById('model-opencode').value)).testKey() },
     { id: 'openrouter', key: document.getElementById('key-openrouter').value, model: document.getElementById('model-openrouter').value, test: async () => (new OpenRouterProvider(document.getElementById('key-openrouter').value, document.getElementById('model-openrouter').value)).testKey() },
     { id: 'custom', key: document.getElementById('key-custom').value, model: document.getElementById('model-custom').value, test: async () => (new CustomProvider(document.getElementById('key-custom').value, document.getElementById('model-custom').value, document.getElementById('url-custom').value)).testKey() },
+    { id: 'ollama', key: '', model: document.getElementById('model-ollama')?.value || '', test: async () => true },
+    { id: 'lmstudio', key: '', model: document.getElementById('model-lmstudio')?.value || '', test: async () => true },
+    { id: 'localai', key: '', model: document.getElementById('model-localai')?.value || '', test: async () => true },
   ];
 
   const localProviders = ['ollama', 'lmstudio', 'localai'];
@@ -1970,7 +2020,7 @@ function enableOfflineMode(enabled) {
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', currentTheme || 'dark');
   const isLight = currentTheme === 'light' || currentTheme === 'solarized-light';
-  document.getElementById('btn-theme-toggle').textContent = isLight ? '\u263D' : '\u2600';
+  document.getElementById('btn-theme-toggle') && (document.getElementById('btn-theme-toggle').textContent = isLight ? '\u263D' : '\u2600');
   if (editor) {
     const monacoTheme = isLight ? 'vs' : 'vs-dark';
     monaco.editor.setTheme(monacoTheme);
@@ -2136,17 +2186,18 @@ function showModelInfoPopup() {
 
 function updateSandboxStatus() {
   const el = document.getElementById('sandbox-status');
+  if (!el) return;
   if (currentProjectType === 'local') {
     el.textContent = '';
     el.className = 'sandbox-status hidden';
     return;
   }
   if (sandboxDir) {
-    el.textContent = '';
-    el.className = 'sandbox-status hidden';
+    el.textContent = 'Sandbox: ' + sandboxDir;
+    el.className = 'sandbox-status active';
   } else {
-    el.textContent = '';
-    el.className = 'sandbox-status hidden';
+    el.textContent = 'No sandbox configured';
+    el.className = 'sandbox-status inactive';
   }
 }
 
@@ -2235,7 +2286,9 @@ async function loadProjectList() {
     const isFav = Favorites.isFavorite(p.name);
     div.innerHTML = `<button class="star-icon" data-path="${escapeHtml(p.name)}">${isFav ? '\u2605' : '\u2606'}</button><span class="project-type">${typeLabel}</span><span style="flex:1">${escapeHtml(p.name)}</span><button class="project-del" data-name="${escapeHtml(p.name)}">&times;</button>`;
     div.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'BUTTON') WorkspaceManager.openProject(p.name, p.name);
+      if (e.target.tagName !== 'BUTTON') {
+        WorkspaceManager.openProject(p.name, p.name).catch(err => console.error('openProject failed:', err));
+      }
     });
     div.querySelector('.star-icon').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2406,11 +2459,20 @@ async function openProject(name) {
   TodoList.setProject(name);
   Notes.setProject(name);
   RagManager.setProject(name);
+  DecisionLog.setProject(name);
+  AuditLog.setProject(name);
 
   let savedMessages = [];
   try {
     const session = await window.electronAPI.loadSession(name);
     savedMessages = (session && session.history) || [];
+    // Migrate old messages: extract reasoning_content from >>| |<< blocks
+    for (const msg of savedMessages) {
+      if (msg.role === 'assistant' && !msg.reasoning_content && msg.content) {
+        const m = msg.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
+        if (m) msg.reasoning_content = m[1].trim();
+      }
+    }
   } catch (e) {
     console.error('loadSession failed for', name, e);
   }
@@ -2439,7 +2501,9 @@ async function openProject(name) {
   }
 
   if (files.length > 0) {
-    for (const f of files) await openTab(f, false);
+    for (const f of files) {
+      try { await openTab(f, false); } catch (e) { console.error('openTab failed for', f, e); }
+    }
     if (openTabs.length > 0) switchTab(0);
   }
 
@@ -2752,6 +2816,8 @@ function renameTab(index) {
       tabContents[newName] = tabContents[oldName];
       tabLanguages[newName] = tabLanguages[oldName];
       tabDirty[newName] = tabDirty[oldName];
+      const d = modelDisposables.get(oldName);
+      if (d) { modelDisposables.set(newName, d); modelDisposables.delete(oldName); }
       delete tabContents[oldName]; delete tabLanguages[oldName]; delete tabDirty[oldName];
       renderTabs();
       renderFileTree();
@@ -2897,7 +2963,7 @@ document.addEventListener('contextmenu', (e) => {
   if (_contextIsDir) {
     _contextFile = treeItem.querySelector('.name')?.textContent || '';
     let path = '';
-    let cur = treeItem.closest('.tree-dir');
+    let cur = treeItem.parentElement?.closest('.tree-dir');
     while (cur) {
       const s = cur.querySelector('summary .name');
       if (s) path = s.textContent + '/' + path;
@@ -3043,6 +3109,40 @@ function renderChat() {
     div.innerHTML = `<div class="msg-label">${label}${modelHint} <button class="copy-msg" data-content="${encodeURIComponent(msg.content || '')}">Copy</button></div>` + msgHtml;
     container.appendChild(div);
     if (msg.role === 'assistant' && msg.content) {
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'ai-actions';
+      const actions = [
+        ['🔍', 'Fehler suchen', 'search_errors'],
+        ['⚡', 'Performance', 'performance'],
+        ['🧪', 'Testen', 'test'],
+        ['✅', 'To-Do', 'todo'],
+        ['🎯', 'Priorität', 'priority'],
+        ['📅', 'Deadline', 'deadline'],
+        ['🚀', 'Umsetzung', 'implementation'],
+        ['❓', 'Warum', 'why'],
+      ];
+      for (const [icon, label, action] of actions) {
+        const btn = document.createElement('button');
+        btn.className = 'ai-action-btn';
+        btn.dataset.action = action;
+        btn.innerHTML = icon + ' ' + label;
+        btn.addEventListener('click', async () => {
+          const prompts = {
+            search_errors: 'Suche nach Fehlern/Bugs in folgendem Code. Analysiere gründlich und liste alle Probleme auf:\n\n',
+            performance: 'Analysiere die Performance und schlage Optimierungen für folgenden Code vor:\n\n',
+            test: 'Erstelle umfassende Tests für folgenden Code:\n\n',
+            todo: 'Wandle folgende Aufgaben in eine strukturierte To-Do-Liste um. Formatiere als Markdown-Liste:\n\n',
+            priority: 'Setze Prioritäten (hoch/mittel/niedrig) für folgende Aufgaben und begründe jeweils:\n\n',
+            deadline: 'Schlage realistische Deadlines für folgende Aufgaben vor. Berücksichtige Abhängigkeiten:\n\n',
+            implementation: 'Schlage eine konkrete Umsetzung für folgende Anforderungen vor:\n\n',
+            why: 'Erkläre mir folgenden Code/Ablauf auf Deutsch. Beschreibe das Warum im Detail:\n\n',
+          };
+          const prompt = prompts[action] || '';
+          await sendMessage(prompt + msg.content);
+        });
+        actionsDiv.appendChild(btn);
+      }
+      container.appendChild(actionsDiv);
       const continueBtn = document.createElement('button');
       continueBtn.className = 'btn-continue';
       continueBtn.textContent = 'Continue';
@@ -3292,6 +3392,7 @@ function toggleSendStop() {
   if (_isRequestActive) {
     _stoppedByUser = true;
     _isRequestActive = false;
+    if (_backoffTimer) { clearTimeout(_backoffTimer); _backoffTimer = null; }
     resetSendButton();
     const aborter = _requestAborter;
     _requestAborter = null;
@@ -3313,7 +3414,7 @@ function updatePendingTaskBadge() {
   const task = localStorage.getItem('florde-pending-task');
   if (task) {
     badge.classList.remove('hidden');
-    badge.title = 'Pending task: ' + (JSON.parse(task).plan || '').slice(0, 80);
+    try { const pt = JSON.parse(task); badge.title = 'Pending task: ' + (pt.plan || '').slice(0, 80); } catch { badge.title = 'Pending task'; }
   } else {
     badge.classList.add('hidden');
   }
@@ -3416,9 +3517,11 @@ document.getElementById('provider-select').addEventListener('change', () => { up
 
 function sanitizePath(filePath) {
   let normalized = filePath.replace(/\\/g, '/');
-  while (normalized.includes('..')) {
-    normalized = normalized.replace(/(^|\/)\.\.(\/|$)/g, '$1');
+  normalized = normalized.replace(/^\.\.\/?/g, '');
+  while (normalized.includes('/../')) {
+    normalized = normalized.replace(/\/[^/]+\/\.\.(\/|$)/g, '/');
   }
+  normalized = normalized.replace(/^\.\.\/?/g, '');
   normalized = normalized.replace(/\/+/g, '/').replace(/^\//, '');
   return normalized || '_';
 }
@@ -3521,11 +3624,23 @@ async function executeToolCall(name, args) {
     case 'delete_file':
       if (!args || !args.path) throw new Error('path required for delete_file');
       if (!project) throw new Error('No project open');
-      addAuditEntry('local', 'Delete_File: ' + sanitizePath(args.path));
-      logToTerminal('Delete_File: ' + sanitizePath(args.path), 'info');
-      await window.electronAPI.projectDeleteFile(project, sanitizePath(args.path));
+      const delPath = sanitizePath(args.path);
+      addAuditEntry('local', 'Delete_File: ' + delPath);
+      logToTerminal('Delete_File: ' + delPath, 'info');
+      await window.electronAPI.projectDeleteFile(project, delPath);
+      const delIdx = openTabs.indexOf(delPath);
+      if (delIdx >= 0) {
+        const disp = modelDisposables.get(delPath);
+        if (disp) { disp.dispose(); modelDisposables.delete(delPath); }
+        const mdl = monaco.editor.getModels().find(m => m.uri.path === '/' + delPath);
+        if (mdl) mdl.dispose();
+        openTabs.splice(delIdx, 1);
+        if (delIdx <= activeTabIndex) activeTabIndex = Math.max(0, activeTabIndex - 1);
+        if (activeTabIndex >= openTabs.length) activeTabIndex = openTabs.length - 1;
+        renderTabs();
+      }
       renderFileTree();
-      return 'File deleted: ' + sanitizePath(args.path);
+      return 'File deleted: ' + delPath;
 
     case 'list_files':
       if (!project) throw new Error('No project open');
@@ -3664,15 +3779,23 @@ async function executeToolCall(name, args) {
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const track = stream.getVideoTracks()[0];
-        const bitmap = await createImageBitmap(track);
+        const canvas = document.createElement('canvas');
+        let w, h;
+        try {
+          const capture = new ImageCapture(track);
+          const frame = await capture.grabFrame();
+          w = frame.displayWidth || frame.codedWidth || 1920;
+          h = frame.displayHeight || frame.codedHeight || 1080;
+          canvas.width = Math.min(w, 1920);
+          canvas.height = h * (canvas.width / w);
+          canvas.getContext('2d').drawImage(frame, 0, 0, canvas.width, canvas.height);
+          frame.close();
+        } catch {
+          canvas.width = 800; canvas.height = 600;
+          canvas.getContext('2d').fillText('Screenshot unavailable', 10, 20);
+        }
         track.stop();
         stream.getTracks().forEach(t => t.stop());
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.min(bitmap.width, 1920);
-        canvas.height = bitmap.height * (canvas.width / bitmap.width);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        bitmap.close();
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         // Attach to chat history as user image so vision-capable models can see it
         const imgEntry = { role: 'user', content: '[Screenshot attached]', _images: [{ dataUrl }] };
@@ -3707,23 +3830,19 @@ async function executeToolCall(name, args) {
       if (!args || !args.selector) throw new Error('selector required for browser_click');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
-      await BrowserPanel.evaluate(`document.querySelector('${args.selector.replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\)/g, '\\)').replace(/\]/g, '\\]').replace(/>/g, '\\>').replace(/\+/g, '\\+').replace(/~/g, '\\~').replace(/#/g, '\\#').replace(/\./g, '\\.').replace(/:/g, '\\:')}').click()`);
+      await BrowserPanel.evaluate(`document.querySelector(${JSON.stringify(args.selector)}).click()`);
       return 'Clicked: ' + args.selector;
     case 'browser_type':
       if (!args || !args.selector || args.text === undefined) throw new Error('selector and text required for browser_type');
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
       BrowserPanel.show();
-      const escapedSelector = args.selector.replace(/\\/g, '\\\\\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\)/g, '\\)').replace(/\]/g, '\\]').replace(/>/g, '\\>').replace(/\+/g, '\\+').replace(/~/g, '\\~').replace(/#/g, '\\#').replace(/\./g, '\\.').replace(/:/g, '\\:');
-      const escapedText = args.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
-      await BrowserPanel.evaluate(`
-        (() => {
-          const el = document.querySelector('${escapedSelector}');
-          if (!el) throw new Error('Element not found: ${args.selector.replace(/'/g, "\\'")}');
-          el.value = '${escapedText}';
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        })()
-      `);
+      await BrowserPanel.evaluate(`(() => {
+        const el = document.querySelector(${JSON.stringify(args.selector)});
+        if (!el) throw new Error('Element not found: ' + ${JSON.stringify(args.selector)});
+        el.value = ${JSON.stringify(args.text)};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
       return 'Typed into: ' + args.selector;
     case 'browser_screenshot':
       if (typeof BrowserPanel === 'undefined') throw new Error('BrowserPanel not available');
@@ -4017,6 +4136,9 @@ async function sendMessage(text) {
   if (!text) return;
   if (_isRequestActive) { logToTerminal('Request already in progress. Stop it first or wait.', 'warn'); return; }
 
+  // Clean up any stale aborter from a previous failed request
+  if (_requestAborter) { try { _requestAborter.abort(); } catch {} _requestAborter = null; }
+
   // Reset sources tracking for this request
   window._aiSources = [];
 
@@ -4121,6 +4243,7 @@ async function sendMessage(text) {
     try {
       plan = await providers[provider].sendPlain(planMessages);
     } catch (err) {
+      if (_stoppedByUser || _timedOut || err.name === 'AbortError') throw err;
       logToTerminal('Plan generation failed, proceeding without plan: ' + err.message, 'warn');
     }
     stopAnim(plan);
@@ -4148,7 +4271,6 @@ async function sendMessage(text) {
       stopAnim();
       cancelRequestWithTimeout('Request cancelled after ' + timeoutMinutes + ' minutes.');
       logToTerminal('Request timed out after ' + timeoutMinutes + ' minutes', 'error');
-      _isRequestActive = false;
       resetSendButton();
     };
     startRequestTimeout(timeoutMinutes, onTimeout);
@@ -4164,12 +4286,18 @@ async function sendMessage(text) {
       }
     }
     const MAX_MSG_CHARS = 100000;
-    const allImages = chatHistory.filter(m => m._images).flatMap(m => m._images);
+    const allImages = chatHistory.filter(m => m._images).flatMap(m => m._images).slice(-20);
     let messages = [systemMsg, ...chatHistory.map(m => {
       const base = { role: m.role, content: m.content || '' };
       if (m.tool_calls) base.tool_calls = m.tool_calls;
       if (m.tool_call_id) base.tool_call_id = m.tool_call_id;
       if (m.name) base.name = m.name;
+      let rc = m.reasoning_content || '';
+      if (!rc && m.role === 'assistant' && base.content) {
+        const thinkMatch = base.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
+        if (thinkMatch) rc = thinkMatch[1].trim();
+      }
+      if (rc) base.reasoning_content = rc;
       return base;
     })];
     if (allImages.length > 0) {
@@ -4199,19 +4327,26 @@ async function sendMessage(text) {
           messages = [messages[0], summaryMsg, ...messages.slice(-15)];
         }
       }
+      totalChars = 0;
+      for (const m of messages) totalChars += (m.content || '').length;
     }
+    const MAX_BACKOFF_RETRIES = 5;
     async function fetchWithBackoff(fn) {
       while (true) {
-        if (_timedOut) throw new Error('Timed out');
+        if (_timedOut || _stoppedByUser) throw new Error(_stoppedByUser ? 'Stopped by user' : 'Timed out');
         try {
           const result = await fn();
           _backoffStep = null;
           return result;
         } catch (err) {
-          if (_timedOut) throw err;
+          if (_timedOut || _stoppedByUser) throw err;
           const is429 = /429|rate.?limit/i.test(err.message || '');
           if (is429) {
             _backoffStep = (_backoffStep || 0) + 1;
+            if (_backoffStep > MAX_BACKOFF_RETRIES) {
+              _backoffStep = null;
+              throw new Error('Rate limited — max retries (' + MAX_BACKOFF_RETRIES + ') exceeded.');
+            }
             const delay = getBackoffDelay(_backoffStep - 1);
             setActivity('Rate Limited — Retry in ' + Math.ceil(delay / 1000) + 's');
             logToTerminal('Rate limited, retrying in ' + (delay / 1000) + 's (step ' + _backoffStep + ')', 'warn');
@@ -4224,6 +4359,14 @@ async function sendMessage(text) {
     }
 
     let finalContent = '';
+    let _lastReasoningContent = '';
+
+    function _getReasoningContent(resp) {
+      if (resp.reasoning_content) return resp.reasoning_content;
+      const c = resp.content || '';
+      const m = c.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
+      return m ? m[1].trim() : '';
+    }
 
     const _toolCallHistory = [];
 
@@ -4253,59 +4396,58 @@ async function sendMessage(text) {
         resetRequestTimeout(timeoutMinutes, onTimeout);
 
         if (response.tool_calls && response.tool_calls.length > 0) {
-          const toolCall = response.tool_calls[0];
-          const args = JSON.parse(toolCall.function.arguments || '{}');
-          const name = toolCall.function.name;
-
           const hasText = response.content && response.content.trim().length > 0;
           if (hasText) {
-            messages.push({ role: 'assistant', content: response.content });
+            messages.push({ role: 'assistant', content: response.content, reasoning_content: _getReasoningContent(response) });
             messages.push({ role: 'user', content: 'Fehler: entweder Tool-Call ODER Text, nicht beides.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
           }
 
-          const loopMsg = _detectToolLoop(name, args);
-          if (loopMsg) {
-            messages.push({ role: 'assistant', content: null, tool_calls: [toolCall] });
-            messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-            logToTerminal(loopMsg, 'warn');
-            chatHistory.push({ role: 'system', content: '[Tool] ' + name + ' → Loop detected' });
-            toolRounds++;
-            startAnim('*Waiting for AI*');
-            continue;
-          }
+          messages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls, reasoning_content: _getReasoningContent(response) });
 
-          messages.push({ role: 'assistant', content: null, tool_calls: [toolCall] });
-          logToTerminal('AI uses tool: ' + name, 'ai');
-          startAnim('*Running tool: ' + name + '*');
+          for (const toolCall of response.tool_calls) {
+            const args = JSON.parse(toolCall.function.arguments || '{}');
+            const name = toolCall.function.name;
 
-          if (_planSteps) {
-            _currentStep = Math.min(_currentStep + 1, _planSteps);
-            const stepEl = document.getElementById('plan-step-progress');
-            if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
-            const aiMsg = document.querySelector('.chat-msg.ai:last-child');
-            if (aiMsg) {
-              const sd = document.createElement('div');
-              sd.className = 'agent-step';
-              sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
-              aiMsg.appendChild(sd);
+            const loopMsg = _detectToolLoop(name, args);
+            if (loopMsg) {
+              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
+              logToTerminal(loopMsg, 'warn');
+              chatHistory.push({ role: 'system', content: '[Tool] ' + name + ' → Loop detected' });
+              continue;
             }
-          }
 
-          stopAnim('*' + formatToolActivity(name, args) + '*');
-          let result;
-          try {
-            result = await executeToolCall(name, args);
-          } catch (err) {
-            result = 'Error: ' + err.message;
-          }
-          messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
+            logToTerminal('AI uses tool: ' + name, 'ai');
+            startAnim('*Running tool: ' + name + '*');
 
-          chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider });
-          chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
-          trimChatHistory();
+            if (_planSteps) {
+              _currentStep = Math.min(_currentStep + 1, _planSteps);
+              const stepEl = document.getElementById('plan-step-progress');
+              if (stepEl) stepEl.textContent = _currentStep + '/' + _planSteps;
+              const aiMsg = document.querySelector('.chat-msg.ai:last-child');
+              if (aiMsg) {
+                const sd = document.createElement('div');
+                sd.className = 'agent-step';
+                sd.innerHTML = '<span class="agent-step-num">Step ' + _currentStep + '/' + _planSteps + '</span> <span class="agent-step-name">' + formatToolActivity(name, args) + '</span><span class="agent-step-bar"><span class="agent-step-progress" style="width:' + (_currentStep / _planSteps * 100) + '%"></span></span>';
+                aiMsg.appendChild(sd);
+              }
+            }
+
+            stopAnim('*' + formatToolActivity(name, args) + '*');
+            let result;
+            try {
+              result = await executeToolCall(name, args);
+            } catch (err) {
+              result = 'Error: ' + err.message;
+            }
+            messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
+
+            chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider, reasoning_content: _getReasoningContent(response) });
+            chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
+            trimChatHistory();
+          }
 
           toolRounds++;
           startAnim('*Waiting for AI*');
@@ -4313,13 +4455,14 @@ async function sendMessage(text) {
           const text = response.content || '';
           const hasCodeBlock = /```[\s\S]*?```/.test(text);
           if (hasCodeBlock) {
-            messages.push({ role: 'assistant', content: text });
+            messages.push({ role: 'assistant', content: text, reasoning_content: _getReasoningContent(response) });
             messages.push({ role: 'user', content: 'Code in Chat statt write_file/edit_file. Benutze das passende Tool.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
           }
           finalContent = text;
+          _lastReasoningContent = _getReasoningContent(response);
           break;
         }
       }
@@ -4327,6 +4470,7 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        await saveSession();
         clearActivity();
         clearRequestTimeout();
         return;
@@ -4419,6 +4563,7 @@ async function sendMessage(text) {
       if (toolRounds >= maxRounds) {
         contentDiv.textContent = 'Tool call limit reached. Please try a simpler request.';
         logToTerminal('Tool call limit reached (max ' + maxRounds + ' rounds)', 'error');
+        await saveSession();
         clearActivity();
         clearRequestTimeout();
         return;
@@ -4430,7 +4575,9 @@ async function sendMessage(text) {
     const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
     if (responseContent) {
       renderResponse(responseContent);
-      chatHistory.push({ role: 'assistant', content: responseContent, model: provider });
+      const pushMsg = { role: 'assistant', content: responseContent, model: provider };
+      if (_lastReasoningContent) pushMsg.reasoning_content = _lastReasoningContent;
+      chatHistory.push(pushMsg);
       trimChatHistory();
       processAIResponse(responseContent);
       // Render sources box if any web_search/web_fetch was used
@@ -4449,7 +4596,8 @@ async function sendMessage(text) {
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
       // Background summary for long conversations — fire-and-forget
-      if (chatHistory.length > 15 || totalChars > 30000) summarizeChat();
+      const _finalTotalChars = chatHistory.reduce((sum, m) => sum + (m.content || '').length, 0);
+      if (chatHistory.length > 15 || _finalTotalChars > 30000) summarizeChat();
       const chatContainer = document.getElementById('chat-messages');
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
@@ -5026,6 +5174,9 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     if (tab.dataset.tab === 'keybindings') {
       renderKeybindings();
     }
+    if (tab.dataset.tab === 'api-keys') {
+      if (typeof ApiKeyManager !== 'undefined') ApiKeyManager.render(document.getElementById('api-keys-list'));
+    }
   });
 });
 
@@ -5583,7 +5734,7 @@ document.getElementById('btn-ollama-models')?.addEventListener('click', async ()
     const downloadBtn = list.querySelector('.ollama-download-btn, .ollama-download-item');
     if (downloadBtn) downloadBtn.addEventListener('click', () => showOllamaDownloadModal());
   } catch (err) {
-    list.innerHTML = '<div class="ollama-error">Cannot connect: ' + err.message + '</div>';
+    list.innerHTML = '<div class="ollama-error">Cannot connect: ' + escapeHtml(err.message) + '</div>';
   }
 });
 
@@ -5640,6 +5791,7 @@ function showOllamaDownloadModal() {
     });
     // Hide results on click outside
     document.addEventListener('click', (e) => {
+      if (!searchResults?.isConnected) return;
       if (!e.target.closest('#ollama-dl-search, #ollama-dl-search-results')) {
         searchResults.classList.add('hidden');
       }
@@ -5709,7 +5861,14 @@ async function checkOllamaStatus() {
 }
 document.getElementById('url-ollama')?.addEventListener('change', checkOllamaStatus);
 checkOllamaStatus();
-const _ollamaStatusTimer = setInterval(checkOllamaStatus, 30000);
+function _isOllamaActive() {
+  return document.getElementById('provider-select')?.value === 'ollama';
+}
+async function _conditionalOllamaCheck() {
+  if (_isOllamaActive()) await checkOllamaStatus();
+}
+document.getElementById('provider-select')?.addEventListener('change', _conditionalOllamaCheck);
+const _ollamaStatusTimer = setInterval(_conditionalOllamaCheck, 30000);
 
 document.querySelectorAll('.layout-option input')?.forEach(radio => {
   radio.addEventListener('change', (e) => {
@@ -5724,14 +5883,14 @@ document.querySelectorAll('.layout-option input')?.forEach(radio => {
 document.getElementById('chat-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';
   document.documentElement.style.setProperty('--chat-font-size', size);
-  document.getElementById('chat-font-size-label').textContent = size;
+  document.getElementById('chat-font-size-label') && (document.getElementById('chat-font-size-label').textContent = size);
   saveSettingsToDisk({ chatFontSize: e.target.value });
 });
 
 document.getElementById('editor-font-size')?.addEventListener('input', (e) => {
   const size = e.target.value + 'px';
   document.documentElement.style.setProperty('--editor-font-size', size);
-  document.getElementById('editor-font-size-label').textContent = size;
+  document.getElementById('editor-font-size-label') && (document.getElementById('editor-font-size-label').textContent = size);
   if (editor) editor.updateOptions({ fontSize: parseInt(e.target.value) });
   saveSettingsToDisk({ editorFontSize: e.target.value });
 });
@@ -5739,7 +5898,7 @@ document.getElementById('editor-font-size')?.addEventListener('input', (e) => {
 // Auto-accept toggle
 document.getElementById('auto-accept')?.addEventListener('change', (e) => {
   const checked = e.target.checked;
-  document.getElementById('auto-exceptions-area').classList.toggle('hidden', !checked);
+  document.getElementById('auto-exceptions-area')?.classList.toggle('hidden', !checked);
   saveSettingsToDisk({ autoAccept: checked });
 });
 
@@ -5934,7 +6093,7 @@ function showQuickOpen() {
 
 function renderQuickResults(items) {
   const results = document.getElementById('quick-open-results');
-  results.innerHTML = items.map(f => '<div class="qo-item" data-path="' + f.path + '">' +
+  results.innerHTML = items.map(f => '<div class="qo-item" data-path="' + escapeHtml(f.path) + '">' +
     '<span class="qo-name">' + escapeHtml(f.name) + '</span>' +
     '<span class="qo-path">' + escapeHtml(f.path) + '</span>' +
   '</div>').join('');
@@ -6033,7 +6192,7 @@ const TabGroupManager = {
       const el = document.createElement('div');
       el.className = 'tab-group' + (name === this._activeGroup ? ' active' : '');
       el.style.borderLeft = '3px solid ' + g.color;
-      el.innerHTML = '<span>' + g.name + ' (' + g.tabs.length + ')</span><button class="tab-group-close" data-group="' + name + '">\u00d7</button>';
+      el.innerHTML = '<span>' + escapeHtml(g.name) + ' (' + g.tabs.length + ')</span><button class="tab-group-close" data-group="' + escapeHtml(name) + '">\u00d7</button>';
       el.addEventListener('click', (e) => { if (!e.target.classList.contains('tab-group-close')) { this._activeGroup = name; this._render(); this._applyFilter(); } });
       el.querySelector('.tab-group-close').addEventListener('click', (e) => { e.stopPropagation(); this.removeGroup(name); });
       container.appendChild(el);
@@ -6180,7 +6339,7 @@ const Notes = {
       if ((e.ctrlKey || e.metaKey) && e.key === 's' && !document.getElementById('notes-panel')?.classList.contains('hidden')) {
         e.preventDefault(); this.save();
       }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P' && !document.getElementById('notes-panel')?.classList.contains('hidden')) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M' && !document.getElementById('notes-panel')?.classList.contains('hidden')) {
         e.preventDefault(); this._previewMode = !this._previewMode;
         document.getElementById('notes-preview').style.display = this._previewMode ? 'block' : 'none';
       }
@@ -6250,8 +6409,8 @@ const Notes = {
     if (!container) return;
     container.innerHTML = Object.keys(this._notes).map(name => `
       <div class="note-item ${name === this._activeNote ? 'active' : ''}">
-        <span class="note-name">${name}</span>
-        <button class="note-remove" data-name="${name}" style="background:none;border:none;cursor:pointer;padding:0 2px;">&times;</button>
+        <span class="note-name">${escapeHtml(name)}</span>
+        <button class="note-remove" data-name="${escapeHtml(name)}" style="background:none;border:none;cursor:pointer;padding:0 2px;">&times;</button>
       </div>
     `).join('');
     container.querySelectorAll('.note-item').forEach(item => {
@@ -6280,7 +6439,7 @@ const Notes = {
     const preview = document.getElementById('notes-preview');
     if (!preview || !this._previewMode) return;
     const text = document.getElementById('notes-editor')?.value || '';
-    let html = text
+    let html = escapeHtml(text)
       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -6303,6 +6462,424 @@ function debounce(fn, ms) {
     timer = setTimeout(() => fn.apply(this, args), ms);
   };
 }
+
+// ==================== MANAGEMENT PANEL ====================
+
+const ManagementPanel = {
+  _activeTab: 'todo',
+
+  init() {
+    document.getElementById('btn-management-toggle')?.addEventListener('click', () => this.toggle());
+    document.getElementById('btn-management-close')?.addEventListener('click', () => this.hide());
+    document.querySelectorAll('.mgmt-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        if (tab) this.switchTab(tab);
+      });
+    });
+  },
+
+  toggle() {
+    const panel = document.getElementById('management-panel');
+    panel?.classList.toggle('hidden');
+    if (!panel?.classList.contains('hidden')) {
+      this._refreshActiveTab();
+    }
+  },
+
+  show(tab) {
+    const panel = document.getElementById('management-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    if (tab) this.switchTab(tab);
+    else this._refreshActiveTab();
+  },
+
+  hide() {
+    document.getElementById('management-panel')?.classList.add('hidden');
+  },
+
+  switchTab(tabName) {
+    document.querySelectorAll('.mgmt-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.mgmt-content').forEach(el => {
+      el.classList.toggle('hidden', el.id !== 'mgmt-' + tabName);
+    });
+    this._activeTab = tabName;
+    this._refreshActiveTab();
+  },
+
+  _refreshActiveTab() {
+    switch (this._activeTab) {
+      case 'todo': TodoList.render(); break;
+      case 'notes': Notes._renderList(); if (Notes._activeNote) Notes._loadNote(Notes._activeNote); break;
+      case 'decisions': DecisionLog.render(); break;
+    }
+  }
+};
+
+// ==================== DECISION LOG ====================
+
+const DecisionLog = {
+  _decisions: [],
+  _currentProject: null,
+
+  init() {
+    document.getElementById('btn-decision-new')?.addEventListener('click', () => this.showModal());
+  },
+
+  setProject(name) {
+    this._currentProject = name;
+    this._load();
+    this.render();
+  },
+
+  add(data) {
+    const entry = {
+      id: Date.now(),
+      title: data.title,
+      date: data.date || new Date().toISOString().split('T')[0],
+      reasons: data.reasons || '',
+      alternatives: data.alternatives || [],
+      createdAt: Date.now()
+    };
+    this._decisions.unshift(entry);
+    this._save();
+    this.render();
+  },
+
+  edit(id, data) {
+    const idx = this._decisions.findIndex(d => d.id === id);
+    if (idx === -1) return;
+    Object.assign(this._decisions[idx], data);
+    this._save();
+    this.render();
+  },
+
+  delete(id) {
+    this._decisions = this._decisions.filter(d => d.id !== id);
+    this._save();
+    this.render();
+  },
+
+  _load() {
+    if (!this._currentProject) return;
+    try {
+      const key = 'florde-decisions-' + this._currentProject;
+      this._decisions = JSON.parse(localStorage.getItem(key)) || [];
+    } catch { this._decisions = []; }
+  },
+
+  _save() {
+    if (!this._currentProject) return;
+    localStorage.setItem('florde-decisions-' + this._currentProject, JSON.stringify(this._decisions));
+  },
+
+  render() {
+    const container = document.getElementById('decision-list');
+    if (!container) return;
+    if (!this._decisions.length) {
+      container.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;">No decisions yet</div>';
+      return;
+    }
+    container.innerHTML = this._decisions.map(d => `
+      <div class="decision-card" data-id="${d.id}">
+        <div class="decision-header">
+          <div class="decision-title">${escapeHtml(d.title)}</div>
+          <div class="decision-date">${escapeHtml(d.date)}</div>
+        </div>
+        ${d.reasons ? `<div class="decision-reasons"><div class="decision-reasons-summary">${escapeHtml(d.reasons)}</div></div>` : ''}
+        ${d.alternatives && d.alternatives.length ? `<div class="decision-alternatives"><div class="decision-alt-label">Alternatives considered:</div>${d.alternatives.map(a => `<div class="decision-alt-item${a.rejected ? ' rejected' : ''}">${escapeHtml(a.label)}</div>`).join('')}</div>` : ''}
+        <div class="decision-actions">
+          <button class="btn-decision-edit" data-id="${d.id}">Edit</button>
+          <button class="btn-decision-delete" data-id="${d.id}" style="color:#ef4444;">Delete</button>
+        </div>
+      </div>
+    `).join('');
+    container.querySelectorAll('.btn-decision-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.dataset.id);
+        const entry = this._decisions.find(d => d.id === id);
+        if (entry) this.showModal(entry);
+      });
+    });
+    container.querySelectorAll('.btn-decision-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Delete this decision?')) this.delete(parseInt(btn.dataset.id));
+      });
+    });
+  },
+
+  showModal(entry) {
+    const existing = document.getElementById('decision-modal-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'decision-modal-overlay';
+    overlay.innerHTML = `
+      <div id="decision-modal">
+        <h3>${entry ? 'Edit Decision' : 'New Decision'}</h3>
+        <label>Decision</label>
+        <input type="text" id="decision-title" value="${entry ? escapeHtml(entry.title) : ''}" placeholder="What was decided?" />
+        <label>Date</label>
+        <input type="date" id="decision-date" value="${entry ? entry.date : new Date().toISOString().split('T')[0]}" />
+        <label>Reasons</label>
+        <textarea id="decision-reasons" placeholder="Why was this decision made?">${entry ? escapeHtml(entry.reasons) : ''}</textarea>
+        <label>Alternatives (one per line, prefix rejected with X)</label>
+        <textarea id="decision-alternatives" placeholder="Alternative A&#10;X Alternative B (rejected)">${entry ? (entry.alternatives || []).map(a => (a.rejected ? 'X ' : '') + a.label).join('\n') : ''}</textarea>
+        <div id="decision-modal-actions">
+          <button id="btn-decision-cancel">Cancel</button>
+          <button id="btn-decision-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('btn-decision-cancel').addEventListener('click', () => overlay.remove());
+    document.getElementById('btn-decision-save').addEventListener('click', () => {
+      const title = document.getElementById('decision-title')?.value.trim();
+      if (!title) return;
+      const date = document.getElementById('decision-date')?.value || new Date().toISOString().split('T')[0];
+      const reasons = document.getElementById('decision-reasons')?.value.trim() || '';
+      const altText = document.getElementById('decision-alternatives')?.value || '';
+      const alternatives = altText.split('\n').filter(l => l.trim()).map(l => {
+        const rejected = l.trim().startsWith('X ');
+        return { label: rejected ? l.trim().slice(2) : l.trim(), rejected };
+      });
+      const data = { title, date, reasons, alternatives };
+      if (entry) this.edit(entry.id, data);
+      else this.add(data);
+      overlay.remove();
+    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  }
+};
+
+// ==================== KI-AKTIONEN AUDIT LOG ====================
+
+const AuditLog = {
+  _logs: [],
+  _currentProject: null,
+  _aiMode: false,
+  _maxLogs: 500,
+
+  init() {
+    // Overlay tab switching
+    document.querySelectorAll('.audit-overlay-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.audit-overlay-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.audit-overlay-content').forEach(el => {
+          el.classList.toggle('hidden', el.id !== 'audit-' + tab + '-tab');
+        });
+        if (tab === 'actions') {
+          this._populateFilters();
+          this.render();
+        }
+      });
+    });
+
+    // KI actions tab controls
+    document.getElementById('btn-audit-ai-toggle')?.addEventListener('click', () => {
+      this._aiMode = !this._aiMode;
+      document.getElementById('btn-audit-ai-toggle')?.classList.toggle('active', this._aiMode);
+      const search = document.getElementById('audit-ki-search');
+      if (search) search.placeholder = this._aiMode ? 'Ask AI about logs...' : 'Search logs...';
+      if (this._aiMode) this._doAiSearch();
+    });
+    document.getElementById('audit-ki-search')?.addEventListener('input', debounce(() => {
+      if (!this._aiMode) this.render();
+    }, 250));
+    document.getElementById('audit-ki-search')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && this._aiMode) this._doAiSearch();
+    });
+    document.getElementById('audit-ki-filter-type')?.addEventListener('change', () => this.render());
+    document.getElementById('audit-ki-filter-status')?.addEventListener('change', () => this.render());
+    document.getElementById('audit-ki-filter-date')?.addEventListener('change', () => this.render());
+  },
+
+  setProject(name) {
+    this._currentProject = name;
+    this._load();
+  },
+
+  log(entry) {
+    const logEntry = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      type: entry.type || 'unknown',
+      action: entry.action || '',
+      status: entry.status || 'auto',
+      summary: entry.summary || '',
+      details: entry.details || {},
+      source: entry.source || 'KI',
+      project: this._currentProject,
+      sessionId: entry.sessionId || null
+    };
+    this._logs.unshift(logEntry);
+    if (this._logs.length > this._maxLogs) this._logs.length = this._maxLogs;
+    this._save();
+  },
+
+  _load() {
+    if (!this._currentProject) return;
+    try {
+      const key = 'florde-audit-ki-' + this._currentProject;
+      this._logs = JSON.parse(localStorage.getItem(key)) || [];
+    } catch { this._logs = []; }
+  },
+
+  _save() {
+    if (!this._currentProject) return;
+    localStorage.setItem('florde-audit-ki-' + this._currentProject, JSON.stringify(this._logs));
+  },
+
+  _populateFilters() {
+    const typeSelect = document.getElementById('audit-ki-filter-type');
+    if (!typeSelect) return;
+    const types = [...new Set(this._logs.map(l => l.type).filter(Boolean))];
+    const current = typeSelect.value;
+    typeSelect.innerHTML = '<option value="all">All Types</option>' +
+      types.map(t => `<option value="${t}">${this._typeLabel(t)}</option>`).join('');
+    if (current && types.includes(current)) typeSelect.value = current;
+
+    const statusSelect = document.getElementById('audit-ki-filter-status');
+    if (!statusSelect) return;
+    const statuses = [...new Set(this._logs.map(l => l.status).filter(Boolean))];
+    const curStatus = statusSelect.value;
+    statusSelect.innerHTML = '<option value="all">All Status</option>' +
+      statuses.map(s => `<option value="${s}">${this._statusLabel(s)}</option>`).join('');
+    if (curStatus && statuses.includes(curStatus)) statusSelect.value = curStatus;
+  },
+
+  _typeLabel(type) {
+    const labels = {
+      file_read: 'File Read', file_write: 'File Write', command: 'Command',
+      api_access: 'API Access', note_create: 'Note', chat: 'Chat'
+    };
+    return labels[type] || type;
+  },
+
+  _statusLabel(status) {
+    const labels = { allowed: 'Allowed', blocked: 'Blocked', auto: 'Automatic', pending: 'Pending' };
+    return labels[status] || status;
+  },
+
+  _statusIcon(status) {
+    const icons = { allowed: '✓', blocked: '✗', auto: '⚡', pending: '○' };
+    return icons[status] || '?';
+  },
+
+  _typeIcon(type) {
+    const icons = {
+      file_read: '📄', file_write: '📝', command: '🔒',
+      api_access: '🔌', note_create: '📋', chat: '💬'
+    };
+    return icons[type] || '•';
+  },
+
+  render() {
+    const container = document.getElementById('audit-actions-list');
+    if (!container) return;
+
+    const typeFilter = document.getElementById('audit-ki-filter-type')?.value || 'all';
+    const statusFilter = document.getElementById('audit-ki-filter-status')?.value || 'all';
+    const dateFilter = document.getElementById('audit-ki-filter-date')?.value || 'all';
+    const searchText = document.getElementById('audit-ki-search')?.value?.toLowerCase().trim() || '';
+
+    let filtered = this._logs;
+
+    if (typeFilter !== 'all') filtered = filtered.filter(l => l.type === typeFilter);
+    if (statusFilter !== 'all') filtered = filtered.filter(l => l.status === statusFilter);
+
+    const now = Date.now();
+    if (dateFilter === 'today') {
+      const today = new Date(); today.setHours(0,0,0,0);
+      filtered = filtered.filter(l => new Date(l.timestamp) >= today);
+    } else if (dateFilter === 'week') {
+      filtered = filtered.filter(l => now - new Date(l.timestamp).getTime() < 7 * 86400000);
+    } else if (dateFilter === 'month') {
+      filtered = filtered.filter(l => now - new Date(l.timestamp).getTime() < 30 * 86400000);
+    }
+
+    if (searchText && !this._aiMode) {
+      filtered = filtered.filter(l =>
+        l.summary?.toLowerCase().includes(searchText) ||
+        l.action?.toLowerCase().includes(searchText) ||
+        JSON.stringify(l.details)?.toLowerCase().includes(searchText)
+      );
+    }
+
+    const count = document.getElementById('audit-ki-count');
+    if (count) count.textContent = filtered.length + ' entries';
+
+    if (!filtered.length) {
+      container.innerHTML = '<div class="audit-ki-empty">No matching log entries</div>';
+      return;
+    }
+
+    container.innerHTML = filtered.map(l => {
+      const time = new Date(l.timestamp);
+      const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const detailRows = l.details ? Object.entries(l.details)
+        .map(([k, v]) => `<div class="audit-ki-entry-detail-row"><strong>${k}:</strong> ${escapeHtml(String(v))}</div>`)
+        .join('') : '';
+      return `
+        <div class="audit-ki-entry" data-id="${l.id}">
+          <div class="audit-ki-entry-icon">${this._typeIcon(l.type)}</div>
+          <div class="audit-ki-entry-body">
+            <div class="audit-ki-entry-header">
+              <span class="audit-ki-entry-action">${escapeHtml(l.action)}</span>
+              <span class="audit-ki-entry-status audit-ki-status-${l.status}">${this._statusIcon(l.status)} ${this._statusLabel(l.status)}</span>
+              <span class="audit-ki-entry-time">${timeStr}</span>
+            </div>
+            <div class="audit-ki-entry-summary">${escapeHtml(l.summary)}</div>
+            ${detailRows ? `<div class="audit-ki-entry-details">${detailRows}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.querySelectorAll('.audit-ki-entry').forEach(el => {
+      el.addEventListener('click', () => {
+        el.classList.toggle('expanded');
+      });
+    });
+  },
+
+  async _doAiSearch() {
+    const search = document.getElementById('audit-ki-search');
+    const query = search?.value?.trim();
+    if (!query) return;
+    const container = document.getElementById('audit-actions-list');
+    if (!container) return;
+
+    const recentLogs = this._logs.slice(0, 50);
+    const context = recentLogs.map(l =>
+      `[${new Date(l.timestamp).toLocaleString()}] ${l.action} | ${l.status} | ${l.summary}`
+    ).join('\n');
+
+    container.innerHTML = `<div class="audit-ai-result">Searching logs...</div>`;
+
+    try {
+      const provider = document.getElementById('provider-select').value;
+      const prov = window.providers?.[provider];
+      if (!prov || !prov.sendPlain) {
+        container.innerHTML = `<div class="audit-ai-result" style="color:#ef4444;">No active AI provider configured</div>`;
+        return;
+      }
+      const response = await prov.sendPlain([
+        { role: 'system', content: 'You are analyzing audit logs. Answer concisely based on the logs provided.' },
+        { role: 'user', content: `Here are the most recent logs:\n\n${context}\n\nUser question: ${query}` }
+      ]);
+      container.innerHTML = `<div class="audit-ai-result">${escapeHtml(response)}</div>`;
+    } catch (e) {
+      container.innerHTML = `<div class="audit-ai-result" style="color:#ef4444;">AI search error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+};
 
 // ==================== RAG MANAGER ====================
 
@@ -6403,7 +6980,7 @@ const RagManager = {
   async _readProjectFile(project, file) {
     if (window.electronAPI?.projectReadFile) {
       const r = await window.electronAPI.projectReadFile(project, file);
-      return r?.content || null;
+      return r || null;
     }
     return null;
   },
@@ -6453,7 +7030,7 @@ const RagManager = {
     container.innerHTML = results.map(r => `
       <div class="rag-result">
         <div class="rag-result-score">${r.score.toFixed(1)}</div>
-        <div class="rag-result-file">${r.file}:${r.chunk}</div>
+        <div class="rag-result-file">${escapeHtml(r.file)}:${r.chunk}</div>
         <div class="rag-result-snippet">${this._escapeHtml(r.text.substring(0, 200))}</div>
       </div>
     `).join('');
@@ -6499,6 +7076,9 @@ ChatManager.init();
 TodoList.init();
 Notes.init();
 RagManager.init();
+DecisionLog.init();
+AuditLog.init();
+ManagementPanel.init();
 if (typeof ApiKeyManager !== 'undefined') ApiKeyManager.init();
 if (typeof CodeIntelligence !== 'undefined') CodeIntelligence.init();
 TabGroupManager.init();
@@ -6779,24 +7359,28 @@ const BrowserPanel = {
   },
 
   isOpen() {
+    if (!window.electronAPI?.browser) return false;
     return window.electronAPI.browser.isOpen();
   },
 
   async navigate(url) {
+    if (!window.electronAPI?.browser) throw new Error('Browser not available');
     if (!url.match(/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//)) {
-      url = 'https://' + url;
+      url = 'http://' + url;
     }
     this.show();
     await window.electronAPI.browser.open(url);
   },
 
   async evaluate(js) {
+    if (!window.electronAPI?.browser) throw new Error('Browser not available');
     const isOpen = await window.electronAPI.browser.isOpen();
     if (!isOpen) throw new Error('No page loaded in browser. Use browser_open first.');
     return await window.electronAPI.browser.evaluate(js);
   },
 
   async screenshot() {
+    if (!window.electronAPI?.browser) return null;
     const isOpen = await window.electronAPI.browser.isOpen();
     if (!isOpen) return null;
     try {
@@ -6807,11 +7391,11 @@ const BrowserPanel = {
     }
   },
 
-  async back() { await window.electronAPI.browser.goBack(); },
-  async forward() { await window.electronAPI.browser.goForward(); },
-  async reload() { await window.electronAPI.browser.reload(); },
-  async close() { await window.electronAPI.browser.close(); },
-  abortAll() { window.electronAPI.browser.close().catch(() => {}); },
+  async back() { if (!window.electronAPI?.browser) return; try { await window.electronAPI.browser.goBack(); } catch (e) { console.error('Browser back error:', e); } },
+  async forward() { if (!window.electronAPI?.browser) return; try { await window.electronAPI.browser.goForward(); } catch (e) { console.error('Browser forward error:', e); } },
+  async reload() { if (!window.electronAPI?.browser) return; try { await window.electronAPI.browser.reload(); } catch (e) { console.error('Browser reload error:', e); } },
+  async close() { if (!window.electronAPI?.browser) return; try { await window.electronAPI.browser.close(); } catch (e) { console.error('Browser close error:', e); } },
+  abortAll() { window.electronAPI?.browser?.close?.().catch?.(() => {}); },
 };
 
 const DockerPanel = {
@@ -6819,13 +7403,18 @@ const DockerPanel = {
 
   async checkDocker() {
     if (!window.electronAPI?.docker) return false;
-    const info = await window.electronAPI.docker.info();
-    const statusEl = document.getElementById('docker-status');
-    if (statusEl) {
-      statusEl.style.color = info.ok ? '#22c55e' : '#ef4444';
-      statusEl.title = info.ok ? `Docker v${info.version}` : 'Docker not available';
+    try {
+      const info = await window.electronAPI.docker.info();
+      const statusEl = document.getElementById('docker-status');
+      if (statusEl) {
+        statusEl.style.color = info.ok ? '#22c55e' : '#ef4444';
+        statusEl.title = info.ok ? `Docker v${info.version}` : 'Docker not available';
+      }
+      return info.ok;
+    } catch (e) {
+      console.error('Docker check failed:', e);
+      return false;
     }
-    return info.ok;
   },
 
   async refreshContainers() {
@@ -6837,10 +7426,10 @@ const DockerPanel = {
     containerEl.innerHTML = (res.containers || []).map(c => `
       <div class="docker-container-row" data-id="${c.id}">
         <span class="docker-status-dot ${c.running ? 'running' : 'stopped'}"></span>
-        <span class="docker-container-name">${c.name}</span>
-        <span class="docker-container-image">${c.image}</span>
-        <span class="docker-container-status">${c.status}</span>
-        <span class="docker-container-ports">${c.ports}</span>
+        <span class="docker-container-name">${escapeHtml(c.name)}</span>
+        <span class="docker-container-image">${escapeHtml(c.image)}</span>
+        <span class="docker-container-status">${escapeHtml(c.status)}</span>
+        <span class="docker-container-ports">${escapeHtml(c.ports)}</span>
         <div class="docker-container-actions">
           <button class="docker-btn docker-btn-start" data-id="${c.id}" ${c.running ? 'disabled' : ''}>Start</button>
           <button class="docker-btn docker-btn-stop" data-id="${c.id}" ${!c.running ? 'disabled' : ''}>Stop</button>
@@ -6889,9 +7478,9 @@ const DockerPanel = {
     if (!res.ok) { imageEl.innerHTML = '<div class="docker-error">' + (res.error || 'Failed to list images') + '</div>'; return; }
     imageEl.innerHTML = (res.images || []).map(img => `
       <div class="docker-image-row">
-        <span class="docker-image-name">${img.repository}:${img.tag}</span>
-        <span class="docker-image-id">${img.id}</span>
-        <span class="docker-image-size">${img.size}</span>
+        <span class="docker-image-name">${escapeHtml(img.repository)}:${escapeHtml(img.tag)}</span>
+        <span class="docker-image-id">${escapeHtml(img.id)}</span>
+        <span class="docker-image-size">${escapeHtml(img.size)}</span>
       </div>
     `).join('');
   },
@@ -7150,7 +7739,8 @@ document.getElementById('btn-ollama-hub-download')?.addEventListener('click', ()
 });
 
 // === Browser Panel Toggle ===
-document.getElementById('btn-browser-toggle').addEventListener('click', async () => {
+document.getElementById('btn-browser-toggle')?.addEventListener('click', async () => {
+  if (!window.electronAPI?.browser) return;
   const isOpen = await window.electronAPI.browser.isOpen();
   if (isOpen) {
     await BrowserPanel.close();
@@ -7181,8 +7771,189 @@ showStartMenu();
 require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
 require(['vs/editor/editor.main'], () => {
   monacoReady = true;
-  // Main editor disabled — chat is primary view, diff viewer shows AI changes
+  const container = document.getElementById('editor-container');
+  if (container) {
+    editor = monaco.editor.create(container, {
+      theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
+      automaticLayout: true,
+      fontSize: 13,
+      readOnly: true,
+      domReadOnly: true,
+      minimap: { enabled: false },
+      wordWrap: 'on',
+      lineNumbers: 'on',
+      renderLineHighlight: 'line',
+      scrollBeyondLastLine: false,
+      padding: { top: 8, bottom: 8 },
+    });
+    setupCodeToolbar(editor);
+
+    // Restore active tab if one was opened before Monaco was ready
+    if (activeTabIndex >= 0 && activeTabIndex < openTabs.length) {
+      const name = openTabs[activeTabIndex];
+      const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
+      if (model) {
+        editor.setModel(model);
+      } else {
+        const lang = tabLanguages[name] || detectLanguage(name);
+        const uri = monaco.Uri.parse('file:///' + name);
+        const newModel = monaco.editor.createModel(tabContents[name] || '', lang, uri);
+        editor.setModel(newModel);
+      }
+    }
+  }
 });
+
+// ==================== CODE SELECTION TOOLBAR ====================
+
+let codeToolbar = null;
+
+function setupCodeToolbar(ed) {
+  const toolbar = document.createElement('div');
+  toolbar.id = 'code-toolbar';
+  toolbar.className = 'hidden';
+  toolbar.innerHTML = `
+    <button class="ct-btn" data-action="explain">Explain Me</button>
+    <button class="ct-btn" data-action="optimize">Code Optimizer</button>
+    <button class="ct-btn" data-action="search">Search Code</button>
+  `;
+  document.body.appendChild(toolbar);
+  codeToolbar = toolbar;
+
+  toolbar.querySelectorAll('.ct-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sel = ed.getSelection();
+      const text = ed.getModel() ? ed.getModel().getValueInRange(sel) : '';
+      if (!text.trim()) return;
+      const fileName = openTabs[activeTabIndex] || 'unknown';
+      const lang = tabLanguages[fileName] || detectLanguage(fileName) || '';
+      switch (btn.dataset.action) {
+        case 'explain':
+          hideCodeToolbar();
+          sendMessage('Erkläre mir diesen Codeabschnitt ausführlich auf Deutsch.\n\n```' + lang + '\n' + text + '\n```');
+          break;
+        case 'optimize':
+          hideCodeToolbar();
+          showOptimizePrompt(text, lang, fileName);
+          break;
+        case 'search':
+          hideCodeToolbar();
+          searchCodeOnline(text, lang, fileName);
+          break;
+      }
+    });
+  });
+
+  ed.onDidChangeCursorSelection((e) => {
+    const sel = e.selection;
+    if (sel && !sel.isEmpty() && ed.getModel()) {
+      showCodeToolbar(ed, sel);
+    } else {
+      hideCodeToolbar();
+    }
+  });
+}
+
+function showCodeToolbar(ed, sel) {
+  if (!codeToolbar) return;
+  const pos = ed.getScrolledVisiblePosition(sel.getStartPosition());
+  if (!pos) return;
+  const editorDom = document.getElementById('editor-container');
+  const editorRect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
+  codeToolbar.style.left = (editorRect.left + pos.left + 10) + 'px';
+  codeToolbar.style.top = (editorRect.top + pos.top - 40) + 'px';
+  codeToolbar.classList.remove('hidden');
+}
+
+function hideCodeToolbar() {
+  if (codeToolbar) codeToolbar.classList.add('hidden');
+}
+
+function showOptimizePrompt(code, lang, fileName) {
+  const existing = document.getElementById('optimize-prompt-modal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'optimize-prompt-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);';
+  overlay.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;width:500px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <h3 style="margin:0 0 0.5rem;font-size:1rem;">Code Optimizer</h3>
+      <p style="font-size:0.8rem;color:var(--text3);margin-bottom:1rem;">
+        Was möchtest du an diesem Codeabschnitt verbessern?
+      </p>
+      <textarea id="optimize-input" rows="3" placeholder="z.B. Performance verbessern, lesbarer machen, Fehler beheben, auf TypeScript umstellen..."
+        style="width:100%;padding:0.5rem;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;resize:vertical;box-sizing:border-box;"></textarea>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
+        <button id="optimize-cancel" class="btn btn-sm btn-secondary">Abbrechen</button>
+        <button id="optimize-confirm" class="btn btn-sm btn-primary">Optimieren</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('optimize-input').focus();
+  document.getElementById('optimize-cancel').onclick = () => overlay.remove();
+  document.getElementById('optimize-confirm').onclick = () => {
+    const goal = document.getElementById('optimize-input').value.trim();
+    overlay.remove();
+    if (goal) {
+      sendMessage('Optimiere den folgenden Codeabschnitt. Ziel: ' + goal + '\n\n```' + lang + '\n' + code + '\n```\n\nZeige mir den optimierten Code und erkläre die Änderungen.');
+    } else {
+      sendMessage('Optimiere den folgenden Codeabschnitt hinsichtlich Performance und Lesbarkeit.\n\n```' + lang + '\n' + code + '\n```\n\nZeige mir den optimierten Code und erkläre die Änderungen.');
+    }
+  };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+async function searchCodeOnline(code, lang, fileName) {
+  ManagementPanel.show('ci');
+  const tabs = document.getElementById('ci-tabs');
+  const results = document.getElementById('ci-results');
+  if (results) results.innerHTML = 'Suche...';
+  const iso = typeof CodeIntelligence !== 'undefined' ? CodeIntelligence : null;
+  if (iso) iso._activeTab = 'code-search';
+
+  const q = encodeURIComponent(code.trim().slice(0, 200));
+  let output = '<div style="padding:0.75rem;font-size:0.8rem;color:var(--text2);">Suche nach ähnlichem Code...</div>';
+
+  // searchcode.com
+  try {
+    const r = await fetch('https://api.searchcode.com/api/v1/search/?q=' + q, { signal: AbortSignal.timeout(15000) });
+    const data = await r.json();
+    if (data.results?.length > 0) {
+      output = '<div style="padding:0.75rem;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🔍 Repo-Suche (searchcode)</div>' +
+        data.results.slice(0, 12).map(item => `
+          <div style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
+            <a href="${escapeHtml(item.url)}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:500;">${escapeHtml(item.name)}</a>
+            <div style="color:var(--text3);font-size:0.7rem;">${escapeHtml(item.filename || '')} — ${escapeHtml(item.language || '')}</div>
+            <pre style="background:var(--bg3);padding:0.3rem;border-radius:4px;font-size:0.65rem;overflow:hidden;margin-top:0.2rem;">${escapeHtml((item.code || '').slice(0, 250))}</pre>
+          </div>
+        `).join('') + '</div>';
+    } else {
+      output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">Keine Ergebnisse auf searchcode.com gefunden.</div>';
+    }
+  } catch (e) {
+    output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">searchcode.com Fehler: ' + (e.message || 'Netzwerkfehler') + '</div>';
+  }
+
+  // PublicWWW if connected
+  const pubKey = typeof ApiKeyManager !== 'undefined' ? ApiKeyManager.getKey('publicwww') : '';
+  if (pubKey) {
+    try {
+      const q2 = encodeURIComponent(code.trim().slice(0, 100));
+      const r = await fetch('https://publicwww.com/websites/' + q2 + '/?key=' + encodeURIComponent(pubKey) + '&export=csvsnippets', {
+        headers: { 'Accept': 'text/csv' }, signal: AbortSignal.timeout(20000)
+      });
+      const text = await r.text();
+      if (text.trim()) {
+        const lines = text.trim().split('\n').slice(0, 15);
+        output += '<div style="padding:0 0.75rem 0.75rem;"><hr style="border:none;border-top:1px solid var(--border);margin:0.5rem 0;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🌐 Web-Suche (PublicWWW)</div>' +
+          lines.map(line => `<div style="padding:0.2rem 0;border-bottom:1px solid var(--border);font-size:0.7rem;word-break:break-all;">${line}</div>`).join('') + '</div>';
+      }
+    } catch {}
+  }
+
+  if (results) results.innerHTML = output;
+}
 
 // ==================== DIFF VIEWER (READ-ONLY) ====================
 

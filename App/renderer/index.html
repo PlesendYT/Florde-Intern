@@ -113,6 +113,7 @@
         <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
         <button id="btn-docker-toggle" title="Toggle Docker Panel">&#x1F433;</button>
         <button id="btn-browser-toggle" title="Toggle Browser (Ctrl+Shift+B)">&#127760;</button>
+        <button id="btn-git-toggle" title="Toggle Git Panel">&#128203;</button>
         <div class="dev-utils-wrapper">
           <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
           <div id="dev-utils-menu" class="dev-utils-menu hidden">
@@ -137,20 +138,8 @@
         <button id="btn-layout-snap" title="Snap Layout" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:0.3rem 0.7rem;border-radius:5px;cursor:pointer;font-size:0.8rem;opacity:0.5;">&#8862;</button>
         <button id="btn-fullscreen" title="Toggle Fullscreen (F11)">&#9974;</button>
         <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
-        <button id="btn-todo-toggle" title="Toggle To-Do List" class="titlebar-btn">&#9745;</button>
-        <button id="btn-notes-toggle" title="Toggle Notes" class="titlebar-btn">&#128221;</button>
-        <button id="btn-rag-toggle" title="Toggle Knowledge Base" class="titlebar-btn">&#129504;</button>
         <button id="btn-plugins" title="Plugin Marketplace">&#9889;</button>
-        <button id="btn-skills-toggle" title="Toggle Skills" class="titlebar-btn">&#9889;</button>
-        <button id="btn-ollama-hub" title="Ollama Model Hub" class="titlebar-btn" style="position:relative;">
-          &#129302;
-          <span id="ollama-hub-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#22c55e;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;font-weight:bold;"></span>
-        </button>
-        <button id="btn-ci-toggle" title="Code Intelligence" class="titlebar-btn">&#129302;</button>
-        <button id="btn-exec-toggle" title="Execution History" class="titlebar-btn" style="position:relative;">
-          &#9678;
-          <span id="exec-badge" class="exec-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#ef4444;color:#fff;font-size:0.6rem;width:14px;height:14px;border-radius:50%;align-items:center;justify-content:center;"></span>
-        </button>
+        <button id="btn-management-toggle" title="Management (To-Do, Notes, Decisions, RAG, Skills, Ollama, CI, Exec)" class="titlebar-btn">&#128202;</button>
         <button id="btn-settings" title="Settings">&#9881;</button>
         <button id="btn-save-all">Save All</button>
         <button id="btn-git-commit-show">Git Commit</button>
@@ -400,6 +389,7 @@
         <button class="settings-tab" data-tab="apps">Connected Apps</button>
         <button class="settings-tab" data-tab="appearance">Appearance</button>
         <button class="settings-tab" data-tab="security">Security</button>
+        <button class="settings-tab" data-tab="api-keys">API Keys</button>
         <button class="settings-tab" data-tab="mcp">MCP Servers</button>
       </div>
 
@@ -742,6 +732,16 @@
         </div>
       </div>
 
+      <!-- API Keys Tab -->
+      <div class="settings-tab-content" data-tab="api-keys">
+        <div class="settings-form">
+          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+            API-Keys für Code Intelligence Dienste. Keys werden lokal gespeichert.
+          </p>
+          <div id="api-keys-list"></div>
+        </div>
+      </div>
+
       <!-- Apps Tab -->
       <div class="settings-tab-content" data-tab="apps">
         <div class="settings-form">
@@ -879,18 +879,50 @@
 
   <!-- Audit Log Modal -->
   <div id="audit-modal" class="modal hidden">
-    <div class="modal-content" style="max-width:750px;min-width:550px;max-height:85vh;">
-      <h2>Daten-Audit-Log</h2>
-      <p style="color:var(--text2);margin-bottom:1rem;font-size:0.85rem;">&#128200; Was wurde an die Cloud gesendet vs. lokal verarbeitet</p>
-      <div style="display:flex;gap:1rem;margin-bottom:1rem;">
-        <div id="audit-summary" style="flex:1;display:flex;gap:1rem;"></div>
+    <div class="modal-content" style="max-width:750px;min-width:550px;max-height:85vh;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;gap:1rem;padding:0 0 0.5rem;">
+        <h2 style="margin:0;">Daten-Audit-Log</h2>
+        <div id="audit-overlay-tabs" style="display:flex;gap:2px;margin-left:auto;">
+          <button class="audit-overlay-tab active" data-tab="messages">Cloud/Lokal</button>
+          <button class="audit-overlay-tab" data-tab="actions">KI-Aktionen</button>
+        </div>
       </div>
-      <div style="border-bottom:1px solid var(--border);margin-bottom:0.5rem;padding-bottom:0.3rem;display:flex;gap:0.5rem;">
-        <button class="audit-filter active" data-filter="all">Alle</button>
-        <button class="audit-filter" data-filter="cloud">Cloud</button>
-        <button class="audit-filter" data-filter="local">Lokal</button>
+      <!-- Messages Tab -->
+      <div id="audit-messages-tab" class="audit-overlay-content">
+        <p style="color:var(--text2);margin-bottom:1rem;font-size:0.85rem;">&#128200; Was wurde an die Cloud gesendet vs. lokal verarbeitet</p>
+        <div style="display:flex;gap:1rem;margin-bottom:1rem;">
+          <div id="audit-summary" style="flex:1;display:flex;gap:1rem;"></div>
+        </div>
+        <div style="border-bottom:1px solid var(--border);margin-bottom:0.5rem;padding-bottom:0.3rem;display:flex;gap:0.5rem;">
+          <button class="audit-filter active" data-filter="all">Alle</button>
+          <button class="audit-filter" data-filter="cloud">Cloud</button>
+          <button class="audit-filter" data-filter="local">Lokal</button>
+        </div>
+        <div id="audit-list" class="audit-list" style="max-height:40vh;overflow-y:auto;"></div>
       </div>
-      <div id="audit-list" class="audit-list" style="max-height:40vh;overflow-y:auto;"></div>
+      <!-- KI Actions Tab -->
+      <div id="audit-actions-tab" class="audit-overlay-content hidden">
+        <div id="audit-search-row" style="display:flex;gap:0.3rem;align-items:center;margin-bottom:0.5rem;">
+          <input type="text" id="audit-ki-search" placeholder="Search logs or ask AI..." style="flex:1;padding:0.35rem 0.5rem;background:var(--bg1);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-size:0.8rem;" />
+          <button id="btn-audit-ai-toggle" title="Toggle AI search" class="audit-ai-btn">&#129302;</button>
+        </div>
+        <div id="audit-ki-filter-row" style="display:flex;gap:0.3rem;align-items:center;margin-bottom:0.3rem;">
+          <select id="audit-ki-filter-type" class="audit-filter-select">
+            <option value="all">All Types</option>
+          </select>
+          <select id="audit-ki-filter-status" class="audit-filter-select">
+            <option value="all">All Status</option>
+          </select>
+          <select id="audit-ki-filter-date" class="audit-filter-select">
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+          <span id="audit-ki-count" style="font-size:0.7rem;color:var(--text3);margin-left:auto;">0 entries</span>
+        </div>
+        <div id="audit-actions-list" style="flex:1;overflow-y:auto;max-height:45vh;"></div>
+      </div>
       <div class="modal-actions" style="margin-top:1rem;">
         <button id="btn-audit-clear" class="btn btn-secondary" style="margin-right:auto;">Clear Log</button>
         <button id="btn-close-audit" class="btn btn-secondary">Close</button>
@@ -932,124 +964,130 @@
     </div>
   </div>
 
-  <!-- To-Do Panel -->
-  <div id="todo-panel" class="hidden">
-    <div id="todo-panel-header">
-      <span>To-Do List</span>
-      <button id="btn-todo-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+  <!-- Management Panel (Notes, To-Do, Decisions, RAG, Skills, Ollama, CI, Execution) -->
+  <div id="management-panel" class="hidden">
+    <div id="management-header">
+      <span>&#128202; Management</span>
+      <button id="btn-management-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
     </div>
-    <div id="todo-input-row">
-      <input type="text" id="todo-input" placeholder="Add a task..." />
+    <div id="management-subtabs">
+      <button class="mgmt-tab active" data-tab="todo">&#9745; To-Do</button>
+      <button class="mgmt-tab" data-tab="notes">&#128221; Notes</button>
+      <button class="mgmt-tab" data-tab="decisions">&#128220; Decisions</button>
+      <button class="mgmt-tab" data-tab="rag">&#129504; RAG</button>
+      <button class="mgmt-tab" data-tab="skills">&#9889; Skills</button>
+      <button class="mgmt-tab" data-tab="ollama">&#129302; Ollama</button>
+      <button class="mgmt-tab" data-tab="ci">&#129302; CI</button>
+      <button class="mgmt-tab" data-tab="exec">&#9678; Exec</button>
     </div>
-    <div id="todo-list"></div>
-    <div id="todo-actions">
-      <select id="todo-filter">
-        <option value="all">All</option>
-        <option value="active">Active</option>
-        <option value="done">Done</option>
-      </select>
-      <button id="btn-todo-clear-done">Clear Done</button>
-    </div>
-  </div>
 
-  <!-- Notes Panel -->
-  <div id="notes-panel" class="hidden">
-    <div id="notes-panel-header">
-      <span>Markdown Notes</span>
-      <button id="btn-notes-new" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:1rem;">+</button>
-      <button id="btn-notes-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+    <!-- To-Do Content -->
+    <div class="mgmt-content" id="mgmt-todo">
+      <div id="todo-input-row">
+        <input type="text" id="todo-input" placeholder="Add a task..." />
+      </div>
+      <div id="todo-list"></div>
+      <div id="todo-actions">
+        <select id="todo-filter">
+          <option value="all">All</option>
+          <option value="active">Active</option>
+          <option value="done">Done</option>
+        </select>
+        <button id="btn-todo-clear-done">Clear Done</button>
+      </div>
     </div>
-    <div id="notes-sidebar">
-      <div id="notes-list"></div>
-    </div>
-    <div id="notes-editor-area">
-      <textarea id="notes-editor" placeholder="Write markdown here..."></textarea>
-      <div id="notes-preview"></div>
-    </div>
-  </div>
 
-  <!-- RAG Panel -->
-  <div id="rag-panel" class="hidden">
-    <div id="rag-panel-header">
-      <span>Knowledge Base (RAG)</span>
-      <button id="btn-rag-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
+    <!-- Notes Content -->
+    <div class="mgmt-content hidden" id="mgmt-notes">
+      <div id="notes-sidebar">
+        <button id="btn-notes-new" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;">+ New Note</button>
+        <div id="notes-list"></div>
+      </div>
+      <div id="notes-editor-area">
+        <textarea id="notes-editor" placeholder="Write markdown here..."></textarea>
+        <div id="notes-preview"></div>
+      </div>
     </div>
-    <div id="rag-status-row">
-      <span id="rag-status">Idle</span>
-      <button id="btn-rag-reindex">Re-index</button>
-      <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
-        <input type="checkbox" id="rag-auto" checked /> Auto
-      </label>
-    </div>
-    <div id="rag-stats">
-      <span id="rag-file-count">0 files</span>
-      <span id="rag-chunk-count">0 chunks</span>
-      <span id="rag-token-estimate">0 tokens</span>
-    </div>
-    <div id="rag-search-row">
-      <input type="text" id="rag-search" placeholder="Search knowledge base..." />
-    </div>
-    <div id="rag-results"></div>
-    <div id="rag-config">
-      <label>Max chunks: <input type="number" id="rag-max-chunks" value="5" min="1" max="20" style="width:50px;" /></label>
-      <label>Chunk size: <input type="number" id="rag-chunk-size" value="500" min="100" max="2000" style="width:60px;" /></label>
-      <label>Include: <input type="text" id="rag-include" value="*.{js,ts,jsx,tsx,py,rs,go,java,c,cpp,h,hpp,md,txt,json,yaml,yml,toml,xml,html,css,scss}" /></label>
-      <label>Exclude: <input type="text" id="rag-exclude" value="node_modules,dist,build,.git,venv,__pycache__" /></label>
-    </div>
-  </div>
 
-  <!-- Skills Panel -->
-  <div id="skills-panel" class="hidden">
-    <div id="skills-panel-header">
-      <span>&#9889; Skills</span>
-      <button id="btn-skill-create" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Create</button>
-      <button id="btn-skill-import" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.85rem;">Import</button>
-      <button id="btn-skills-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#10005;</button>
+    <!-- Decisions Content -->
+    <div class="mgmt-content hidden" id="mgmt-decisions">
+      <div id="decision-toolbar">
+        <button id="btn-decision-new" class="btn btn-primary" style="font-size:0.75rem;padding:0.25rem 0.6rem;">+ New Decision</button>
+      </div>
+      <div id="decision-list"></div>
     </div>
-    <div id="skills-list"></div>
-  </div>
 
-  <!-- Execution Panel -->
-  <div id="execution-panel" class="hidden">
-    <div id="execution-panel-header">
-      <span>&#9678; Execution</span>
-      <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;">Clear</button>
-      <button id="btn-exec-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#10005;</button>
+    <!-- RAG Content -->
+    <div class="mgmt-content hidden" id="mgmt-rag">
+      <div id="rag-status-row">
+        <span id="rag-status">Idle</span>
+        <button id="btn-rag-reindex">Re-index</button>
+        <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
+          <input type="checkbox" id="rag-auto" checked /> Auto
+        </label>
+      </div>
+      <div id="rag-stats">
+        <span id="rag-file-count">0 files</span>
+        <span id="rag-chunk-count">0 chunks</span>
+        <span id="rag-token-estimate">0 tokens</span>
+      </div>
+      <div id="rag-search-row">
+        <input type="text" id="rag-search" placeholder="Search knowledge base..." />
+      </div>
+      <div id="rag-results"></div>
+      <div id="rag-config">
+        <label>Max chunks: <input type="number" id="rag-max-chunks" value="5" min="1" max="20" style="width:50px;" /></label>
+        <label>Chunk size: <input type="number" id="rag-chunk-size" value="500" min="100" max="2000" style="width:60px;" /></label>
+        <label>Include: <input type="text" id="rag-include" value="*.{js,ts,jsx,tsx,py,rs,go,java,c,cpp,h,hpp,md,txt,json,yaml,yml,toml,xml,html,css,scss}" /></label>
+        <label>Exclude: <input type="text" id="rag-exclude" value="node_modules,dist,build,.git,venv,__pycache__" /></label>
+      </div>
     </div>
-    <div id="execution-list"></div>
-  </div>
 
-  <!-- Ollama Hub Panel -->
-  <div id="ollama-hub-panel" class="hidden">
-    <div id="ollama-hub-header">
-      <span>&#129302; Ollama Model Hub</span>
-      <button id="btn-ollama-hub-download" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Download</button>
-      <button id="btn-ollama-hub-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#215;</button>
+    <!-- Skills Content -->
+    <div class="mgmt-content hidden" id="mgmt-skills">
+      <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);">
+        <button id="btn-skill-create" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Create</button>
+        <button id="btn-skill-import" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.85rem;">Import</button>
+      </div>
+      <div id="skills-list"></div>
     </div>
-    <div id="ollama-hub-controls">
-      <input type="text" id="ollama-hub-search" placeholder="Search models..." />
-      <select id="ollama-hub-category">
-        <option value="all">All</option>
-        <option value="llama">Llama Family</option>
-        <option value="qwen">Qwen Family</option>
-        <option value="mistral">Mistral Family</option>
-        <option value="code">Code Models</option>
-        <option value="embedding">Embeddings</option>
-        <option value="vision">Vision</option>
-      </select>
-    </div>
-    <div id="ollama-hub-stats" style="padding:0.25rem 0.75rem;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);"></div>
-    <div id="ollama-hub-list"></div>
-  </div>
 
-  <div id="ci-panel" class="hidden">
-    <div id="ci-panel-header">
-      <span>&#129302; Code Intelligence</span>
-      <button id="btn-ci-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&#215;</button>
+    <!-- Ollama Content -->
+    <div class="mgmt-content hidden" id="mgmt-ollama">
+      <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);align-items:center;">
+        <span style="font-size:0.8rem;font-weight:600;">&#129302; Ollama Model Hub</span>
+        <button id="btn-ollama-hub-download" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;margin-left:auto;">+ Download</button>
+      </div>
+      <div style="display:flex;gap:0.3rem;padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);">
+        <input type="text" id="ollama-hub-search" placeholder="Search models..." style="flex:1;" />
+        <select id="ollama-hub-category">
+          <option value="all">All</option>
+          <option value="llama">Llama</option>
+          <option value="qwen">Qwen</option>
+          <option value="mistral">Mistral</option>
+          <option value="code">Code</option>
+          <option value="embedding">Embeddings</option>
+          <option value="vision">Vision</option>
+        </select>
+      </div>
+      <div id="ollama-hub-stats" style="padding:0.25rem 0.75rem;font-size:0.7rem;color:var(--text3);border-bottom:1px solid var(--border);"></div>
+      <div id="ollama-hub-list"></div>
     </div>
-    <div id="ci-keys" style="flex-shrink:0;"></div>
-    <div id="ci-tabs" style="display:flex;flex-wrap:wrap;gap:2px;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);overflow-y:auto;"></div>
-    <div id="ci-results" style="flex:1;overflow-y:auto;"></div>
+
+    <!-- CI Content -->
+    <div class="mgmt-content hidden" id="mgmt-ci">
+      <div id="ci-tabs" style="display:flex;flex-wrap:wrap;gap:2px;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);overflow-y:auto;"></div>
+      <div id="ci-results" style="flex:1;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Execution Content -->
+    <div class="mgmt-content hidden" id="mgmt-exec">
+      <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);align-items:center;">
+        <span style="font-size:0.8rem;font-weight:600;">&#9678; Execution History</span>
+        <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;margin-left:auto;">Clear</button>
+      </div>
+      <div id="execution-list"></div>
+    </div>
   </div>
 
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">

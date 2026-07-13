@@ -7629,12 +7629,16 @@ function initXtermTerminal() {
       TerminalManager.createSplit('vertical');
     });
     document.getElementById('terminal-output-tab')?.addEventListener('click', () => {
-      document.getElementById('terminal-splits').style.display = 'none';
-      document.getElementById('terminal-container').style.display = 'none';
-      document.getElementById('terminal-output').classList.remove('hidden');
+      showModal('audit-modal');
+      renderAuditLog();
+      document.querySelectorAll('.audit-overlay-tab').forEach(b => b.classList.remove('active'));
+      document.querySelector('.audit-overlay-tab[data-tab="messages"]')?.classList.add('active');
+      document.querySelectorAll('.audit-overlay-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('audit-messages-tab')?.classList.remove('hidden');
     });
-    document.querySelectorAll('.terminal-tab').forEach(tab => {
+    document.querySelectorAll('.terminal-tab:not(#terminal-output-tab)').forEach(tab => {
       tab.addEventListener('click', () => {
+        hideModal('audit-modal');
         document.getElementById('terminal-output').classList.add('hidden');
         document.getElementById('terminal-splits').style.display = '';
         document.getElementById('terminal-container').style.display = '';

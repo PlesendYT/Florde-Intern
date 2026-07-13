@@ -1606,3 +1606,29 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   margin: 0.5rem; font-size: 0.8rem; color: var(--text);
   white-space: pre-wrap;
 }
+
+/* ==================== ENHANCED PERMISSION PROMPT ==================== */
+.perm-prompt-icon { font-size: 1.4rem; margin-bottom: 0.25rem; }
+.perm-prompt-action { font-size: 1.1rem; font-weight: 600; color: var(--text); margin-bottom: 0.5rem; }
+.perm-prompt-detail { font-size: 0.85rem; color: var(--text2); margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+.perm-prompt-detail strong { color: var(--text); min-width: 5rem; }
+.perm-prompt-lines { font-family: monospace; font-size: 0.85rem; padding: 0.15rem 0.4rem; border-radius: 3px; }
+.perm-prompt-lines.added { color: #22c55e; background: rgba(34,197,94,0.1); }
+.perm-prompt-lines.removed { color: #ef4444; background: rgba(239,68,68,0.1); }
+.perm-prompt-reason { font-size: 0.85rem; color: var(--text2); margin-bottom: 0.3rem; padding: 0.3rem 0.5rem; background: var(--bg3); border-radius: 4px; border-left: 3px solid var(--accent); }
+.perm-prompt-risk { font-size: 0.85rem; margin-bottom: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+.perm-risk-badge { font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; }
+.perm-risk-badge.critical { background: rgba(239,68,68,0.2); color: #ef4444; }
+.perm-risk-badge.high { background: rgba(239,68,68,0.15); color: #f87171; }
+.perm-risk-badge.medium { background: rgba(234,179,8,0.15); color: #eab308; }
+.perm-risk-badge.low { background: rgba(34,197,94,0.15); color: #22c55e; }
+.perm-risk-badge.safe { background: rgba(34,197,94,0.1); color: #4ade80; }
+.perm-prompt-explain { font-size: 0.8rem; color: var(--text3); padding: 0.3rem 0.5rem; background: var(--bg3); border-radius: 4px; margin-bottom: 0.5rem; border-left: 3px solid var(--text3); }
+.perm-prompt-extra-btns { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.perm-prompt-extra-btns button { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg3); color: var(--text); cursor: pointer; font-size: 0.78rem; }
+.perm-prompt-extra-btns button:hover { background: var(--hover); }
+.perm-prompt-divider { border: none; border-top: 1px solid var(--border); margin: 0.5rem 0; }
+.perm-prompt-detail-section { margin-top: 0.75rem; padding: 0.5rem; background: var(--bg3); border-radius: 6px; max-height: 200px; overflow-y: auto; font-size: 0.8rem; color: var(--text2); line-height: 1.5; border: 1px solid var(--border); }
+.perm-prompt-detail-section.loading { opacity: 0.6; }
+.perm-prompt-textarea { width: 100%; min-height: 60px; padding: 0.4rem; background: var(--bg1); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; margin-bottom: 0.5rem; }
+.perm-prompt-textarea-row { display: flex; gap: 0.3rem; align-items: flex-start; }

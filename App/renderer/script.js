@@ -2455,11 +2455,13 @@ function getSortedProjects(projects) {
 }
 
 async function loadProjectList() {
+  const list = document.getElementById('project-list');
+  if (!list.classList.contains('hidden')) { list.classList.add('hidden'); return; }
   const container = document.getElementById('project-items');
   if (!window.electronAPI) { container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">App not ready</div>'; return; }
   const projects = getSortedProjects(await window.electronAPI.listProjects());
   container.innerHTML = '';
-  document.getElementById('project-list').classList.remove('hidden');
+  list.classList.remove('hidden');
   if (projects.length === 0) {
     container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">No projects yet</div>';
     return;
@@ -2717,7 +2719,7 @@ document.getElementById('btn-start-plugins').addEventListener('click', () => {
   if (pluginRegistry && pluginRegistry._loaded) renderPluginMarketplace();
 });
 
-document.getElementById('btn-plugins').addEventListener('click', () => {
+document.getElementById('btn-plugins')?.addEventListener('click', () => {
   hideAllModals();
   showModal('plugin-modal');
   if (pluginRegistry && pluginRegistry._loaded) renderPluginMarketplace();
@@ -3685,7 +3687,7 @@ document.getElementById('btn-close-git').addEventListener('click', () => {
   hideModal('git-modal');
 });
 
-document.getElementById('btn-git-commit-show').addEventListener('click', async () => {
+document.getElementById('btn-git-commit-show')?.addEventListener('click', async () => {
   if (!currentProject) { logToTerminal('No project open for git commit', 'error'); return; }
   const projectRoot = await window.electronAPI.getProjectRoot(currentProject);
   if (!projectRoot) { logToTerminal('No project root for git commit', 'error'); return; }
@@ -6665,6 +6667,7 @@ const ManagementPanel = {
 
   init() {
     document.getElementById('btn-management-toggle')?.addEventListener('click', () => this.toggle());
+    document.getElementById('btn-ci-toggle')?.addEventListener('click', () => { this.show('ci'); });
     document.getElementById('btn-management-close')?.addEventListener('click', () => this.hide());
     document.querySelectorAll('.mgmt-tab').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -7292,7 +7295,7 @@ let layoutSnapped = false;
 document.getElementById('btn-layout-snap')?.addEventListener('click', () => {
   layoutSnapped = !layoutSnapped;
   document.body.classList.toggle('layout-snapped', layoutSnapped);
-  document.getElementById('btn-layout-snap').style.opacity = layoutSnapped ? '1' : '0.5';
+  document.getElementById('btn-layout-snap')?.style ? document.getElementById('btn-layout-snap').style.opacity = layoutSnapped ? '1' : '0.5' : null;
 });
 // File watcher for external changes
 if (window.electronAPI.onFileChanged) {

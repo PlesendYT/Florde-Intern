@@ -1126,11 +1126,14 @@ const PermissionManager = {
           return new Promise((resolve) => showPermissionPrompt(toolName, args, resolve));
         }
       }
+      AuditLog.log({ type: _toolAuditType(toolName), action: formatToolActivity(toolName, args), status: 'auto', summary: 'Automatisch erlaubt: ' + formatToolActivity(toolName, args), details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
       return true;
     }
     const level = this.getPermission(toolName);
+    AuditLog.log({ type: _toolAuditType(toolName), action: formatToolActivity(toolName, args), status: 'auto', summary: 'Automatisch erlaubt (Regel): ' + formatToolActivity(toolName, args), details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     if (level === 'allow') return true;
     if (level === 'block') {
+      AuditLog.log({ type: _toolAuditType(toolName), action: formatToolActivity(toolName, args), status: 'blocked', summary: 'Blockiert (Regel): ' + formatToolActivity(toolName, args), details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
       showNotification('warning', 'Blocked: AI tried to use "' + toolName + '"', '\u26A0');
       return false;
     }
@@ -1148,6 +1151,14 @@ const PermissionManager = {
     return true;
   }
 };
+
+function _toolAuditType(toolName) {
+  if (toolName === 'exec_command') return 'command';
+  if (toolName === 'read_file') return 'file_read';
+  if (toolName === 'write_file' || toolName === 'edit_file') return 'file_write';
+  if (toolName === 'browser_open') return 'api_access';
+  return 'unknown';
+}
 
 function showPermissionPrompt(toolName, args, callback) {
   const existing = document.querySelector('.permission-prompt-overlay');
@@ -1171,10 +1182,28 @@ function showPermissionPrompt(toolName, args, callback) {
   '</div>';
   document.body.appendChild(overlay);
 
-  overlay.querySelector('.btn-allow-once').onclick = () => { overlay.remove(); callback(true); };
-  overlay.querySelector('.btn-allow-always').onclick = () => { PermissionManager.setPermission(toolName, 'allow'); overlay.remove(); callback(true); };
-  overlay.querySelector('.btn-block-once').onclick = () => { overlay.remove(); callback(false); };
-  overlay.querySelector('.btn-block-always').onclick = () => { PermissionManager.setPermission(toolName, 'block'); overlay.remove(); callback(false); };
+  overlay.querySelector('.btn-allow-once').onclick = () => {
+    overlay.remove();
+    AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'allowed', summary: act + ' (erlaubt, einmalig)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
+    callback(true);
+  };
+  overlay.querySelector('.btn-allow-always').onclick = () => {
+    PermissionManager.setPermission(toolName, 'allow');
+    overlay.remove();
+    AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'allowed', summary: act + ' (immer erlauben)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
+    callback(true);
+  };
+  overlay.querySelector('.btn-block-once').onclick = () => {
+    overlay.remove();
+    AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'blocked', summary: act + ' (blockiert, einmalig)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
+    callback(false);
+  };
+  overlay.querySelector('.btn-block-always').onclick = () => {
+    PermissionManager.setPermission(toolName, 'block');
+    overlay.remove();
+    AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'blocked', summary: act + ' (immer blockieren)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
+    callback(false);
+  };
 }
 
 function showSandboxDeniedUI(toolName, args, callback) {
@@ -3563,6 +3592,7 @@ async function executeToolCall(name, args) {
       if (!args || !args.path) throw new Error('path required for read_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Read_File: ' + sanitizePath(args.path));
+      AuditLog.log({ type: 'file_read', action: 'Datei gelesen', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' gelesen', details: { file: sanitizePath(args.path) }, source: 'KI' });
       logToTerminal('Read_File: ' + sanitizePath(args.path), 'info');
       return await window.electronAPI.projectReadFile(project, sanitizePath(args.path));
 
@@ -3586,6 +3616,7 @@ async function executeToolCall(name, args) {
           written.push(sp);
         }
         addAuditEntry('local', 'Batch_Write: ' + written.join(', '));
+        AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Batch: ' + written.length + ' Dateien geschrieben', details: { files: written }, source: 'KI' });
         logToTerminal('Batch_Write: ' + written.join(', '), 'info');
         // Auto git commit
         try {
@@ -3599,6 +3630,7 @@ async function executeToolCall(name, args) {
         return 'Batch written ' + written.length + ' files: ' + written.join(', ');
       }
       addAuditEntry('local', 'Write_File: ' + sanitizePath(args.path));
+      AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' geschrieben', details: { file: sanitizePath(args.path) }, source: 'KI' });
       logToTerminal('Write_File: ' + sanitizePath(args.path), 'info');
       await window.electronAPI.projectWriteFile(project, sanitizePath(args.path), args.content);
       // Live editor sync: reload if open in a tab
@@ -3626,6 +3658,7 @@ async function executeToolCall(name, args) {
       if (!project) throw new Error('No project open');
       const delPath = sanitizePath(args.path);
       addAuditEntry('local', 'Delete_File: ' + delPath);
+      AuditLog.log({ type: 'file_write', action: 'Datei gelöscht', status: 'auto', summary: 'Datei ' + delPath + ' gelöscht', details: { file: delPath }, source: 'KI' });
       logToTerminal('Delete_File: ' + delPath, 'info');
       await window.electronAPI.projectDeleteFile(project, delPath);
       const delIdx = openTabs.indexOf(delPath);
@@ -3680,6 +3713,7 @@ async function executeToolCall(name, args) {
       if (!args || !args.path || !args.oldString || args.newString === undefined) throw new Error('path, oldString, and newString required for edit_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Edit_File: ' + sanitizePath(args.path));
+      AuditLog.log({ type: 'file_write', action: 'Datei geändert', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' geändert', details: { file: sanitizePath(args.path) }, source: 'KI' });
       logToTerminal('Edit_File: ' + sanitizePath(args.path), 'info');
       {
         const efPath = sanitizePath(args.path);
@@ -3724,6 +3758,7 @@ async function executeToolCall(name, args) {
       const oldPath = sanitizePath(args.path);
       const newPath = sanitizePath(args.new_path);
       addAuditEntry('local', 'Rename_File: ' + oldPath + ' -> ' + newPath);
+      AuditLog.log({ type: 'file_write', action: 'Datei umbenannt', status: 'auto', summary: oldPath + ' -> ' + newPath, details: { from: oldPath, to: newPath }, source: 'KI' });
       logToTerminal('Rename_File: ' + oldPath + ' -> ' + newPath, 'info');
       // Read old content
       const oldContent = await window.electronAPI.projectReadFile(project, oldPath);
@@ -3776,6 +3811,7 @@ async function executeToolCall(name, args) {
 
     case 'take_screenshot':
       addAuditEntry('local', 'Take_Screenshot');
+      AuditLog.log({ type: 'unknown', action: 'Screenshot erstellt', status: 'auto', summary: 'Screenshot erstellt', details: {}, source: 'KI' });
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
         const track = stream.getVideoTracks()[0];
@@ -3809,6 +3845,7 @@ async function executeToolCall(name, args) {
 
     case 'schedule_task':
       addAuditEntry('local', 'Schedule_Task: ' + (args.plan || '').slice(0, 80));
+      AuditLog.log({ type: 'command', action: 'Aufgabe geplant', status: 'auto', summary: 'Aufgabe geplant: ' + (args.plan || '').slice(0, 80), details: { plan: (args.plan || '').slice(0, 200) }, source: 'KI' });
       logToTerminal('Schedule_Task: ' + (args.plan || '').slice(0, 120), 'info');
       localStorage.setItem('florde-pending-task', JSON.stringify({
         plan: args.plan,
@@ -4167,6 +4204,7 @@ async function sendMessage(text) {
 
   const isCloud = provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'localai';
   addAuditEntry(isCloud ? 'cloud' : 'local', 'Nachricht gesendet an ' + provider);
+  AuditLog.log({ type: 'chat', action: 'Nachricht gesendet', status: 'auto', summary: 'Nachricht an ' + provider + ' (' + (isCloud ? 'Cloud' : 'Lokal') + ')', details: { provider, mode: isCloud ? 'cloud' : 'local' }, source: 'KI' });
   updatePrivacyIndicator();
 
   const userImages = _attachedImages.length > 0 ? [..._attachedImages] : undefined;

@@ -104,13 +104,13 @@ const CodeIntelligence = {
       <div class="ci-v2-section">
         <button class="ci-v2-btn ci-v2-btn-primary" id="ci-scan-start">🔍 Scan starten</button>
       </div>
-      <div id="ci-scan-results"></div>
+      <div id="ci-health-scan-results"></div>
     `;
     document.getElementById('ci-scan-start').onclick = () => this._runHealthScan();
   },
 
   async _runHealthScan() {
-    const el = document.getElementById('ci-scan-results');
+    const el = document.getElementById('ci-health-scan-results');
     el.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text2);">Scanne...</div>';
     const results = [];
 

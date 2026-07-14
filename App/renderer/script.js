@@ -7284,7 +7284,7 @@ DecisionLog.init();
 AuditLog.init();
 ManagementPanel.init();
 if (typeof ApiKeyManager !== 'undefined') ApiKeyManager.init();
-if (typeof CodeIntelligence !== 'undefined') CodeIntelligence.init();
+// CodeIntelligence.init() removed — lifecycle managed by ManagementPanel
 TabGroupManager.init();
 pluginRegistry.init().then(() => {
   window.__updateTools();

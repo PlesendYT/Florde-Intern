@@ -1,35 +1,18 @@
 const CodeIntelligence = {
-  _panel: null,
   _resultsEl: null,
   _activeTab: 'code-search',
 
   init() {
-    document.getElementById('btn-ci-toggle')?.addEventListener('click', () => this.toggle());
-    document.getElementById('btn-ci-close')?.addEventListener('click', () => this.hide());
-    ApiKeyManager.onChange(() => { if (this._isOpen()) this._renderTools(); });
+    // CI is managed by ManagementPanel — no standalone panel toggling
   },
-
   toggle() {
-    const panel = document.getElementById('ci-panel');
-    if (!panel) return;
-    panel.classList.toggle('hidden');
-    if (!panel.classList.contains('hidden')) {
-      this._panel = panel;
-      this._resultsEl = document.getElementById('ci-results');
-      this._renderTools();
-      document.getElementById('btn-ci-toggle')?.classList.add('active');
-    } else {
-      document.getElementById('btn-ci-toggle')?.classList.remove('active');
-    }
+    // Legacy — kept for compat, does nothing
   },
-
   hide() {
-    document.getElementById('ci-panel')?.classList.add('hidden');
-    document.getElementById('btn-ci-toggle')?.classList.remove('active');
+    // Legacy — kept for compat, does nothing
   },
-
   _isOpen() {
-    return this._panel && !this._panel.classList.contains('hidden');
+    return document.getElementById('management-panel')?.classList.contains('hidden') === false;
   },
 
   _renderTools() {

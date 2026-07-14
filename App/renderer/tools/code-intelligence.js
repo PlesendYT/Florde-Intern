@@ -79,6 +79,7 @@ const CodeIntelligence = {
       { id: 'feature-timeline', label: 'Feature Timeline', icon: '📅', available: true },
       { id: 'idea-evolution', label: 'Idea Evolution', icon: '💡', available: true },
       { id: 'explain-project', label: 'Explain my Project', icon: '📋', available: true },
+      { id: 'git-clarify', label: 'Git Clarify', icon: '🔧', available: true },
     ];
   },
 
@@ -358,6 +359,156 @@ const CodeIntelligence = {
     btn.textContent = '📋 Projekt analysieren';
   },
 
+  _renderGitClarify() {
+    this._resultsEl.innerHTML = `
+      <div class="ci-v2-section">
+        <p style="font-size:0.82rem;color:var(--text2);margin-bottom:0.5rem;">Analysiert alle Git-Commits und schlägt bessere Namen und Beschreibungen vor. Git-History wird umgeschrieben (amend/rebase).</p>
+        <button class="ci-v2-btn ci-v2-btn-primary" id="ci-gc-start">🔧 Commits analysieren</button>
+      </div>
+      <div id="ci-gc-output"></div>
+    `;
+    document.getElementById('ci-gc-start').onclick = () => {
+      this._resultsEl.querySelector('#ci-gc-output').innerHTML = `
+        <div class="ci-gc-confirm">
+          <p>Git Clarify wird <strong>alle Commit-Nachrichten</strong> analysieren und Vorschläge machen. Die Git-History wird umgeschrieben (amend/rebase).</p>
+          <p style="font-size:0.75rem;color:var(--text2);margin-top:0.5rem;">Vorsicht: Dies überschreibt die Git-History!</p>
+          <div class="ci-gc-confirm-btns">
+            <button class="ci-v2-btn" id="ci-gc-cancel">Abbrechen</button>
+            <button class="ci-v2-btn ci-v2-btn-primary" id="ci-gc-confirm">Fortfahren</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('ci-gc-cancel').onclick = () => this._renderGitClarify();
+      document.getElementById('ci-gc-confirm').onclick = () => this._runGitClarify();
+    };
+  },
+
+  async _runGitClarify() {
+    const out = this._resultsEl.querySelector('#ci-gc-output');
+    out.innerHTML = '<div style="padding:1rem;color:var(--text2);">Sammle Commits...</div>';
+
+    const providerId = localStorage.getItem('selectedProvider');
+    if (!providerId || !window.providers[providerId]) {
+      out.innerHTML = '<div style="padding:1rem;color:#e74c3c;">Kein aktiver Provider konfiguriert.</div>'; return;
+    }
+
+    let commits;
+    try {
+      const logRes = await window.api.runTerminalCommand('git log --all --oneline --format="%H|||%s|||%b"');
+      commits = (logRes.stdout || '').trim().split('\n').filter(Boolean).map(line => {
+        const [hash, ...parts] = line.split('|||');
+        return { hash: hash.trim(), oldName: parts[0] || '', oldDesc: parts.slice(1).join('|||').trim() };
+      }).reverse();
+    } catch {
+      out.innerHTML = '<div style="padding:1rem;color:#e74c3c;">Fehler: Kein Git-Repository oder keine Commits.</div>'; return;
+    }
+
+    if (commits.length === 0) {
+      out.innerHTML = '<div style="padding:1rem;color:var(--text2);">Keine Commits gefunden.</div>'; return;
+    }
+
+    out.innerHTML = `<div id="ci-gc-list"></div><div class="ci-gc-bottom"><span id="ci-gc-status">0/${commits.length} angenommen</span><button class="ci-v2-btn ci-v2-btn-sm" id="ci-gc-accept-all">Alles übernehmen</button><button class="ci-v2-btn ci-v2-btn-sm ci-v2-btn-danger" id="ci-gc-reject-all">Alles ablehnen</button></div>`;
+
+    const listEl = out.querySelector('#ci-gc-list');
+    const statusEl = out.querySelector('#ci-gc-status');
+    let accepted = 0;
+
+    function updateStatus() {
+      statusEl.textContent = `${accepted}/${commits.length} angenommen`;
+    }
+
+    const results = [];
+
+    for (let i = 0; i < commits.length; i++) {
+      const c = commits[i];
+      listEl.innerHTML += `<div style="padding:0.5rem;color:var(--text2);font-size:0.82rem;">Analysiere Commit ${c.hash.slice(0,7)} (${i+1}/${commits.length})...</div>`;
+
+      try {
+        const diffRes = await window.api.runTerminalCommand(`git show --stat ${c.hash} 2>&1`);
+        const diff = (diffRes.stdout || '').slice(0, 2000);
+
+        const prompt = `Analysiere diesen Git-Commit und schlage einen besseren Namen und Beschreibung vor. Antworte NUR mit JSON: {"name":"neuer name","description":"neue beschreibung"}\n\nAktueller Name: ${c.oldName}\nAktuelle Beschreibung: ${c.oldDesc}\n\nÄnderungen:\n${diff}`;
+
+        const res = await window.providers[providerId].sendPlain(prompt, null, { signal: AbortSignal.timeout(60000) });
+        let data;
+        try { data = JSON.parse(res); } catch { data = { name: c.oldName, description: res.slice(0, 200) }; }
+
+        results.push({ ...c, newName: data.name || c.oldName, newDesc: data.description || c.oldDesc, accepted: false });
+      } catch {
+        results.push({ ...c, newName: c.oldName, newDesc: c.oldDesc, accepted: false });
+      }
+
+      listEl.innerHTML = results.map((r, idx) => `
+        <div class="ci-gc-commit">
+          <span class="ci-gc-hash">${r.hash.slice(0,7)}</span>
+          <div style="flex:1">
+            <div><span class="ci-gc-old">${escapeHtml(r.oldName)}</span> → <span class="ci-gc-new">${escapeHtml(r.newName)}</span></div>
+            <div style="font-size:0.75rem;color:var(--text2);margin-top:0.2rem;">${r.oldDesc ? '<span class="ci-gc-old">' + escapeHtml(r.oldDesc.slice(0,80)) + '</span> → ' : ''}<span class="ci-gc-new">${escapeHtml((r.newDesc||'').slice(0,80))}</span></div>
+          </div>
+          <div class="ci-gc-actions">
+            <button class="ci-v2-btn ci-v2-btn-sm ${r.accepted ? 'ci-v2-btn-primary' : ''}" data-idx="${idx}" data-action="accept">${r.accepted ? '✅' : '✓'} ${r.accepted ? 'Angenommen' : 'Übernehmen'}</button>
+            <button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="reject">✗ Ablehnen</button>
+          </div>
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('[data-action]').forEach(btn => {
+        btn.onclick = async () => {
+          const idx = parseInt(btn.dataset.idx);
+          if (btn.dataset.action === 'accept') {
+            if (results[idx].accepted) return;
+            results[idx].accepted = true;
+            accepted++;
+            await this._applyGitName(results[idx].hash, results[idx].newName, results[idx].newDesc);
+          } else {
+            results[idx].accepted = false;
+          }
+          updateStatus();
+          btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]').textContent = '✅ Angenommen';
+          btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]').classList.add('ci-v2-btn-primary');
+        };
+      });
+    }
+
+    out.querySelector('#ci-gc-accept-all').onclick = async () => {
+      for (const r of results) {
+        if (!r.accepted) {
+          r.accepted = true;
+          accepted++;
+          await this._applyGitName(r.hash, r.newName, r.newDesc);
+        }
+      }
+      updateStatus();
+    };
+    out.querySelector('#ci-gc-reject-all').onclick = () => {
+      results.forEach(r => r.accepted = false);
+      accepted = 0;
+      updateStatus();
+    };
+
+    this._playEventSound();
+  },
+
+  async _applyGitName(hash, name, desc) {
+    try {
+      const parentRes = await window.api.runTerminalCommand(`git rev-list --parents -n 1 ${hash}`);
+      const parents = (parentRes.stdout || '').trim().split(/\s+/).length - 1;
+
+      if (parents > 1) {
+        return;
+      }
+
+      const headRes = await window.api.runTerminalCommand('git rev-parse HEAD');
+      const headHash = (headRes.stdout || '').trim();
+
+      if (hash === headHash) {
+        const msg = desc ? `${name}\n\n${desc}` : name;
+        await window.api.runTerminalCommand(`git commit --amend -m "${msg.replace(/"/g, '\\"')}" --no-edit 2>&1 || true`);
+      }
+    } catch(e) {
+    }
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {
@@ -373,6 +524,7 @@ const CodeIntelligence = {
       'feature-timeline': this._renderFeatureTimeline.bind(this),
       'idea-evolution': this._renderIdeaEvolution.bind(this),
       'explain-project': this._renderExplainProject.bind(this),
+      'git-clarify': this._renderGitClarify.bind(this),
     };
     (views[toolId] || views['code-search'])();
   },

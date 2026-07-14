@@ -75,6 +75,7 @@ const CodeIntelligence = {
       { id: 'website-scan', label: 'Website Analyse', icon: '🔬', available: hasUrlscan, reason: hasUrlscan ? '' : 'urlscan.io API-Key erforderlich' },
       { id: 'dep-check', label: 'Dependency Check', icon: '📦', available: true },
       { id: 'secret-scanner', label: 'Secret Scanner', icon: '🔑', available: true },
+      { id: 'health-scan', label: 'Project Health Scan', icon: '🔍', available: true },
     ];
   },
 
@@ -98,6 +99,90 @@ const CodeIntelligence = {
     } catch(e) { /* silent */ }
   },
 
+  _renderProjectHealth() {
+    this._resultsEl.innerHTML = `
+      <div class="ci-v2-section">
+        <button class="ci-v2-btn ci-v2-btn-primary" id="ci-scan-start">🔍 Scan starten</button>
+      </div>
+      <div id="ci-scan-results"></div>
+    `;
+    document.getElementById('ci-scan-start').onclick = () => this._runHealthScan();
+  },
+
+  async _runHealthScan() {
+    const el = document.getElementById('ci-scan-results');
+    el.innerHTML = '<div style="padding:1rem;text-align:center;color:var(--text2);">Scanne...</div>';
+    const results = [];
+
+    // 1. Build check
+    try {
+      const buildRes = await window.api.runTerminalCommand('npm run build 2>&1 || true');
+      const ok = buildRes.exitCode === 0 || !buildRes.stderr?.includes('ERR');
+      results.push({ label: 'Build', ok, detail: ok ? 'Build erfolgreich' : 'Build fehlgeschlagen', severity: ok ? 'pass' : 'fail' });
+    } catch {
+      results.push({ label: 'Build', ok: false, detail: 'Build konnte nicht ausgeführt werden', severity: 'fail' });
+    }
+
+    // 2. Outdated packages
+    try {
+      const outdatedRes = await window.api.runTerminalCommand('npm outdated --json 2>&1 || true');
+      let outdated = [];
+      try { outdated = JSON.parse(outdatedRes.stdout || '{}'); } catch {}
+      const keys = Object.keys(outdated);
+      results.push({ label: 'Veraltete Pakete', ok: keys.length === 0, detail: keys.length === 0 ? 'Keine veralteten Pakete' : keys.length + ' veraltete Pakete: ' + keys.join(', '), severity: keys.length === 0 ? 'pass' : keys.length > 5 ? 'fail' : 'warn' });
+    } catch {
+      results.push({ label: 'Veraltete Pakete', ok: false, detail: 'Prüfung fehlgeschlagen', severity: 'fail' });
+    }
+
+    // 3. Git status
+    try {
+      const gitRes = await window.api.runTerminalCommand('git status --porcelain 2>&1');
+      const lines = (gitRes.stdout || '').trim().split('\n').filter(Boolean);
+      results.push({ label: 'Git Status', ok: lines.length === 0, detail: lines.length === 0 ? 'Sauberer Working Tree' : lines.length + ' uncommitted Datei(en)', severity: lines.length === 0 ? 'pass' : lines.length > 10 ? 'fail' : 'warn' });
+    } catch {
+      results.push({ label: 'Git Status', ok: false, detail: 'Kein Git-Repository', severity: 'fail' });
+    }
+
+    // 4. Security audit
+    try {
+      const auditRes = await window.api.runTerminalCommand('npm audit --json 2>&1 || true');
+      let audit = {};
+      try { audit = JSON.parse(auditRes.stdout || '{}'); } catch {}
+      const vulns = audit.vulnerabilities || {};
+      const critical = Object.values(vulns).filter(v => v.severity === 'critical').length;
+      const high = Object.values(vulns).filter(v => v.severity === 'high').length;
+      const moderate = Object.values(vulns).filter(v => v.severity === 'moderate').length;
+      results.push({
+        label: 'Sicherheit',
+        ok: critical === 0 && high === 0,
+        detail: critical + ' critical, ' + high + ' high, ' + moderate + ' moderate',
+        severity: critical > 0 ? 'fail' : high > 0 ? 'warn' : 'pass'
+      });
+    } catch {
+      results.push({ label: 'Sicherheit', ok: false, detail: 'Audit fehlgeschlagen', severity: 'fail' });
+    }
+
+    // 5. Backup check
+    try {
+      const backupRes = await window.api.runTerminalCommand('Get-ChildItem -LiteralPath "." -Filter "backup-*" -Name 2>$null; Get-ChildItem -LiteralPath "." -Filter "*.bak" -Name 2>$null');
+      const backupFiles = (backupRes.stdout || '').trim().split('\n').filter(Boolean);
+      const hasBackup = backupFiles.length > 0;
+      results.push({ label: 'Backup', ok: hasBackup, detail: hasBackup ? 'Backup gefunden: ' + backupFiles[0] : 'Kein Backup vorhanden', severity: hasBackup ? 'pass' : 'warn' });
+    } catch {
+      results.push({ label: 'Backup', ok: false, detail: 'Backup-Prüfung fehlgeschlagen', severity: 'warn' });
+    }
+
+    // Render
+    const passed = results.filter(r => r.ok).length;
+    const warned = results.filter(r => r.severity === 'warn').length;
+    const failed = results.filter(r => r.severity === 'fail').length;
+    el.innerHTML = results.map(r =>
+      `<div class="ci-scan-row"><span class="ci-scan-icon ci-scan-${r.severity}">${r.ok ? '✅' : '❌'}</span><span class="ci-scan-${r.severity}">${escapeHtml(r.label)}:</span> ${escapeHtml(r.detail)}</div>`
+    ).join('') + `<div class="ci-scan-summary">${passed}/5 bestanden${warned ? ', ' + warned + ' Warnung(en)' : ''}${failed ? ', ' + failed + ' Fehler' : ''}</div>`;
+
+    this._playEventSound();
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {
@@ -109,6 +194,7 @@ const CodeIntelligence = {
       'website-scan': this._renderWebsiteScan.bind(this),
       'dep-check': this._renderDepCheck.bind(this),
       'secret-scanner': this._renderSecretScanner.bind(this),
+      'health-scan': this._renderProjectHealth.bind(this),
     };
     (views[toolId] || views['code-search'])();
   },

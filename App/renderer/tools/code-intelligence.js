@@ -151,10 +151,10 @@ const CodeIntelligence = {
 
     // 5. Backup check
     try {
-      const backupRes = await window.api.runTerminalCommand('Get-ChildItem -LiteralPath "." -Filter "backup-*" -Name 2>$null; Get-ChildItem -LiteralPath "." -Filter "*.bak" -Name 2>$null');
+      const backupRes = await window.api.runTerminalCommand('Get-ChildItem -LiteralPath "." -Filter "backup-*.zip" -Name 2>$null; Get-ChildItem -Recurse -LiteralPath ".git" -Filter "HEAD" -Name 2>$null | Select-Object -First 1');
       const backupFiles = (backupRes.stdout || '').trim().split('\n').filter(Boolean);
       const hasBackup = backupFiles.length > 0;
-      results.push({ label: 'Backup', ok: hasBackup, detail: hasBackup ? 'Backup gefunden: ' + backupFiles[0] : 'Kein Backup vorhanden', severity: hasBackup ? 'pass' : 'warn' });
+      results.push({ label: 'Backup', ok: hasBackup, detail: hasBackup ? 'Backup/Refs gefunden' : 'Kein Backup vorhanden (backup-*.zip oder .git/refs)', severity: hasBackup ? 'pass' : 'warn' });
     } catch {
       results.push({ label: 'Backup', ok: false, detail: 'Backup-Prüfung fehlgeschlagen', severity: 'warn' });
     }
@@ -400,11 +400,34 @@ const CodeIntelligence = {
       statusEl.textContent = `${accepted}/${commits.length} angenommen`;
     }
 
-    const results = [];
+    let headHash = '';
+    try {
+      const headRes = await window.api.runTerminalCommand('git rev-parse HEAD');
+      headHash = (headRes.stdout || '').trim();
+    } catch {}
+
+    const rows = [];
 
     for (let i = 0; i < commits.length; i++) {
       const c = commits[i];
-      listEl.innerHTML += `<div style="padding:0.5rem;color:var(--text2);font-size:0.82rem;">Analysiere Commit ${c.hash.slice(0,7)} (${i+1}/${commits.length})...</div>`;
+      listEl.innerHTML = rows.length === 0
+        ? `<div style="padding:0.5rem;color:var(--text2);font-size:0.82rem;">Analysiere Commit ${c.hash.slice(0,7)} (${i+1}/${commits.length})...</div>`
+        : rows.map((r, idx) => `
+        <div class="ci-gc-commit">
+          <span class="ci-gc-hash">${r.hash.slice(0,7)}</span>
+          <div style="flex:1">
+            <div><span class="ci-gc-old">${escapeHtml(r.oldName)}</span> → <span class="ci-gc-new">${escapeHtml(r.newName)}</span></div>
+            <div style="font-size:0.75rem;color:var(--text2);margin-top:0.2rem;">${r.oldDesc ? '<span class="ci-gc-old">' + escapeHtml(r.oldDesc.slice(0,80)) + '</span> → ' : ''}<span class="ci-gc-new">${escapeHtml((r.newDesc||'').slice(0,80))}</span></div>
+          </div>
+          <div class="ci-gc-actions">
+            ${r.hash === headHash
+              ? `<button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="accept">✓ Übernehmen</button>`
+              : `<button class="ci-v2-btn ci-v2-btn-sm" disabled title="Nur für aktuellen Commit verfügbar">✓ Übernehmen</button>`
+            }
+            <button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="reject">✗ Ablehnen</button>
+          </div>
+        </div>
+      `).join('') + `<div style="padding:0.5rem;color:var(--text2);font-size:0.82rem;">Analysiere Commit ${c.hash.slice(0,7)} (${i+1}/${commits.length})...</div>`;
 
       try {
         const diffRes = await window.api.runTerminalCommand(`git show --stat ${c.hash} 2>&1`);
@@ -416,62 +439,68 @@ const CodeIntelligence = {
         let data;
         try { data = JSON.parse(res); } catch { data = { name: c.oldName, description: res.slice(0, 200) }; }
 
-        results.push({ ...c, newName: data.name || c.oldName, newDesc: data.description || c.oldDesc, accepted: false });
+        rows.push({ ...c, newName: data.name || c.oldName, newDesc: data.description || c.oldDesc, accepted: false });
       } catch {
-        results.push({ ...c, newName: c.oldName, newDesc: c.oldDesc, accepted: false });
+        rows.push({ ...c, newName: c.oldName, newDesc: c.oldDesc, accepted: false });
       }
-
-      listEl.innerHTML = results.map((r, idx) => `
-        <div class="ci-gc-commit">
-          <span class="ci-gc-hash">${r.hash.slice(0,7)}</span>
-          <div style="flex:1">
-            <div><span class="ci-gc-old">${escapeHtml(r.oldName)}</span> → <span class="ci-gc-new">${escapeHtml(r.newName)}</span></div>
-            <div style="font-size:0.75rem;color:var(--text2);margin-top:0.2rem;">${r.oldDesc ? '<span class="ci-gc-old">' + escapeHtml(r.oldDesc.slice(0,80)) + '</span> → ' : ''}<span class="ci-gc-new">${escapeHtml((r.newDesc||'').slice(0,80))}</span></div>
-          </div>
-          <div class="ci-gc-actions">
-            <button class="ci-v2-btn ci-v2-btn-sm ${r.accepted ? 'ci-v2-btn-primary' : ''}" data-idx="${idx}" data-action="accept">${r.accepted ? '✅' : '✓'} ${r.accepted ? 'Angenommen' : 'Übernehmen'}</button>
-            <button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="reject">✗ Ablehnen</button>
-          </div>
-        </div>
-      `).join('');
-
-      listEl.querySelectorAll('[data-action]').forEach(btn => {
-        btn.onclick = async () => {
-          const idx = parseInt(btn.dataset.idx);
-          if (btn.dataset.action === 'accept') {
-            if (results[idx].accepted) return;
-            results[idx].accepted = true;
-            accepted++;
-            await this._applyGitName(results[idx].hash, results[idx].newName, results[idx].newDesc);
-          } else {
-            if (results[idx].accepted) accepted--;
-            results[idx].accepted = false;
-          }
-          updateStatus();
-          const acceptBtn = btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]');
-          if (results[idx].accepted) {
-            acceptBtn.textContent = '✅ Angenommen';
-            acceptBtn.classList.add('ci-v2-btn-primary');
-          } else {
-            acceptBtn.textContent = '✓ Übernehmen';
-            acceptBtn.classList.remove('ci-v2-btn-primary');
-          }
-        };
-      });
     }
 
-    out.querySelector('#ci-gc-accept-all').onclick = async () => {
-      for (const r of results) {
-        if (!r.accepted) {
-          r.accepted = true;
+    // Render all at once after loop
+    listEl.innerHTML = rows.map((r, idx) => `
+      <div class="ci-gc-commit">
+        <span class="ci-gc-hash">${r.hash.slice(0,7)}</span>
+        <div style="flex:1">
+          <div><span class="ci-gc-old">${escapeHtml(r.oldName)}</span> → <span class="ci-gc-new">${escapeHtml(r.newName)}</span></div>
+          <div style="font-size:0.75rem;color:var(--text2);margin-top:0.2rem;">${r.oldDesc ? '<span class="ci-gc-old">' + escapeHtml(r.oldDesc.slice(0,80)) + '</span> → ' : ''}<span class="ci-gc-new">${escapeHtml((r.newDesc||'').slice(0,80))}</span></div>
+        </div>
+        <div class="ci-gc-actions">
+          ${r.hash === headHash
+            ? `<button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="accept">✓ Übernehmen</button>`
+            : `<button class="ci-v2-btn ci-v2-btn-sm" disabled title="Nur für aktuellen Commit verfügbar">✓ Übernehmen</button>`
+          }
+          <button class="ci-v2-btn ci-v2-btn-sm" data-idx="${idx}" data-action="reject">✗ Ablehnen</button>
+        </div>
+      </div>
+    `).join('');
+
+    // Attach per-item handlers (single pass)
+    listEl.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = async () => {
+        const idx = parseInt(btn.dataset.idx);
+        if (btn.dataset.action === 'accept') {
+          if (rows[idx].accepted) return;
+          rows[idx].accepted = true;
           accepted++;
-          await this._applyGitName(r.hash, r.newName, r.newDesc);
+          await this._applyGitName(rows[idx].hash, rows[idx].newName, rows[idx].newDesc);
+        } else {
+          if (rows[idx].accepted) accepted--;
+          rows[idx].accepted = false;
+        }
+        updateStatus();
+        const commitEl = btn.closest('.ci-gc-commit');
+        const acceptBtn = commitEl.querySelector('[data-action="accept"]');
+        if (rows[idx].accepted) {
+          acceptBtn.textContent = '✅ Angenommen';
+          acceptBtn.classList.add('ci-v2-btn-primary');
+        } else {
+          acceptBtn.textContent = '✓ Übernehmen';
+          acceptBtn.classList.remove('ci-v2-btn-primary');
+        }
+      };
+    });
+
+    out.querySelector('#ci-gc-accept-all').onclick = async () => {
+      for (let i = 0; i < rows.length; i++) {
+        if (!rows[i].accepted && rows[i].hash === headHash) {
+          rows[i].accepted = true;
+          accepted++;
+          await this._applyGitName(rows[i].hash, rows[i].newName, rows[i].newDesc);
         }
       }
       updateStatus();
     };
     out.querySelector('#ci-gc-reject-all').onclick = () => {
-      results.forEach(r => r.accepted = false);
+      rows.forEach(r => r.accepted = false);
       accepted = 0;
       updateStatus();
     };
@@ -493,7 +522,7 @@ const CodeIntelligence = {
 
       if (hash === headHash) {
         const msg = desc ? `${name}\n\n${desc}` : name;
-        await window.api.runTerminalCommand(`git commit --amend -m "${msg.replace(/"/g, '\\"')}" --no-edit 2>&1 || true`);
+        await window.api.runTerminalCommand(`git commit --amend -m "${msg.replace(/"/g, '\\"')}" 2>&1 || true`);
       }
     } catch(e) {
     }

@@ -77,6 +77,7 @@ const CodeIntelligence = {
       { id: 'secret-scanner', label: 'Secret Scanner', icon: '🔑', available: true },
       { id: 'health-scan', label: 'Project Health Scan', icon: '🔍', available: true },
       { id: 'feature-timeline', label: 'Feature Timeline', icon: '📅', available: true },
+      { id: 'idea-evolution', label: 'Idea Evolution', icon: '💡', available: true },
     ];
   },
 
@@ -229,6 +230,69 @@ const CodeIntelligence = {
     this._resultsEl.innerHTML = html;
   },
 
+  _renderIdeaEvolution() {
+    this._resultsEl.innerHTML = `
+      <div class="ci-v2-section">
+        <textarea class="ci-ie-textarea" id="ci-ie-input" placeholder="Deine Idee..."></textarea>
+        <div class="ci-ie-checkboxes">
+          <label><input type="checkbox" value="task" checked> Task</label>
+          <label><input type="checkbox" value="spec"> Spec</label>
+          <label><input type="checkbox" value="plan"> Plan</label>
+          <label><input type="checkbox" value="konzept"> Konzept</label>
+          <label><input type="checkbox" value="note"> Note</label>
+        </div>
+        <button class="ci-v2-btn ci-v2-btn-primary" id="ci-ie-go">⚡ Generieren</button>
+      </div>
+      <div id="ci-ie-results"></div>
+    `;
+    document.getElementById('ci-ie-go').onclick = () => {
+      const text = document.getElementById('ci-ie-input').value.trim();
+      if (!text) return;
+      const checkboxes = document.querySelectorAll('.ci-ie-checkboxes input:checked');
+      const checkedTypes = [...checkboxes].map(cb => cb.value);
+      this._runIdeaEvolution(text, checkedTypes);
+    };
+  },
+
+  async _runIdeaEvolution(text, types) {
+    const goBtn = document.getElementById('ci-ie-go');
+    const resultsEl = document.getElementById('ci-ie-results');
+    goBtn.disabled = true;
+    goBtn.textContent = '⏳ Generiere...';
+    resultsEl.innerHTML = '';
+
+    const providerId = localStorage.getItem('selectedProvider');
+    if (!providerId || !window.providers[providerId]) {
+      resultsEl.innerHTML = '<div style="padding:0.5rem;color:#e74c3c;">Kein aktiver Provider konfiguriert.</div>';
+      goBtn.disabled = false;
+      goBtn.textContent = '⚡ Generieren';
+      return;
+    }
+
+    const prompt = `Wandle folgende Idee in die angegebenen Formate um. Antworte ausschließlich im JSON-Format: {"task":"...","spec":"...","plan":"...","konzept":"...","note":"..."}. Fülle nur die angeforderten Formate: ${types.join(', ')}.\n\nIdee: ${text}`;
+
+    try {
+      const res = await window.providers[providerId].sendPlain(prompt, null, { signal: AbortSignal.timeout(60000) });
+      let data;
+      try { data = JSON.parse(res); } catch { data = { note: res }; }
+
+      let html = '';
+      types.forEach(t => {
+        const content = data[t];
+        if (!content) return;
+        const label = { task: '📋 Task', spec: '📄 Spec', plan: '📝 Plan', konzept: '💡 Konzept', note: '📌 Note' }[t] || t;
+        html += `<div class="ci-ie-result"><div class="ci-ie-result-header" onclick="this.nextElementSibling.classList.toggle('hidden')">${label} <span>🔼</span></div><div class="ci-ie-result-body">${escapeHtml(content)}</div></div>`;
+      });
+      resultsEl.innerHTML = html || '<div style="padding:0.5rem;color:var(--text2);">Keine Ergebnisse generiert.</div>';
+      this._playEventSound();
+    } catch (err) {
+      resultsEl.innerHTML = '<div style="padding:0.5rem;color:#e74c3c;">Fehler: ' + escapeHtml(err.message || err) + '</div>';
+    }
+
+    goBtn.disabled = false;
+    goBtn.textContent = '⚡ Generieren';
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {
@@ -242,6 +306,7 @@ const CodeIntelligence = {
       'secret-scanner': this._renderSecretScanner.bind(this),
       'health-scan': this._renderProjectHealth.bind(this),
       'feature-timeline': this._renderFeatureTimeline.bind(this),
+      'idea-evolution': this._renderIdeaEvolution.bind(this),
     };
     (views[toolId] || views['code-search'])();
   },

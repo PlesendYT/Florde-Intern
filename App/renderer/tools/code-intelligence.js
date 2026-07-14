@@ -78,6 +78,7 @@ const CodeIntelligence = {
       { id: 'health-scan', label: 'Project Health Scan', icon: '🔍', available: true },
       { id: 'feature-timeline', label: 'Feature Timeline', icon: '📅', available: true },
       { id: 'idea-evolution', label: 'Idea Evolution', icon: '💡', available: true },
+      { id: 'explain-project', label: 'Explain my Project', icon: '📋', available: true },
     ];
   },
 
@@ -293,6 +294,70 @@ const CodeIntelligence = {
     goBtn.textContent = '⚡ Generieren';
   },
 
+  _renderExplainProject() {
+    this._resultsEl.innerHTML = `
+      <div class="ci-v2-section">
+        <p style="font-size:0.82rem;color:var(--text2);margin-bottom:0.5rem;">Analysiert Code, Dokumentation, Entscheidungen und erstellt eine vollständige Projektzusammenfassung zum Teilen (z.B. mit ChatGPT).</p>
+        <button class="ci-v2-btn ci-v2-btn-primary" id="ci-ep-start">📋 Projekt analysieren</button>
+      </div>
+      <div id="ci-ep-output"></div>
+    `;
+    document.getElementById('ci-ep-start').onclick = () => this._runExplainProject();
+  },
+
+  async _runExplainProject() {
+    const btn = document.getElementById('ci-ep-start');
+    const out = document.getElementById('ci-ep-output');
+    btn.disabled = true;
+    btn.textContent = '⏳ Analysiere...';
+    out.innerHTML = '<div style="padding:0.5rem;color:var(--text2);">Sammle Projektinformationen...</div>';
+
+    const providerId = localStorage.getItem('selectedProvider');
+    if (!providerId || !window.providers[providerId]) {
+      out.innerHTML = '<div style="padding:0.5rem;color:#e74c3c;">Kein aktiver Provider konfiguriert.</div>';
+      btn.disabled = false; btn.textContent = '📋 Projekt analysieren'; return;
+    }
+
+    try {
+      const packageRes = await window.api.runTerminalCommand('type package.json 2>nul || cat package.json 2>/dev/null || echo "{}"');
+      const readmeRes = await window.api.runTerminalCommand('type README.md 2>nul || cat README.md 2>/dev/null || echo ""');
+      const dirRes = await window.api.runTerminalCommand('cmd /c "dir /b /ad 2>nul"');
+      const gitRes = await window.api.runTerminalCommand('git log --oneline -50 2>&1');
+      const treeRes = await window.api.runTerminalCommand('cmd /c "dir /s /b 2>nul | head -100"');
+
+      const context = [
+        '## Projektstruktur',
+        (dirRes.stdout || '').trim(),
+        '\n## package.json',
+        (packageRes.stdout || '').slice(0, 3000),
+        '\n## README.md',
+        (readmeRes.stdout || '').slice(0, 3000),
+        '\n## Letzte Commits',
+        (gitRes.stdout || '').slice(0, 2000),
+        '\n## Dateien (Auszug)',
+        (treeRes.stdout || '').slice(0, 3000)
+      ].join('\n');
+
+      out.innerHTML = '<div style="padding:0.5rem;color:var(--text2);">Generiere Zusammenfassung...</div>';
+
+      const prompt = `Analysiere das folgende Projekt und erstelle eine umfassende, aber kompakte Zusammenfassung. Schreibe auf Deutsch.\n\nFormat:\n- **Was ist das Projekt?**\n- **Tech-Stack & Architektur**\n- **Wichtige Entscheidungen & Patterns**\n- **Aktueller Status**\n- **Struktur**\n\nProjekt-Daten:\n${context}`;
+
+      const res = await window.providers[providerId].sendPlain(prompt, null, { signal: AbortSignal.timeout(60000) });
+
+      out.innerHTML = `<div class="ci-ep-copy"><button class="ci-v2-btn ci-v2-btn-sm" id="ci-ep-copy-btn">📋 Kopieren</button></div><div class="ci-ep-output">${escapeHtml(res)}</div>`;
+      document.getElementById('ci-ep-copy-btn').onclick = () => {
+        navigator.clipboard.writeText(res);
+        const btn = document.getElementById('ci-ep-copy-btn');
+        btn.textContent = '✅ Kopiert!';
+        setTimeout(() => { btn.textContent = '📋 Kopieren'; }, 2000);
+      };
+    } catch (err) {
+      out.innerHTML = '<div style="padding:0.5rem;color:#e74c3c;">Fehler: ' + escapeHtml(err.message || err) + '</div>';
+    }
+    btn.disabled = false;
+    btn.textContent = '📋 Projekt analysieren';
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {
@@ -307,6 +372,7 @@ const CodeIntelligence = {
       'health-scan': this._renderProjectHealth.bind(this),
       'feature-timeline': this._renderFeatureTimeline.bind(this),
       'idea-evolution': this._renderIdeaEvolution.bind(this),
+      'explain-project': this._renderExplainProject.bind(this),
     };
     (views[toolId] || views['code-search'])();
   },

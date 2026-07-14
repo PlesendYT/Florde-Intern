@@ -83,6 +83,21 @@ const CodeIntelligence = {
     this._resultsEl.innerHTML = `<div style="padding:1rem;color:var(--text3);font-size:0.8rem;text-align:center;">${msg}</div>`;
   },
 
+  _playEventSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 800;
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch(e) { /* silent */ }
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {

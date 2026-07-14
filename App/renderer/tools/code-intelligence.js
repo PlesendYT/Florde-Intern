@@ -76,6 +76,7 @@ const CodeIntelligence = {
       { id: 'dep-check', label: 'Dependency Check', icon: '📦', available: true },
       { id: 'secret-scanner', label: 'Secret Scanner', icon: '🔑', available: true },
       { id: 'health-scan', label: 'Project Health Scan', icon: '🔍', available: true },
+      { id: 'feature-timeline', label: 'Feature Timeline', icon: '📅', available: true },
     ];
   },
 
@@ -183,6 +184,51 @@ const CodeIntelligence = {
     this._playEventSound();
   },
 
+  _addTimelineEntry(name, description) {
+    const entries = this._loadTimeline();
+    if (entries.some(e => e.name === name)) return;
+    entries.unshift({ name, description, date: new Date().toISOString().slice(0, 10) });
+    this._saveTimeline(entries);
+    this._playEventSound();
+  },
+
+  _loadTimeline() {
+    try { return JSON.parse(localStorage.getItem('ci-timeline') || '[]'); } catch { return []; }
+  },
+
+  _saveTimeline(entries) {
+    localStorage.setItem('ci-timeline', JSON.stringify(entries));
+  },
+
+  _renderFeatureTimeline() {
+    const entries = this._loadTimeline();
+    if (entries.length === 0) {
+      this._resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text2);text-align:center;">Noch keine Einträge. Nach abgeschlossenen Features wird hier automatisch eingetragen.</div>';
+      return;
+    }
+
+    const months = {};
+    entries.forEach(e => {
+      const m = e.date.slice(0, 7);
+      if (!months[m]) months[m] = [];
+      months[m].push(e);
+    });
+    const sortedMonths = Object.keys(months).sort((a, b) => b.localeCompare(a));
+
+    const monthNames = { '01':'Januar','02':'Februar','03':'März','04':'April','05':'Mai','06':'Juni','07':'Juli','08':'August','09':'September','10':'Oktober','11':'November','12':'Dezember' };
+
+    let html = '';
+    sortedMonths.forEach(m => {
+      const [y, mo] = m.split('-');
+      html += `<div class="ci-tl-month">${monthNames[mo] || mo} ${y}</div>`;
+      months[m].sort((a, b) => b.date.localeCompare(a.date)).forEach(e => {
+        const desc = escapeHtml(e.description || '');
+        html += `<div class="ci-tl-entry"><span class="ci-tl-name">${escapeHtml(e.name)}<span class="ci-tl-hover-desc">${desc}</span></span><span class="ci-tl-date">${e.date}</span></div>`;
+      });
+    });
+    this._resultsEl.innerHTML = html;
+  },
+
   _renderToolView(toolId) {
     if (!this._resultsEl) return;
     const views = {
@@ -195,6 +241,7 @@ const CodeIntelligence = {
       'dep-check': this._renderDepCheck.bind(this),
       'secret-scanner': this._renderSecretScanner.bind(this),
       'health-scan': this._renderProjectHealth.bind(this),
+      'feature-timeline': this._renderFeatureTimeline.bind(this),
     };
     (views[toolId] || views['code-search'])();
   },

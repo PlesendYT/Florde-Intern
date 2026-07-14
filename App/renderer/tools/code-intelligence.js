@@ -461,11 +461,18 @@ const CodeIntelligence = {
             accepted++;
             await this._applyGitName(results[idx].hash, results[idx].newName, results[idx].newDesc);
           } else {
+            if (results[idx].accepted) accepted--;
             results[idx].accepted = false;
           }
           updateStatus();
-          btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]').textContent = '✅ Angenommen';
-          btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]').classList.add('ci-v2-btn-primary');
+          const acceptBtn = btn.closest('.ci-gc-commit').querySelector('[data-action="accept"]');
+          if (results[idx].accepted) {
+            acceptBtn.textContent = '✅ Angenommen';
+            acceptBtn.classList.add('ci-v2-btn-primary');
+          } else {
+            acceptBtn.textContent = '✓ Übernehmen';
+            acceptBtn.classList.remove('ci-v2-btn-primary');
+          }
         };
       });
     }

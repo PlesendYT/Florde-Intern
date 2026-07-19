@@ -39,3 +39,6 @@ config/icon/icon.png
 
 
 
+docs/*
+.superpowers
+.florde

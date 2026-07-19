@@ -170,24 +170,36 @@ const CodeIntelligence = {
     this._playEventSound();
   },
 
-  _addTimelineEntry(name, description) {
-    const entries = this._loadTimeline();
+  async _addTimelineEntry(name, description) {
+    const entries = await this._loadTimeline();
     if (entries.some(e => e.name === name)) return;
     entries.unshift({ name, description, date: new Date().toISOString().slice(0, 10) });
-    this._saveTimeline(entries);
+    await this._saveTimeline(entries);
     this._playEventSound();
   },
 
-  _loadTimeline() {
-    try { return JSON.parse(localStorage.getItem('ci-timeline') || '[]'); } catch { return []; }
+  async _loadTimeline() {
+    try {
+      if (typeof ProjectStorage !== 'undefined' && ProjectStorage._project) {
+        const data = await ProjectStorage.load('timeline');
+        return data || [];
+      }
+      return JSON.parse(localStorage.getItem('ci-timeline') || '[]');
+    } catch { return []; }
   },
 
-  _saveTimeline(entries) {
-    localStorage.setItem('ci-timeline', JSON.stringify(entries));
+  async _saveTimeline(entries) {
+    try {
+      if (typeof ProjectStorage !== 'undefined' && ProjectStorage._project) {
+        await ProjectStorage.save('timeline', entries);
+      } else {
+        localStorage.setItem('ci-timeline', JSON.stringify(entries));
+      }
+    } catch { localStorage.setItem('ci-timeline', JSON.stringify(entries)); }
   },
 
-  _renderFeatureTimeline() {
-    const entries = this._loadTimeline();
+  async _renderFeatureTimeline() {
+    const entries = await this._loadTimeline();
     if (entries.length === 0) {
       this._resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text2);text-align:center;">Noch keine Einträge. Nach abgeschlossenen Features wird hier automatisch eingetragen.</div>';
       return;

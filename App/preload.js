@@ -121,6 +121,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     composeLogs: (file) => ipcRenderer.invoke('docker:compose-logs', file),
   },
 
+  flordeDb: {
+    ensureDir: (n) => ipcRenderer.invoke('florde:ensure-dir', n),
+    initDb: (n) => ipcRenderer.invoke('florde:init-db', n),
+    get: (n, ns, k) => ipcRenderer.invoke('florde:get', n, ns, k),
+    set: (n, ns, k, v) => ipcRenderer.invoke('florde:set', n, ns, k, v),
+    delete: (n, ns, k) => ipcRenderer.invoke('florde:delete', n, ns, k),
+    getAll: (n, ns) => ipcRenderer.invoke('florde:get-all', n, ns),
+    query: (n, sql, params) => ipcRenderer.invoke('florde:query', n, sql, params),
+    run: (n, sql, params) => ipcRenderer.invoke('florde:run', n, sql, params),
+    close: (n) => ipcRenderer.invoke('florde:close', n),
+    getDbPath: (n) => ipcRenderer.invoke('florde:get-db-path', n),
+  },
+
   terminal: {
     create: (opts) => ipcRenderer.invoke('terminal:create', opts),
     resize: (opts) => ipcRenderer.invoke('terminal:resize', opts),

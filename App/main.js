@@ -2,6 +2,9 @@ const { app, BrowserWindow, ipcMain, dialog, net, Menu, shell, Notification } = 
 const path = require('path');
 const fs = require('fs');
 const { execSync, spawnSync } = require('child_process');
+const FlordeStorage = require('./storage');
+
+const _flordeStores = new Map(); // projectName -> FlordeStorage instance
 
 let mainWindow;
 let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
@@ -961,6 +964,108 @@ app.on('web-contents-created', (event, wc) => {
       ).catch(() => {});
     }
   });
+});
+
+// ==================== FLORDE STORAGE ====================
+
+function getFlordeStore(projectName) {
+  if (!projectName) return null;
+  let store = _flordeStores.get(projectName);
+  if (store) return store;
+  const root = getProjectRoot(projectName);
+  if (!root) return null;
+  const flordeDir = path.join(root, '.florde');
+  store = new FlordeStorage(path.join(flordeDir, 'database.db'));
+  try {
+    store.init();
+    _flordeStores.set(projectName, store);
+    return store;
+  } catch (e) {
+    console.error('Failed to init FlordeStorage:', e);
+    return null;
+  }
+}
+
+function ensureFlordeDir(projectName) {
+  if (!projectName) return null;
+  const root = getProjectRoot(projectName);
+  if (!root) return null;
+  const flordeDir = path.join(root, '.florde');
+  if (!fs.existsSync(flordeDir)) fs.mkdirSync(flordeDir, { recursive: true });
+  const meta = getProjectMeta(projectName);
+  if (meta && meta.type === 'local') {
+    const gitignorePath = path.join(root, '.gitignore');
+    if (fs.existsSync(gitignorePath)) {
+      const content = fs.readFileSync(gitignorePath, 'utf-8');
+      if (!content.includes('.florde/')) {
+        fs.appendFileSync(gitignorePath, '\n# Florde project data\n.florde/\n');
+      }
+    } else {
+      fs.writeFileSync(gitignorePath, '# Florde project data\n.florde/\n');
+    }
+  }
+  return flordeDir;
+}
+
+ipcMain.handle('florde:ensure-dir', (event, projectName) => {
+  return ensureFlordeDir(projectName) !== null;
+});
+
+ipcMain.handle('florde:init-db', (event, projectName) => {
+  const store = getFlordeStore(projectName);
+  return store !== null;
+});
+
+ipcMain.handle('florde:get', (event, projectName, namespace, key) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return null;
+  return store.get(namespace, key);
+});
+
+ipcMain.handle('florde:set', (event, projectName, namespace, key, value) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return false;
+  store.set(namespace, key, value);
+  return true;
+});
+
+ipcMain.handle('florde:delete', (event, projectName, namespace, key) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return false;
+  store.delete(namespace, key);
+  return true;
+});
+
+ipcMain.handle('florde:get-all', (event, projectName, namespace) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return [];
+  return store.getAll(namespace);
+});
+
+ipcMain.handle('florde:query', (event, projectName, sql, params) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return [];
+  return store.query(sql, params || []);
+});
+
+ipcMain.handle('florde:run', (event, projectName, sql, params) => {
+  const store = getFlordeStore(projectName);
+  if (!store) return null;
+  return store.run(sql, params || []);
+});
+
+ipcMain.handle('florde:close', (event, projectName) => {
+  const store = _flordeStores.get(projectName);
+  if (store) {
+    store.close();
+    _flordeStores.delete(projectName);
+  }
+});
+
+ipcMain.handle('florde:get-db-path', (event, projectName) => {
+  const root = getProjectRoot(projectName);
+  if (!root) return null;
+  return path.join(root, '.florde', 'database.db');
 });
 
 // ==================== APP ====================

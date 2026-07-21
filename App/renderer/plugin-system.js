@@ -124,11 +124,12 @@ const pluginRegistry = new PluginRegistry();
 pluginRegistry.registerBuiltin({
   id: 'superpowers',
   name: 'SuperPowers',
-  version: '1.0.0',
-  description: 'Web search and web fetch capabilities. Enables the AI to search the web and fetch URL content.',
+  version: '6.1.1',
+  description: 'Complete software development methodology for coding agents. Provides brainstorming, systematic debugging, TDD, planning, and verification tools.',
   author: 'Prime Radiant',
   repo: 'https://github.com/obra/superpowers',
   icon: '⚡',
+  category: 'methodology',
   tools: [
     {
       type: 'function',
@@ -159,8 +160,112 @@ pluginRegistry.registerBuiltin({
           required: ['url']
         }
       }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'superpowers_brainstorm',
+        description: 'Activate brainstorming mode. Refines rough ideas through questions, explores alternatives, presents design in sections for validation. Use BEFORE writing any code.',
+        parameters: {
+          type: 'object',
+          properties: {
+            idea: { type: 'string', description: 'The initial idea or feature to brainstorm' },
+            context: { type: 'string', description: 'Additional context about the project or requirements' }
+          },
+          required: ['idea']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'superpowers_debug',
+        description: 'Activate systematic debugging. 4-phase root cause process: reproduce, analyze root cause, implement fix, verify. Use for ANY bug or test failure.',
+        parameters: {
+          type: 'object',
+          properties: {
+            issue: { type: 'string', description: 'Description of the bug or issue' },
+            stepsToReproduce: { type: 'string', description: 'How to reproduce the issue' },
+            expectedBehavior: { type: 'string', description: 'What should happen' },
+            actualBehavior: { type: 'string', description: 'What actually happens' }
+          },
+          required: ['issue']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'superpowers_tdd',
+        description: 'Activate test-driven development. Enforces RED-GREEN-REFACTOR: write failing test, watch it fail, write minimal code, watch it pass, commit.',
+        parameters: {
+          type: 'object',
+          properties: {
+            feature: { type: 'string', description: 'The feature to implement with TDD' },
+            requirements: { type: 'string', description: 'Specific requirements or acceptance criteria' }
+          },
+          required: ['feature']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'superpowers_plan',
+        description: 'Create a detailed implementation plan. Breaks work into bite-sized tasks (2-5 minutes each) with exact file paths, complete code, and verification steps.',
+        parameters: {
+          type: 'object',
+          properties: {
+            design: { type: 'string', description: 'The approved design to plan implementation for' },
+            constraints: { type: 'string', description: 'Any constraints or special requirements' }
+          },
+          required: ['design']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'superpowers_verify',
+        description: 'Verify completion before claiming success. Runs verification commands and confirms output before making any success claims.',
+        parameters: {
+          type: 'object',
+          properties: {
+            task: { type: 'string', description: 'The task to verify' },
+            verificationSteps: { type: 'string', description: 'Steps to verify the task is complete' }
+          },
+          required: ['task']
+        }
+      }
     }
-  ]
+  ],
+  promptExtension: `## Superpowers Methodology
+
+You have Superpowers activated. Follow these workflows MANDATORILY:
+
+### Core Workflows
+
+1. **brainstorming** - BEFORE writing code, refine ideas through questions, explore alternatives, present design in sections for validation.
+
+2. **systematic-debugging** - For ANY bug or test failure, use 4-phase process: reproduce → analyze root cause → implement fix → verify.
+
+3. **test-driven-development** - RED-GREEN-REFACTOR: write failing test, watch it fail, write minimal code, watch it pass, commit.
+
+4. **writing-plans** - Break work into 2-5 minute tasks with exact file paths, complete code, verification steps.
+
+5. **verification-before-completion** - Run verification commands and confirm output before claiming success.
+
+### Anti-Patterns to Avoid
+- Writing code before tests
+- Guessing at root causes
+- Skipping verification
+- Making multiple changes at once
+
+### Key Principles
+- Test-Driven Development
+- Systematic over ad-hoc
+- Complexity reduction
+- Evidence over claims`
 });
 
 pluginRegistry.registerTool('web_search', async (args) => {
@@ -203,6 +308,201 @@ pluginRegistry.registerTool('web_fetch', async (args) => {
   } catch (err) {
     return 'Error fetching URL: ' + err.message;
   }
+});
+
+// ==================== SUPERPOWERS METHODOLOGY TOOLS ====================
+
+pluginRegistry.registerTool('superpowers_brainstorm', async (args) => {
+  const { idea, context } = args;
+  return `## Brainstorming Mode Activated
+
+**Idea:** ${idea}
+${context ? `**Context:** ${context}` : ''}
+
+### Process
+1. **Understand the idea** - Ask clarifying questions one at a time
+2. **Explore approaches** - Propose 2-3 different approaches with trade-offs
+3. **Present design** - Show sections for validation, get approval after each
+4. **Write design doc** - Save validated design
+
+### Questions to Answer
+- What problem does this solve?
+- Who benefits and how?
+- What are the constraints?
+- What does success look like?
+
+### YAGNI Principle
+Remove unnecessary features. Focus on what serves the current goal.
+
+Ready to proceed with brainstorming. Ask me one question at a time.`;
+});
+
+pluginRegistry.registerTool('superpowers_debug', async (args) => {
+  const { issue, stepsToReproduce, expectedBehavior, actualBehavior } = args;
+  return `## Systematic Debugging Activated
+
+**Issue:** ${issue}
+${stepsToReproduce ? `**Steps to Reproduce:** ${stepsToReproduce}` : ''}
+${expectedBehavior ? `**Expected:** ${expectedBehavior}` : ''}
+${actualBehavior ? `**Actual:** ${actualBehavior}` : ''}
+
+### 4-Phase Process
+
+**Phase 1: Reproduce**
+- Create minimal reproduction case
+- Verify you can trigger reliably
+- Document exact steps
+
+**Phase 2: Analyze Root Cause**
+- Read error messages carefully
+- Check logs and stack traces
+- Understand the code flow
+- Identify the actual root cause (not symptoms)
+
+**Phase 3: Implement Fix**
+- Fix the root cause, not symptoms
+- Write a failing test that captures the bug
+- Implement minimal fix
+- Verify test passes
+
+**Phase 4: Verify**
+- Run full test suite
+- Check for regressions
+- Verify the original issue is resolved
+
+### Rules
+- Never guess at root causes
+- Always reproduce first
+- Fix root causes, not symptoms
+- Write tests to prevent regression
+
+Ready to begin systematic debugging.`;
+});
+
+pluginRegistry.registerTool('superpowers_tdd', async (args) => {
+  const { feature, requirements } = args;
+  return `## Test-Driven Development Activated
+
+**Feature:** ${feature}
+${requirements ? `**Requirements:** ${requirements}` : ''}
+
+### RED-GREEN-REFACTOR Cycle
+
+**RED Phase**
+1. Write a failing test that defines expected behavior
+2. Run the test - confirm it FAILS
+3. Do NOT write any implementation yet
+
+**GREEN Phase**
+1. Write MINIMAL code to make the test pass
+2. Run the test - confirm it PASSES
+3. Do NOT write more than needed
+
+**REFACTOR Phase**
+1. Clean up the code
+2. Remove duplication
+3. Improve naming
+4. Run tests again - confirm they still PASS
+
+### Rules
+- Never write production code without a failing test first
+- Write the smallest change that makes the test pass
+- Delete code written before tests
+- Commit after each GREEN phase
+
+### Anti-Patterns to Avoid
+- Writing implementation before tests
+- Writing multiple tests at once
+- Skipping the RED phase
+- Over-engineering in GREEN phase
+
+Ready to begin TDD cycle. Start with the first failing test.`;
+});
+
+pluginRegistry.registerTool('superpowers_plan', async (args) => {
+  const { design, constraints } = args;
+  return `## Implementation Planning
+
+**Design:** ${design}
+${constraints ? `**Constraints:** ${constraints}` : ''}
+
+### Planning Process
+
+**1. Break Down Tasks**
+- Each task should take 2-5 minutes
+- Each task has exact file paths
+- Each task has complete code
+- Each task has verification steps
+
+**2. Task Structure**
+For each task provide:
+- Task description
+- Files to modify/create
+- Exact code changes
+- How to verify it works
+
+**3. Ordering**
+- Dependencies first
+- Simple tasks before complex
+- Tests before implementation
+- One concern per task
+
+**4. YAGNI Check**
+- Is this task necessary?
+- Does it serve the current goal?
+- Can it be simplified?
+
+### Task Template
+\`\`\`
+Task: [Description]
+Files: [path/to/file.js]
+Changes: [What to change]
+Verification: [How to verify]
+\`\`\`
+
+Ready to create detailed implementation plan.`;
+});
+
+pluginRegistry.registerTool('superpowers_verify', async (args) => {
+  const { task, verificationSteps } = args;
+  return `## Verification Checklist
+
+**Task:** ${task}
+${verificationSteps ? `**Verification Steps:** ${verificationSteps}` : ''}
+
+### Pre-Completion Verification
+
+**1. Code Quality**
+- [ ] No TODO/FIXME/HACK comments left
+- [ ] No console.log in production code
+- [ ] No hardcoded values
+- [ ] Proper error handling
+
+**2. Testing**
+- [ ] All tests pass
+- [ ] New tests added for new functionality
+- [ ] Edge cases covered
+- [ ] No test skips
+
+**3. Functionality**
+- [ ] Original requirement met
+- [ ] No regressions
+- [ ] Works in all environments
+- [ ] Performance acceptable
+
+**4. Documentation**
+- [ ] Code comments where needed
+- [ ] README updated if needed
+- [ ] API documentation updated if needed
+
+### Verification Commands
+Run these before claiming success:
+- Lint check
+- Type check
+- Test suite
+- Build verification
+
+**DO NOT claim success until all checks pass.**`;
 });
 
 pluginRegistry.registerBuiltin({

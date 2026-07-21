@@ -4,7 +4,7 @@
   "description": "AI-powered code generation from natural language",
   "main": "main.js",
   "scripts": {
-    "start": "cmd.exe /c \"node_modules\\.bin\\electron.cmd\" . 2>nul || electron .",
+    "start": "electron .",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",

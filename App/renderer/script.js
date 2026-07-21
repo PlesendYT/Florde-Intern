@@ -265,7 +265,7 @@ function askUserQuestion(question, choices) {
           customContainer.style.display = 'block';
           customInput.focus();
         } else {
-          hideModal('question-modal');
+          modal.classList.add('hidden');
           resolve(c);
         }
       });
@@ -274,15 +274,18 @@ function askUserQuestion(question, choices) {
     submitBtn.onclick = () => {
       const val = customInput.value.trim();
       if (val) {
-        hideModal('question-modal');
+        modal.classList.add('hidden');
         resolve(val);
       }
     };
-    document.getElementById('btn-question-cancel').addEventListener('click', () => {
-      hideModal('question-modal');
+    const cancelBtn = document.getElementById('btn-question-cancel');
+    const cancelHandler = () => {
+      modal.classList.add('hidden');
       resolve('[User cancelled]');
-    }, { once: true });
-    showModal('question-modal');
+    };
+    cancelBtn.removeEventListener('click', cancelHandler);
+    cancelBtn.addEventListener('click', cancelHandler);
+    modal.classList.remove('hidden');
   });
 }
 
@@ -2255,7 +2258,6 @@ function updateProviderDropdown() {
       activeProviders.push(id);
     }
   }
-  if (activeProviders.length === 0) activeProviders.push('ollama');
   const options = sel.querySelectorAll('option');
   let hasCurrent = false;
   for (const opt of options) {
@@ -2266,7 +2268,9 @@ function updateProviderDropdown() {
       opt.style.display = 'none';
     }
   }
-  if (!hasCurrent && activeProviders.length > 0) {
+  if (activeProviders.length === 0) {
+    sel.value = '';
+  } else if (!hasCurrent) {
     sel.value = activeProviders[0];
     updatePrivacyIndicator();
   }
@@ -4351,7 +4355,11 @@ async function sendMessage(text) {
   }
 
   const provider = document.getElementById('provider-select').value;
-  if (!providers[provider]) { logToTerminal('Please configure API key for ' + provider + ' in Settings', 'error'); return; }
+  if (!provider || !providers[provider]) {
+    logToTerminal('\u274C Kein KI-Provider aktiviert. Bitte in den Einstellungen einen Provider aktivieren.', 'error');
+    if (input) input.value = text;
+    return;
+  }
 
   // Toggle button to Stop mode
   const _currentAborter = new AbortController();
@@ -7819,6 +7827,8 @@ async function initConnectedApps() {
 // ==================== MCP Manager ====================
 const _mcpClients = new Map();
 
+const TRANSPORT_LABELS = { stdio: 'STDIO', sse: 'SSE', websocket: 'WebSocket' };
+
 function loadMcpConfig() {
   try { return JSON.parse(localStorage.getItem('florde-mcp-servers') || '[]'); } catch { return []; }
 }
@@ -7827,84 +7837,114 @@ function saveMcpConfig(configs) {
   localStorage.setItem('florde-mcp-servers', JSON.stringify(configs));
 }
 
+async function _mcpConnect(id) {
+  const cfg = loadMcpConfig().find(c => c && c.id === id);
+  if (!cfg) return;
+  if (!cfg.command && cfg.transport === 'stdio') {
+    showNotification('error', 'MCP: Befehl erforderlich f\u00fcr STDIO Transport', '\u274C');
+    return;
+  }
+  try {
+    if (_mcpClients.has(id)) await _mcpClients.get(id).disconnect();
+    const client = new McpClient(cfg);
+    await client.connect();
+    _mcpClients.set(id, client);
+    renderMcpServers();
+    showNotification('success', 'MCP Server "' + cfg.name + '" verbunden', '\uD83D\uDD0C');
+  } catch (err) {
+    showNotification('error', 'MCP Verbindung fehlgeschlagen: ' + err.message, '\u274C');
+    renderMcpServers();
+  }
+}
+
 async function renderMcpServers() {
   const list = document.getElementById('mcp-server-list');
   if (!list) return;
   const configs = loadMcpConfig();
+  const TO = TRANSPORT_LABELS;
   list.innerHTML = configs.map((cfg, i) => {
     const client = _mcpClients.get(cfg.id);
-    const status = client && client._connected ? 'connected' : 'disconnected';
+    const connected = client && client._connected;
+    const status = connected ? 'verbunden' : 'getrennt';
     const tools = client ? client._tools : [];
-    return '<div class="mcp-server-card" data-index="' + i + '">' +
+    const tl = TO[cfg.transport] || cfg.transport;
+    const isStdio = cfg.transport === 'stdio';
+    const fields = isStdio
+      ? '<label>Befehl</label><input class="mcp-field" data-field="command" value="' + escapeHtml(cfg.command || '') + '" placeholder="python server.py" />'
+      : '<label>URL</label><input class="mcp-field" data-field="url" value="' + escapeHtml(cfg.url || '') + '" placeholder="http://localhost:6543" />';
+    const transportOptions = Object.keys(TO).map(k => '<option value="' + k + '" ' + (k === cfg.transport ? 'selected' : '') + '>' + TO[k] + '</option>').join('');
+    return '<div class="mcp-server-card" data-index="' + i + '" data-id="' + cfg.id + '">' +
       '<div class="mcp-server-header">' +
-        '<span class="mcp-server-name">' + escapeHtml(cfg.name || cfg.id) + '</span>' +
-        '<span class="mcp-server-status ' + status + '">' + status + '</span>' +
+        '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">' +
+          '<span class="mcp-server-name">' + escapeHtml(cfg.name || cfg.id) + '</span>' +
+          '<select class="mcp-transport-select" style="font-size:0.7rem;padding:0.15rem;max-width:120px;">' +
+            transportOptions +
+          '</select>' +
+        '</div>' +
+        '<span class="mcp-server-status ' + (connected ? 'connected' : 'disconnected') + '">' + status + '</span>' +
       '</div>' +
       (tools.length > 0 ? '<div class="mcp-server-tools">Tools: ' + tools.map(t => t._originalName).join(', ') + '</div>' : '') +
-      '<div class="mcp-server-config">' +
-        '<textarea class="mcp-config-editor" data-id="' + cfg.id + '">' + escapeHtml(JSON.stringify(cfg, null, 2)) + '</textarea>' +
+      '<div class="mcp-server-config">' + fields +
+        '<details style="margin-top:0.4rem;"><summary style="font-size:0.7rem;color:var(--text3);cursor:pointer;">Raw JSON</summary>' +
+        '<textarea class="mcp-config-editor" data-id="' + cfg.id + '" style="width:100%;min-height:60px;background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:0.3rem;border-radius:4px;font-size:0.7rem;font-family:monospace;margin-top:0.25rem;">' + escapeHtml(JSON.stringify(cfg, null, 2)) + '</textarea>' +
+        '</details>' +
       '</div>' +
       '<div class="mcp-server-actions">' +
-        '<button class="btn btn-sm btn-primary mcp-connect" data-id="' + cfg.id + '">' + (status === 'connected' ? 'Reconnect' : 'Connect') + '</button>' +
-        '<button class="btn btn-sm btn-secondary mcp-disconnect" data-id="' + cfg.id + '">Disconnect</button>' +
-        '<button class="btn btn-sm btn-secondary mcp-remove" data-id="' + cfg.id + '">Remove</button>' +
+        '<button class="btn btn-sm btn-primary mcp-connect" data-id="' + cfg.id + '">' + (connected ? 'Neu verbinden' : 'Verbinden') + '</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-disconnect" data-id="' + cfg.id + '" ' + (connected ? '' : 'style="display:none;"') + '>Trennen</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-remove" data-id="' + cfg.id + '">Entfernen</button>' +
       '</div>' +
     '</div>';
   }).join('');
-  list.querySelectorAll('.mcp-connect').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      const cfg = loadMcpConfig().find(c => c.id === id);
-      if (!cfg) return;
-      try {
-        if (_mcpClients.has(id)) await _mcpClients.get(id).disconnect();
-        const client = new McpClient(cfg);
-        await client.connect();
-        _mcpClients.set(id, client);
-        renderMcpServers();
-        showNotification('success', 'MCP server "' + cfg.name + '" connected', '\uD83D\uDD0C');
-      } catch (err) {
-        showNotification('error', 'MCP connect failed: ' + err.message, '\u274C');
-        renderMcpServers();
-      }
-    });
+  list.querySelectorAll('.mcp-server-card').forEach(card => _hookMcpCard(card));
+}
+
+function _hookMcpCard(card) {
+  const idx = parseInt(card.dataset.index);
+  const configs = loadMcpConfig();
+  const cfg = configs[idx];
+  if (!cfg) return;
+  card.querySelector('.mcp-connect').addEventListener('click', () => _mcpConnect(cfg.id));
+  card.querySelector('.mcp-disconnect').addEventListener('click', async () => {
+    if (_mcpClients.has(cfg.id)) await _mcpClients.get(cfg.id).disconnect();
+    _mcpClients.delete(cfg.id);
+    renderMcpServers();
   });
-  list.querySelectorAll('.mcp-disconnect').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = btn.dataset.id;
-      if (_mcpClients.has(id)) await _mcpClients.get(id).disconnect();
-      _mcpClients.delete(id);
+  card.querySelector('.mcp-remove').addEventListener('click', () => {
+    const ccs = loadMcpConfig();
+    const idx = parseInt(card.dataset.index);
+    const removed = ccs.splice(idx, 1);
+    saveMcpConfig(ccs);
+    const rid = removed.length && removed[0].id;
+    if (rid && _mcpClients.has(rid)) _mcpClients.get(rid).disconnect();
+    if (rid) _mcpClients.delete(rid);
+    renderMcpServers();
+  });
+  card.querySelector('.mcp-transport-select')?.addEventListener('change', function() {
+    const trans = this.value;
+    cfg.transport = trans;
+    if (trans === 'stdio') { cfg.url = undefined; cfg.command = cfg.command || ''; cfg.args = cfg.args || []; cfg.env = cfg.env || {}; }
+    else { cfg.command = undefined; cfg.args = undefined; cfg.env = undefined; }
+    const ccs = loadMcpConfig().map(c => c.id === cfg.id ? cfg : c);
+    saveMcpConfig(ccs);
+    renderMcpServers();
+  });
+  card.querySelector('.mcp-field')?.addEventListener('change', function() {
+    const field = this.dataset.field;
+    cfg[field] = this.value;
+    if (field === 'args') cfg.args = this.value ? this.value.split(' ') : [];
+    const ccs = loadMcpConfig().map(c => c.id === cfg.id ? cfg : c);
+    saveMcpConfig(ccs);
+  });
+  card.querySelector('.mcp-config-editor')?.addEventListener('change', function() {
+    const id = this.dataset.id;
+    try {
+      const newCfg = JSON.parse(this.value);
+      const ccs = loadMcpConfig().map(c => c.id === id ? { ...newCfg, id } : c);
+      saveMcpConfig(ccs);
+      if (_mcpClients.has(id)) { _mcpClients.get(id).disconnect(); _mcpClients.delete(id); }
       renderMcpServers();
-    });
-  });
-  list.querySelectorAll('.mcp-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.closest('.mcp-server-card')?.dataset?.index);
-      if (isNaN(idx)) return;
-      const configs = loadMcpConfig();
-      const removed = configs.splice(idx, 1)[0];
-      saveMcpConfig(configs);
-      if (_mcpClients.has(removed.id)) _mcpClients.get(removed.id).disconnect();
-      _mcpClients.delete(removed.id);
-      renderMcpServers();
-    });
-  });
-  list.querySelectorAll('.mcp-config-editor').forEach(editor => {
-    editor.addEventListener('change', () => {
-      const id = editor.dataset.id;
-      try {
-        const cfg = JSON.parse(editor.value);
-        const configs = loadMcpConfig();
-        const idx = configs.findIndex(c => c.id === id);
-        if (idx >= 0) configs[idx] = cfg;
-        saveMcpConfig(configs);
-        if (_mcpClients.has(id)) {
-          _mcpClients.get(id).disconnect();
-          _mcpClients.delete(id);
-        }
-        renderMcpServers();
-      } catch {}
-    });
+    } catch {}
   });
 }
 
@@ -7912,11 +7952,40 @@ document.getElementById('btn-add-mcp-server')?.addEventListener('click', () => {
   const configs = loadMcpConfig();
   const id = 'mcp-' + Date.now();
   configs.push({
-    id, name: 'New Server',
+    id, name: 'Neuer MCP Server',
     transport: 'stdio',
     command: '',
     args: [],
     env: {}
+  });
+  saveMcpConfig(configs);
+  renderMcpServers();
+});
+
+document.getElementById('btn-start-mcp-server')?.addEventListener('click', async () => {
+  const name = document.getElementById('mcp-run-name').value.trim();
+  const command = document.getElementById('mcp-run-command').value.trim();
+  const port = document.getElementById('mcp-run-port').value.trim();
+  if (!name || !command) {
+    showNotification('error', 'Bitte Namen und Befehl eingeben', '\u274C');
+    return;
+  }
+  const args = [];
+  if (port) args.push('--port', port);
+  const id = 'mcp-run-' + Date.now();
+  const result = await window.electronAPI.mcpExec.spawn(id, command, args, {});
+  if (!result.ok) {
+    showNotification('error', 'MCP Server Start fehlgeschlagen: ' + result.error, '\u274C');
+    return;
+  }
+  showNotification('success', 'MCP Server "' + name + '\" gestartet', '\u2705');
+  const defaultPort = port || '6543';
+  const configs = loadMcpConfig();
+  configs.push({
+    id: 'mcp-auto-' + Date.now(),
+    name: name,
+    transport: 'sse',
+    url: 'http://localhost:' + defaultPort
   });
   saveMcpConfig(configs);
   renderMcpServers();

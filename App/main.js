@@ -757,6 +757,36 @@ ipcMain.handle('docker:compose-logs', (event, filePath) => {
   return dockerExec(['compose', '-f', filePath, 'logs', '--tail=100'], 30000, dir);
 });
 
+// ==================== MCP SERVER SPAWN ====================
+const _mcpServerProcesses = new Map();
+
+ipcMain.handle('mcp:start-server', (event, id, command, args, env) => {
+  try {
+    const proc = require('child_process').spawn(command, args, {
+      env: { ...process.env, ...env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: process.platform === 'win32'
+    });
+    _mcpServerProcesses.set(id, proc);
+    proc.stdout.on('data', () => {});
+    proc.stderr.on('data', () => {});
+    proc.on('exit', () => _mcpServerProcesses.delete(id));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('mcp:stop-server', (event, id) => {
+  const proc = _mcpServerProcesses.get(id);
+  if (proc) {
+    proc.kill();
+    _mcpServerProcesses.delete(id);
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
 // ==================== TERMINAL ====================
 
 let ptySpawn;

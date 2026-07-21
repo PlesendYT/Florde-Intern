@@ -805,13 +805,24 @@
 
       <!-- MCP Servers Tab -->
       <div class="settings-tab-content" data-tab="mcp">
-        <h3 style="margin-bottom:0.5rem;">MCP Servers</h3>
+        <h3 style="margin-bottom:0.5rem;">MCP Server</h3>
         <p style="font-size:0.85rem;color:var(--text3);margin-bottom:1rem;">
-          MCP servers provide additional tools to the AI (databases, APIs, file systems).
-          Configure servers using the standard MCP JSON format.
+          MCP Server stellen der KI zusätzliche Tools bereit (Datenbanken, APIs, Dateisysteme).<br>
+          Unterstützte Transporte: STDIO (lokale Prozesse), SSE und WebSocket.
         </p>
+        <!-- Run Server -->
+        <div style="background:var(--bg3);padding:0.6rem;border-radius:8px;margin-bottom:1rem;">
+          <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.4rem;">MCP Server starten</div>
+          <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <input id="mcp-run-name" placeholder="Server Name" style="flex:1;min-width:100px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
+            <input id="mcp-run-command" placeholder="Befehl (z.B. docker run ...)" style="flex:2;min-width:150px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
+            <input id="mcp-run-port" placeholder="Port (optional)" style="width:80px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
+            <button id="btn-start-mcp-server" class="btn btn-primary btn-sm" style="white-space:nowrap;">▶ Starten</button>
+          </div>
+        </div>
+        <!-- Configured Servers -->
         <div id="mcp-server-list"></div>
-        <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Add Server</button>
+        <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Server hinzufügen</button>
       </div>
 
       <div id="settings-validation" class="settings-validation hidden"></div>

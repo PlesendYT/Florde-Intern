@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body),
 
+  mcpExec: {
+    spawn: (id, command, args, env) => ipcRenderer.invoke('mcp:start-server', id, command, args, env),
+    kill: (id) => ipcRenderer.invoke('mcp:stop-server', id),
+  },
+
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   __mcpSpawn: mcpSpawn,

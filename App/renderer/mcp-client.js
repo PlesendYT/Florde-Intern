@@ -15,18 +15,22 @@ class McpClient {
     this._writer = null;
     this._process = null;
     this._eventSource = null;
+    this._ws = null;
     this._notificationCb = null;
     this._buffer = '';
+    this._sseEndpoint = null;
+    this._messageEndpoint = null;
   }
 
   onNotification(cb) { this._notificationCb = cb; }
 
   async connect() {
     if (this._connected) return;
-    if (this.transport === 'stdio') {
-      await this._connectStdio();
-    } else {
-      await this._connectHttp();
+    switch (this.transport) {
+      case 'stdio': await this._connectStdio(); break;
+      case 'sse': await this._connectSSE(); break;
+      case 'websocket': await this._connectWebSocket(); break;
+      default: throw new Error('Unsupported transport: ' + this.transport);
     }
     const initResult = await this._request('initialize', {
       protocolVersion: '2024-11-05',
@@ -59,9 +63,11 @@ class McpClient {
     await new Promise(r => setTimeout(r, 500));
   }
 
-  async _connectHttp() {
+  async _connectSSE() {
     const url = this.url.replace(/\/+$/, '');
-    this._eventSource = new EventSource(url + '/sse');
+    this._messageEndpoint = null;
+    const sseUrl = url + '/sse';
+    this._eventSource = new EventSource(sseUrl);
     this._eventSource.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
@@ -74,9 +80,46 @@ class McpClient {
         }
       } catch {}
     };
+    this._eventSource.addEventListener('endpoint', (event) => {
+      this._messageEndpoint = url + event.data;
+    });
     this._eventSource.onerror = () => { this._connected = false; };
-    this._messageUrl = url + '/message';
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (this._messageEndpoint) { clearInterval(check); resolve(); }
+      }, 50);
+      setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+    });
+    if (!this._messageEndpoint) {
+      this._messageEndpoint = url + '/message';
+    }
+  }
+
+  async _connectWebSocket() {
+    const url = this.url.replace(/\/+$/, '');
+    const wsUrl = url.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:') + '/mcp';
+    this._ws = new WebSocket(wsUrl);
+    this._ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.id !== undefined && this._pending.has(msg.id)) {
+          const { resolve } = this._pending.get(msg.id);
+          this._pending.delete(msg.id);
+          resolve(msg);
+        } else if (this._notificationCb) {
+          this._notificationCb(msg);
+        }
+      } catch {}
+    };
+    this._ws.onclose = () => { this._connected = false; };
+    this._ws.onerror = () => { this._connected = false; };
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 10000);
+      this._ws.onopen = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+    });
   }
 
   _onData(chunk) {
@@ -117,16 +160,25 @@ class McpClient {
   }
 
   async _send(request) {
-    if (this.transport === 'stdio') {
-      if (!this._process || !this._process.stdin) throw new Error('MCP: not connected');
-      this._process.stdin.write(JSON.stringify(request) + '\n');
-    } else {
-      const r = await fetch(this._messageUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request)
-      });
-      if (!r.ok) throw new Error('MCP HTTP error: ' + r.status);
+    switch (this.transport) {
+      case 'stdio':
+        if (!this._process || !this._process.stdin) throw new Error('MCP: not connected');
+        this._process.stdin.write(JSON.stringify(request) + '\n');
+        break;
+      case 'websocket':
+        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) throw new Error('MCP WebSocket: not connected');
+        this._ws.send(JSON.stringify(request));
+        break;
+      case 'sse':
+      default:
+        const ep = this._messageEndpoint || (this.url.replace(/\/+$/, '') + '/message');
+        const r = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request)
+        });
+        if (!r.ok) throw new Error('MCP HTTP error: ' + r.status);
+        break;
     }
   }
 
@@ -151,6 +203,10 @@ class McpClient {
     if (this._eventSource) {
       this._eventSource.close();
       this._eventSource = null;
+    }
+    if (this._ws) {
+      this._ws.close();
+      this._ws = null;
     }
     for (const [id, entry] of this._pending) {
       clearTimeout(entry.timeout);

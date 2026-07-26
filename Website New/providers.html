@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Providers — Florde</title>
+<meta name="description" content="Florde supports 27 AI providers from OpenAI and Anthropic to Ollama — with a task router that sends every job to the best model.">
+<meta name="theme-color" content="#07060e">
+<link rel="icon" href="assets/img/florde-icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<header>
+  <nav>
+    <a href="index.html" class="brand"><div class="brand-mark"></div>Florde</a>
+    <button class="nav-toggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="providers.html" class="active">Providers</a>
+      <a href="tools.html">Tools</a>
+      <a href="download.html">Download</a>
+    </div>
+    <a href="download.html" class="nav-cta">Download</a>
+  </nav>
+</header>
+
+<main>
+  <section class="page-header wrap">
+    <div class="eyebrow"><span class="eyebrow-dot"></span>Providers &amp; Task Router</div>
+    <h1>One agent, <span class="grad">every model.</span></h1>
+    <p class="lead">Cloud, local, or self-hosted — Florde talks to 27 providers and lets you decide which model handles each task.</p>
+  </section>
+
+  <section class="wrap" style="padding-top:0;">
+    <div class="provider-groups">
+      <div class="pgroup">
+        <h4>Cloud &amp; OpenAI-Compatible</h4>
+        <div class="pchips">
+          <span class="pchip">OpenAI</span><span class="pchip">Anthropic</span><span class="pchip">Google Gemini</span>
+          <span class="pchip">DeepSeek</span><span class="pchip">Mistral</span><span class="pchip">Grok (xAI)</span>
+          <span class="pchip">OpenRouter</span><span class="pchip">Groq</span><span class="pchip">Together AI</span>
+          <span class="pchip">Fireworks AI</span><span class="pchip">Cerebras</span><span class="pchip">DeepInfra</span>
+          <span class="pchip">Novita AI</span><span class="pchip">SambaNova</span><span class="pchip">AI/ML API</span>
+        </div>
+      </div>
+      <div class="pgroup">
+        <h4>Local &amp; Self-Hosted</h4>
+        <div class="pchips">
+          <span class="pchip">Ollama</span><span class="pchip">LM Studio</span><span class="pchip">LocalAI</span>
+          <span class="pchip">llama.cpp</span><span class="pchip">Custom Provider</span><span class="pchip">OpenCode</span>
+        </div>
+      </div>
+      <div class="pgroup">
+        <h4>Enterprise</h4>
+        <div class="pchips">
+          <span class="pchip">Azure OpenAI</span><span class="pchip">AWS Bedrock</span><span class="pchip">Google Vertex AI</span>
+          <span class="pchip">HuggingFace</span><span class="pchip">Replicate</span><span class="pchip">Cloudflare AI</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="router">
+      <div class="router-visual">
+        <div class="rv-row">Generate code <span class="rv-arrow">→</span> <b>Claude Sonnet</b></div>
+        <div class="rv-row">Fix bugs <span class="rv-arrow">→</span> <b>DeepSeek-R1</b></div>
+        <div class="rv-row">Write tests <span class="rv-arrow">→</span> <b>GPT-4.1</b></div>
+        <div class="rv-row">Planning <span class="rv-arrow">→</span> <b>o3</b></div>
+      </div>
+      <div>
+        <div class="section-tag">Experimental</div>
+        <h2 class="subhead">The task router assigns work to the best model</h2>
+        <ul class="router-list">
+          <li><span class="router-num">01</span><div><h4>Manual Mode</h4><p>You assign a provider per task type — generate, explain, review, refactor, test, document, plan — yourself.</p></div></li>
+          <li><span class="router-num">02</span><div><h4>Automatic Mode</h4><p>The router checks each connected model's capabilities (coding, reasoning, speed) and picks the best match for the task.</p></div></li>
+          <li><span class="router-num">03</span><div><h4>Fallback Dialog</h4><p>If no suitable provider is found, Florde asks instead of forcing a bad choice.</p></div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <a href="index.html" class="brand"><div class="brand-mark" style="width:20px;height:20px;"></div>Florde</a>
+  <div>&copy; 2026 Florde. All rights reserved.</div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>

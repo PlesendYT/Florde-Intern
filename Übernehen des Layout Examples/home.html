@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Florde - Start Menu</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f; --bg2: #12121a; --bg3: #1a1a24;
+    --text: #e0e0e0; --text2: #a0a0b0; --text3: #666;
+    --border: rgba(255,255,255,0.06);
+    --accent: #7c3aed; --accent2: #3b82f6;
+    --hover: rgba(124,58,237,0.1);
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .titlebar {
+    height: 32px; background: var(--bg2); display: flex; align-items: center;
+    padding: 0 12px; font-size: 12px; color: var(--text3);
+    border-bottom: 1px solid var(--border); -webkit-app-region: drag;
+    justify-content: space-between; flex-shrink: 0;
+  }
+  .titlebar-dots { display: flex; gap: 6px; }
+  .titlebar-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-red { background: #ff5f56; }
+  .dot-yellow { background: #ffbd2e; }
+  .dot-green { background: #27c93f; }
+  .content { flex: 1; display: flex; }
+  .sidebar {
+    width: 260px; background: var(--bg2); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 24px 16px; flex-shrink: 0;
+  }
+  .logo { font-size: 32px; font-weight: 700; margin-bottom: 4px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .tagline { font-size: 11px; color: var(--text3); margin-bottom: 28px; }
+  .sidebar-btns { display: flex; flex-direction: column; gap: 4px; }
+  .sidebar-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 6px; border: none;
+    background: transparent; color: var(--text2); font-size: 13px;
+    cursor: pointer; transition: all 0.15s; text-align: left;
+  }
+  .sidebar-btn:hover { background: var(--hover); color: var(--text); }
+  .sidebar-btn.primary { background: var(--accent); color: #fff; }
+  .sidebar-btn.primary:hover { background: #6d28d9; }
+  .btn-icon { font-size: 15px; width: 20px; text-align: center; }
+  .main { flex: 1; padding: 32px 40px; display: flex; flex-direction: column; }
+  .main-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .main-subtitle { font-size: 12px; color: var(--text3); margin-bottom: 24px; }
+  .projects { display: flex; flex-direction: column; gap: 6px; }
+  .project-card {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg2); cursor: pointer; transition: all 0.15s;
+  }
+  .project-card:hover { border-color: rgba(124,58,237,0.3); background: var(--hover); }
+  .project-name { font-size: 14px; font-weight: 500; }
+  .project-path { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .project-meta { font-size: 11px; color: var(--text3); text-align: right; }
+</style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="titlebar-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span></div>
+    <span>Florde</span>
+    <span></span>
+  </div>
+  <div class="content">
+    <div class="sidebar">
+      <div class="logo">Florde</div>
+      <div class="tagline">AI-powered coding environment</div>
+      <div class="sidebar-btns">
+        <button class="sidebar-btn primary"><span class="btn-icon">+</span> New Sandbox</button>
+        <button class="sidebar-btn"><span class="btn-icon">📂</span> Open Project</button>
+        <button class="sidebar-btn"><span class="btn-icon">⏱</span> Recent</button>
+        <button class="sidebar-btn"><span class="btn-icon">⚙</span> Settings</button>
+        <button class="sidebar-btn"><span class="btn-icon">🧩</span> Plugins</button>
+      </div>
+    </div>
+    <div class="main">
+      <div class="main-title">Recent Projects</div>
+      <div class="main-subtitle">Continue where you left off</div>
+      <div class="projects">
+        <div class="project-card">
+          <div><div class="project-name">my-web-app</div><div class="project-path">~/projects/my-web-app</div></div>
+          <div class="project-meta">2 hours ago</div>
+        </div>
+        <div class="project-card">
+          <div><div class="project-name">florde-plugin-sdk</div><div class="project-path">~/dev/florde-plugin-sdk</div></div>
+          <div class="project-meta">Yesterday</div>
+        </div>
+        <div class="project-card">
+          <div><div class="project-name">data-pipeline</div><div class="project-path">~/work/data-pipeline</div></div>
+          <div class="project-meta">3 days ago</div>
+        </div>
+        <div class="project-card">
+          <div><div class="project-name">landing-page</div><div class="project-path">~/projects/landing-page</div></div>
+          <div class="project-meta">1 week ago</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

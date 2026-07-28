@@ -472,6 +472,12 @@ body {
   scrollbar-width: thin; flex: 1;
   -webkit-app-region: no-drag;
 }
+.titlebar-center button {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
+  padding: 0.2rem 0.6rem; border-radius: 4px; cursor: pointer; font-size: 0.78rem;
+  white-space: nowrap; flex-shrink: 0;
+}
+.titlebar-center button:hover { background: var(--hover); border-color: var(--accent); }
 .titlebar-center::-webkit-scrollbar { height: 3px; }
 .titlebar-center::-webkit-scrollbar-thumb { background: var(--text3); border-radius: 2px; }
 .titlebar-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }

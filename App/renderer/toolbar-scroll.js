@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const center = document.getElementById('titlebar-center');
   const leftBtn = document.getElementById('toolbar-scroll-left');
   const rightBtn = document.getElementById('toolbar-scroll-right');
-  if (!center) return;
+  if (!center || !leftBtn || !rightBtn) return;
 
   function updateScrollButtons() {
     const hasOverflow = center.scrollWidth > center.clientWidth;

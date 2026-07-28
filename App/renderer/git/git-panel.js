@@ -62,12 +62,29 @@ const GitPanel = {
 
     // Search commits
     const searchInput = document.getElementById('git-search-input');
-    const searchMode = document.getElementById('git-search-mode');
+    const modeBtns = document.querySelectorAll('.git-mode-btn');
+    let currentMode = 'message';
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach(b => { b.classList.remove('active'); b.style.background = ''; b.style.color = ''; b.style.borderColor = ''; });
+        btn.classList.add('active');
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--accent)';
+        currentMode = btn.dataset.mode;
+        if (searchInput?.value.trim()) this.searchCommits(searchInput.value.trim(), currentMode);
+      });
+      if (btn.classList.contains('active')) {
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--accent)';
+      }
+    });
     if (searchInput) {
       searchInput.addEventListener('input', () => {
         clearTimeout(this._searchTimer);
         this._searchTimer = setTimeout(() => {
-          this.searchCommits(searchInput.value.trim(), searchMode?.value || 'message');
+          this.searchCommits(searchInput.value.trim(), currentMode);
         }, 350);
       });
     }

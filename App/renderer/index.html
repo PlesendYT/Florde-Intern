@@ -11,17 +11,21 @@
 
   <!-- Start Menu -->
   <div id="start-menu">
-    <div class="start-center">
-      <h1 class="start-logo">Florde</h1>
-      <p class="start-tagline">AI-powered code generation from plain language</p>
-      <div class="start-buttons">
-        <button id="btn-start-new" class="btn btn-primary">New Sandbox Project</button>
-        <button id="btn-start-local" class="btn btn-secondary">Open Local Project</button>
-        <button id="btn-start-open" class="btn btn-secondary">Recent Projects</button>
-        <button id="btn-start-settings" class="btn btn-secondary">Settings</button>
-        <button id="btn-start-plugins" class="btn btn-secondary">Plugins</button>
+    <div class="start-sidebar">
+      <div class="start-logo">Florde</div>
+      <div class="start-tagline">AI-powered coding environment</div>
+      <div class="start-sidebar-btns">
+        <button id="btn-start-new" class="start-sidebar-btn primary"><span class="btn-icon">+</span> New Sandbox</button>
+        <button id="btn-start-local" class="start-sidebar-btn"><span class="btn-icon">&#128194;</span> Open Project</button>
+        <button id="btn-start-open" class="start-sidebar-btn"><span class="btn-icon">&#9201;</span> Recent</button>
+        <button id="btn-start-settings" class="start-sidebar-btn"><span class="btn-icon">&#9881;</span> Settings</button>
+        <button id="btn-start-plugins" class="start-sidebar-btn"><span class="btn-icon">&#129513;</span> Plugins</button>
       </div>
-      <div id="project-list" class="project-list hidden">
+    </div>
+    <div class="start-main">
+      <div class="start-main-title">Recent Projects</div>
+      <div class="start-main-subtitle">Continue where you left off</div>
+      <div id="project-list" class="project-list">
         <h3>Recent Projects</h3>
         <div id="project-items"></div>
       </div>
@@ -172,22 +176,23 @@
 
         <!-- Git Panel -->
         <div id="git-panel" class="sidebar-section">
-          <div class="sidebar-section-header">
+          <div class="git-panel-header">
             <span>Source Control</span>
             <button id="btn-git-panel-refresh" title="Refresh" class="sidebar-btn">&#8635;</button>
           </div>
-          <div style="display:flex;gap:0.4rem;padding:0.2rem 0.5rem;align-items:center;">
-            <input type="text" id="git-search-input" placeholder="Search commits..." style="flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border2);color:var(--text);padding:0.3rem 0.5rem;border-radius:4px;font-size:0.8rem;max-width:200px;" />
-            <select id="git-search-mode" style="background:var(--bg2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:0.2rem;font-size:0.8rem;">
-              <option value="message">Message</option>
-              <option value="author">Author</option>
-              <option value="file">File</option>
-              <option value="content">Content</option>
-            </select>
-          </div>
-          <div class="git-panel-header">
+          <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;font-size:0.75rem;">
+            <span style="color:var(--accent2);font-size:0.7rem;">&#9670;</span>
             <span class="git-branch-name">master</span>
             <span class="git-changes-count">0 changes</span>
+          </div>
+          <div style="padding:8px 14px;border-bottom:1px solid var(--border);">
+            <input type="text" id="git-search-input" placeholder="Search commits..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:6px 8px;color:var(--text);font-size:0.75rem;outline:none;" />
+            <div style="display:flex;gap:2px;margin-top:6px;">
+              <button class="git-mode-btn active" data-mode="message" style="flex:1;padding:4px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:0.65rem;cursor:pointer;border-radius:3px 0 0 3px;">Message</button>
+              <button class="git-mode-btn" data-mode="author" style="flex:1;padding:4px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:0.65rem;cursor:pointer;">Author</button>
+              <button class="git-mode-btn" data-mode="file" style="flex:1;padding:4px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:0.65rem;cursor:pointer;">File</button>
+              <button class="git-mode-btn" data-mode="content" style="flex:1;padding:4px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:0.65rem;cursor:pointer;border-radius:0 3px 3px 0;">Content</button>
+            </div>
           </div>
           <div id="git-changes-list" class="git-changes-list"></div>
           <div id="git-graph" class="hidden" style="border-top:1px solid var(--border);overflow:auto;">
@@ -375,8 +380,11 @@
 
   <!-- Settings Modal -->
   <div id="settings-modal" class="modal hidden">
-    <div class="modal-content" style="max-width:700px;min-width:550px;">
-      <h2>Settings</h2>
+    <div class="modal-content">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 24px 0;">
+        <h2 style="margin:0;">Settings</h2>
+        <button id="btn-close-settings-x" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;" onclick="hideModal('settings-modal')">&times;</button>
+      </div>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general">General</button>
         <button class="settings-tab" data-tab="keybindings">Keybinds</button>
@@ -390,41 +398,59 @@
 
       <!-- General Tab -->
       <div class="settings-tab-content active" data-tab="general">
-        <div class="settings-form">
-          <label for="settings-language">Language</label>
-          <select id="settings-language">
-            <option value="en">English</option>
-            <option value="de">Deutsch</option>
-          </select>
-          <label style="margin-top:1rem;">
-            <input type="checkbox" id="see-thoughts" style="width:auto;margin-right:0.5rem;" />
-            See Thoughts (zeigt AI-Überlegungen in Echtzeit)
-          </label>
-          <label>
-             <input type="checkbox" id="instant-mode" style="width:auto;margin-right:0.5rem;" />
-             Instant Mode (Antwort erscheint komplett auf einmal)
-           </label>
-           <label>
-             <input type="checkbox" id="detailed-activity" style="width:auto;margin-right:0.5rem;" />
-             Detailed Activity (zeigt vollen Dateipfad in Tool-Aktivität)
-           </label>
-          <label>
-            <input type="checkbox" id="auto-start" style="width:auto;margin-right:0.5rem;" />
-            Launch Florde on Windows startup
-          </label>
-          <label>
-            <input type="checkbox" id="offline-mode" style="width:auto;margin-right:0.5rem;" />
-            Offline Mode (block all internet access)
-          </label>
-          <label for="settings-timeout" style="margin-top:0.8rem;">Timeout (minutes)</label>
-          <input type="number" id="settings-timeout" value="30" min="1" max="360" />
-          <label for="custom-instructions" style="margin-top:0.8rem;">Custom Instructions</label>
-          <textarea id="custom-instructions" rows="3" placeholder="Add custom instructions for the AI..." style="background:rgba(255,255,255,0.06);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:6px;font-size:0.9rem;resize:vertical;font-family:inherit;"></textarea>
-          <label style="margin-top:0.8rem;">
-            <input type="checkbox" id="auto-accept" style="width:auto;margin-right:0.5rem;" />
-            Auto Accept (automatisch Bestätigungen erteilen)
-          </label>
-          <div id="auto-exceptions-area" class="hidden" style="margin-top:0.5rem;padding:0.5rem;background:var(--bg3);border-radius:6px;">
+        <div class="settings-grid-2">
+          <div class="settings-card">
+            <h3>Language &amp; Region</h3>
+            <div class="settings-form" style="gap:0.6rem;margin:0;">
+              <label for="settings-language">Display Language</label>
+              <select id="settings-language">
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-card">
+            <h3>Timeout</h3>
+            <div class="settings-form" style="gap:0.6rem;margin:0;">
+              <label for="settings-timeout">Request timeout (minutes)</label>
+              <input type="number" id="settings-timeout" value="30" min="1" max="360" />
+            </div>
+          </div>
+        </div>
+        <div class="settings-card" style="margin-bottom:16px;">
+          <h3>Behavior</h3>
+          <div class="settings-row">
+            <div><label>See Thoughts</label><br><small>Show AI reasoning process</small></div>
+            <div class="settings-toggle on" data-setting="see-thoughts" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="settings-row">
+            <div><label>Instant Mode</label><br><small>Faster response times</small></div>
+            <div class="settings-toggle" data-setting="instant-mode" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="settings-row">
+            <div><label>Detailed Activity</label><br><small>Extended activity logging</small></div>
+            <div class="settings-toggle on" data-setting="detailed-activity" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="settings-row">
+            <div><label>Auto-start</label><br><small>Launch on system startup</small></div>
+            <div class="settings-toggle" data-setting="auto-start" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="settings-row">
+            <div><label>Offline Mode</label><br><small>Work without internet</small></div>
+            <div class="settings-toggle" data-setting="offline-mode" onclick="this.classList.toggle('on')"></div>
+          </div>
+          <div class="settings-row">
+            <div><label>Auto Accept</label><br><small>Automatically approve actions</small></div>
+            <div class="settings-toggle" data-setting="auto-accept" onclick="this.classList.toggle('on')"></div>
+          </div>
+        </div>
+        <div class="settings-card" style="margin-bottom:16px;">
+          <h3>Custom Instructions</h3>
+          <textarea id="custom-instructions" rows="3" placeholder="Add custom instructions for the AI..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px;border-radius:6px;font-size:0.85rem;resize:vertical;font-family:inherit;min-height:70px;"></textarea>
+        </div>
+        <div id="auto-exceptions-area" class="settings-card hidden" style="margin-bottom:16px;">
+          <h3>Auto Accept Exceptions</h3>
+          <div class="settings-form" style="gap:0.4rem;margin:0;">
             <label><input type="checkbox" id="exc-shell" style="width:auto;margin-right:0.3rem;" /> Shell execution</label>
             <label><input type="checkbox" id="exc-outside" style="width:auto;margin-right:0.3rem;" /> Outside project access</label>
             <label><input type="checkbox" id="exc-git" style="width:auto;margin-right:0.3rem;" /> Git operations</label>

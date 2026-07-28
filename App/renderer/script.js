@@ -1,5 +1,15 @@
 // ==================== AUDIT LOG ====================
 
+function setToggle(name, value) {
+  const el = document.querySelector('.settings-toggle[data-setting="' + name + '"]');
+  if (!el) return;
+  if (value) el.classList.add('on'); else el.classList.remove('on');
+}
+function getToggle(name) {
+  const el = document.querySelector('.settings-toggle[data-setting="' + name + '"]');
+  return el ? el.classList.contains('on') : false;
+}
+
 let auditLog = [];
 let auditFilter = 'all';
 
@@ -1883,18 +1893,18 @@ async function loadSettings() {
   await initSandbox();
   try {
     const autoStart = await window.electronAPI.getAutoStart();
-    document.getElementById('auto-start').checked = autoStart;
+    setToggle('auto-start', autoStart);
   } catch {}
   if (s.offlineMode) {
-    document.getElementById('offline-mode').checked = true;
+    setToggle('offline-mode', true);
     enableOfflineMode(true);
   }
-  if (s.seeThoughts !== undefined) document.getElementById('see-thoughts').checked = s.seeThoughts;
-  else document.getElementById('see-thoughts').checked = true;
-  if (s.instantMode !== undefined) document.getElementById('instant-mode').checked = s.instantMode;
-  else document.getElementById('instant-mode').checked = false;
-  if (s.detailedActivity !== undefined) document.getElementById('detailed-activity').checked = s.detailedActivity;
-  else document.getElementById('detailed-activity').checked = false;
+  if (s.seeThoughts !== undefined) setToggle('see-thoughts', s.seeThoughts);
+  else setToggle('see-thoughts', true);
+  if (s.instantMode !== undefined) setToggle('instant-mode', s.instantMode);
+  else setToggle('instant-mode', false);
+  if (s.detailedActivity !== undefined) setToggle('detailed-activity', s.detailedActivity);
+  else setToggle('detailed-activity', false);
   if (s.theme) { currentTheme = s.theme; document.getElementById('settings-theme').value = s.theme; applyTheme(); }
   if (s.layout) {
     document.body.className = document.body.className.replace(/layout-\S+/g, '').trim();
@@ -1951,7 +1961,7 @@ async function loadSettings() {
   updateProviderDropdown();
   if (s.timeout !== undefined) document.getElementById('settings-timeout').value = s.timeout;
   if (s.autoAccept !== undefined) {
-    document.getElementById('auto-accept').checked = s.autoAccept;
+    setToggle('auto-accept', s.autoAccept);
     document.getElementById('auto-exceptions-area').classList.toggle('hidden', !s.autoAccept);
   }
   const ex = s.autoExceptions || {};
@@ -2095,10 +2105,10 @@ async function validateAndSaveSettings() {
   settings.theme = document.getElementById('settings-theme').value;
   settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
   settings.language = document.getElementById('settings-language').value;
-  settings.offlineMode = document.getElementById('offline-mode').checked;
-  settings.seeThoughts = document.getElementById('see-thoughts').checked;
-  settings.instantMode = document.getElementById('instant-mode').checked;
-  settings.detailedActivity = document.getElementById('detailed-activity').checked;
+  settings.offlineMode = getToggle('offline-mode');
+  settings.seeThoughts = getToggle('see-thoughts');
+  settings.instantMode = getToggle('instant-mode');
+  settings.detailedActivity = getToggle('detailed-activity');
 
   localStorage.setItem('florde-capability-cache', JSON.stringify(capabilityCache));
   await saveSettingsToDisk(settings);
@@ -2147,7 +2157,7 @@ async function validateAndSaveSettings() {
   currentTheme = settings.theme;
   if (currentTheme !== prevTheme) applyTheme();
 
-  await window.electronAPI.setAutoStart(document.getElementById('auto-start').checked);
+  await window.electronAPI.setAutoStart(getToggle('auto-start'));
 
   enableOfflineMode(settings.offlineMode);
 
@@ -2460,7 +2470,6 @@ function getSortedProjects(projects) {
 
 async function loadProjectList() {
   const list = document.getElementById('project-list');
-  if (!list.classList.contains('hidden')) { list.classList.add('hidden'); return; }
   const container = document.getElementById('project-items');
   if (!window.electronAPI) { container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">App not ready</div>'; return; }
   const projects = getSortedProjects(await window.electronAPI.listProjects());
@@ -3511,7 +3520,7 @@ function buildVisionMessages(baseMessages, images) {
 
 function formatMessageContent(content) {
   if (content == null) return '';
-  const seeThoughts = document.getElementById('see-thoughts')?.checked !== false;
+  const seeThoughts = getToggle('see-thoughts');
   let html = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   if (seeThoughts) {
     html = html.replace(/\[think\]([\s\S]*?)\[\/think\]/g, '<div class="think-block">$1</div>');
@@ -4261,7 +4270,7 @@ function showPlanModal(plan) {
 }
 
 function formatToolArg(name, args) {
-  const detailed = document.getElementById('detailed-activity')?.checked;
+  const detailed = getToggle('detailed-activity');
   let arg = (args && (args.path || args.command || args.query)) || '';
   if (!arg) return name + '()';
   if (!detailed && args.path) arg = args.path.split('/').pop() || args.path;
@@ -4303,7 +4312,7 @@ function formatToolActivity(name, args) {
     return arg ? label + ' ' + arg : label;
   }
   const label = TOOL_LABELS[name] || name;
-  const detailed = document.getElementById('detailed-activity')?.checked;
+  const detailed = getToggle('detailed-activity');
   let arg = (args && (args.path || args.command || args.question || args.query || (args.code && args.code.slice(0, 40)))) || '';
   if (!arg) return label;
   if (!detailed && args.path) arg = args.path.split('/').pop() || args.path;
@@ -4410,7 +4419,7 @@ async function sendMessage(text) {
   }
   function renderResponse(final) {
     if (final !== undefined) _bufferedContent = final;
-    const instant = document.getElementById('instant-mode')?.checked;
+    const instant = getToggle('instant-mode');
     if (instant) {
       contentDiv.innerHTML = formatMessageContent(_bufferedContent);
     } else {
@@ -6101,11 +6110,14 @@ document.getElementById('editor-font-size')?.addEventListener('input', (e) => {
 });
 
 // Auto-accept toggle
-document.getElementById('auto-accept')?.addEventListener('change', (e) => {
-  const checked = e.target.checked;
-  document.getElementById('auto-exceptions-area')?.classList.toggle('hidden', !checked);
-  saveSettingsToDisk({ autoAccept: checked });
-});
+const autoAcceptToggle = document.querySelector('.settings-toggle[data-setting="auto-accept"]');
+if (autoAcceptToggle) {
+  autoAcceptToggle.addEventListener('click', () => {
+    const checked = autoAcceptToggle.classList.contains('on');
+    document.getElementById('auto-exceptions-area')?.classList.toggle('hidden', !checked);
+    saveSettingsToDisk({ autoAccept: checked });
+  });
+}
 
 // Auto-exception checkboxes
 const allExcKeys = ['shell', 'outside', 'git', 'terminal', 'write_file', 'delete_file', 'web_search', 'web_fetch', 'browser', 'ask_question'];

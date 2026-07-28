@@ -1837,3 +1837,30 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .time-dash-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
 .time-dash-table tr:hover td { background: var(--hover); }
 .time-dash-total td { border-top: 2px solid var(--accent); background: var(--bg3); }
+
+/* ==================== PROJECT ACTION TAB ==================== */
+.project-action-tab {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; cursor: pointer; font-size: 0.8rem;
+  position: relative; user-select: none; border-radius: 4px;
+  background: var(--bg3); border: 1px solid var(--border);
+  margin-left: 8px; white-space: nowrap;
+}
+.project-action-tab:hover { border-color: var(--accent); }
+.project-action-tab.hidden { display: none; }
+.project-action-label { color: var(--accent); font-weight: 600; }
+.project-action-arrow { font-size: 0.65rem; color: var(--text3); }
+.project-action-dropdown {
+  position: absolute; top: 100%; left: 0; z-index: 100;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 6px; padding: 4px; min-width: 150px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.project-action-dropdown.hidden { display: none; }
+.project-action-btn {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; color: var(--text2);
+  padding: 6px 12px; font-size: 0.8rem; cursor: pointer;
+  border-radius: 4px;
+}
+.project-action-btn:hover { background: var(--hover); color: var(--text); }

@@ -2721,6 +2721,10 @@ async function openProject(name) {
   updateProviderDropdown();
   logToTerminal(`Opened project: ${name} (${currentProjectType})`, 'success');
 
+  if (typeof ProjectDetector !== 'undefined') {
+    ProjectDetector.detect(name);
+  }
+
   if (chatHistory.length === 0) {
     const welcome = 'I\'m your AI coding assistant. I can help you write, explain, and debug code. ' +
       'Send me a message to get started!';

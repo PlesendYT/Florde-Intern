@@ -3776,7 +3776,10 @@ async function executeToolCall(name, args) {
         const written = [];
         for (const [filePath, content] of Object.entries(args.files)) {
           const sp = sanitizePath(filePath);
+          let _batchOldContent = '';
+          try { _batchOldContent = await window.electronAPI.projectReadFile(project, sp) || ''; } catch (e) {}
           await window.electronAPI.projectWriteFile(project, sp, content);
+          if (typeof DiffView !== 'undefined') DiffView.addChange(sp, _batchOldContent, content);
           const wfIdx = openTabs.indexOf(sp);
           if (wfIdx >= 0) {
             tabContents[sp] = content;
@@ -3801,21 +3804,25 @@ async function executeToolCall(name, args) {
         DiffViewer.show(written.map(sp => ({ name: sp, content: args.files[sp] || '', language: detectLanguage(sp) })));
         return 'Batch written ' + written.length + ' files: ' + written.join(', ');
       }
-      addAuditEntry('local', 'Write_File: ' + sanitizePath(args.path));
-      AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' geschrieben', details: { file: sanitizePath(args.path) }, source: 'KI' });
-      logToTerminal('Write_File: ' + sanitizePath(args.path), 'info');
-      await window.electronAPI.projectWriteFile(project, sanitizePath(args.path), args.content);
+      const _writePath = sanitizePath(args.path);
+      addAuditEntry('local', 'Write_File: ' + _writePath);
+      AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Datei ' + _writePath + ' geschrieben', details: { file: _writePath }, source: 'KI' });
+      logToTerminal('Write_File: ' + _writePath, 'info');
+      let _oldContent = '';
+      try { _oldContent = await window.electronAPI.projectReadFile(project, _writePath) || ''; } catch (e) {}
+      await window.electronAPI.projectWriteFile(project, _writePath, args.content);
+      if (typeof DiffView !== 'undefined') DiffView.addChange(_writePath, _oldContent, args.content);
       // Live editor sync: reload if open in a tab
-      const wfIdx = openTabs.indexOf(sanitizePath(args.path));
+      const wfIdx = openTabs.indexOf(_writePath);
       if (wfIdx >= 0) {
-        tabContents[sanitizePath(args.path)] = args.content;
-        tabDirty[sanitizePath(args.path)] = false;
+        tabContents[_writePath] = args.content;
+        tabDirty[_writePath] = false;
         if (wfIdx === activeTabIndex && editor) {
           editor.setValue(args.content);
         }
       }
       renderFileTree();
-      DiffViewer.show([{ name: sanitizePath(args.path), content: args.content, language: detectLanguage(sanitizePath(args.path)) }]);
+      DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
       // Auto git commit if in a git repo
       try {
         const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
@@ -3890,6 +3897,7 @@ async function executeToolCall(name, args) {
       {
         const efPath = sanitizePath(args.path);
         let content = await window.electronAPI.projectReadFile(project, efPath);
+        const _efOldContent = content;
         const oldStr = args.oldString;
         const newStr = args.newString;
         if (args.replaceAll) {
@@ -3905,6 +3913,7 @@ async function executeToolCall(name, args) {
           content = content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
         }
         await window.electronAPI.projectWriteFile(project, efPath, content);
+        if (typeof DiffView !== 'undefined') DiffView.addChange(efPath, _efOldContent, content);
         const efIdx = openTabs.indexOf(efPath);
         if (efIdx >= 0) {
           tabContents[efPath] = content;
@@ -4808,6 +4817,20 @@ async function sendMessage(text) {
         sourcesDiv.innerHTML = sourcesHtml;
         chatContainer.appendChild(sourcesDiv);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+      // Render diff view if there are file changes
+      if (typeof DiffView !== 'undefined') {
+        const diffHtml = DiffView.render();
+        if (diffHtml) {
+          const _chatContainer = document.getElementById('chat-messages');
+          const _lastMsg = _chatContainer.lastElementChild;
+          if (_lastMsg && _lastMsg.classList.contains('ai')) {
+            const _wrapper = document.createElement('div');
+            _wrapper.innerHTML = diffHtml;
+            _lastMsg.appendChild(_wrapper.firstElementChild);
+            _chatContainer.scrollTop = _chatContainer.scrollHeight;
+          }
+        }
       }
       // Background summary for long conversations — fire-and-forget
       const _finalTotalChars = chatHistory.reduce((sum, m) => sum + (m.content || '').length, 0);

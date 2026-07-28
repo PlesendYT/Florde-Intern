@@ -457,6 +457,64 @@ body {
 .layout-snapped #docker-panel { flex: 0 0 50% !important; max-height: 50% !important; }
 .layout-snapped .git-panel { flex: 0 0 50% !important; max-height: 50% !important; }
 
+/* ==================== DIFF CHAT ==================== */
+.diff-chat-section {
+  margin: 8px 0; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg2); overflow: hidden;
+}
+.diff-chat-summary {
+  padding: 8px 12px; font-size: 0.8rem; color: var(--text2);
+  background: var(--bg3); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.diff-chat-summary-stats { color: var(--accent); font-weight: 600; }
+.diff-chat-file { border-bottom: 1px solid var(--border); }
+.diff-chat-file:last-child { border-bottom: none; }
+.diff-chat-file-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; cursor: pointer; font-size: 0.8rem;
+  transition: background 0.1s;
+}
+.diff-chat-file-header:hover { background: var(--hover); }
+.diff-chat-file-path { flex: 1; color: var(--text); }
+.diff-chat-file-stats { font-size: 0.75rem; color: var(--text3); }
+.diff-chat-toggle { font-size: 0.7rem; color: var(--text3); transition: transform 0.2s; }
+.diff-chat-file.expanded .diff-chat-toggle { transform: rotate(90deg); }
+.diff-chat-file-body { display: none; }
+.diff-chat-file.expanded .diff-chat-file-body { display: block; }
+.diff-chat-copy-bar {
+  display: flex; gap: 4px; padding: 4px 12px;
+  background: var(--bg3); border-bottom: 1px solid var(--border);
+}
+.diff-chat-copy-bar button {
+  background: var(--bg); border: 1px solid var(--border2);
+  color: var(--text2); padding: 2px 8px; border-radius: 4px;
+  font-size: 0.7rem; cursor: pointer;
+}
+.diff-chat-copy-bar button:hover { background: var(--hover); color: var(--text); }
+.diff-chat-file-content {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+  line-height: 1.5; overflow-x: auto; padding: 4px 0;
+}
+.diff-chat-line { display: flex; padding: 0 12px; white-space: pre; }
+.diff-chat-line.added { background: rgba(34,197,94,0.1); }
+.diff-chat-line.removed { background: rgba(239,68,68,0.1); }
+.diff-chat-line.context { color: var(--text3); }
+.diff-chat-prefix { width: 16px; flex-shrink: 0; font-weight: 700; }
+.diff-chat-line.added .diff-chat-prefix { color: #22c55e; }
+.diff-chat-line.removed .diff-chat-prefix { color: #ef4444; }
+.diff-chat-ellipsis { padding: 0 12px; color: var(--text3); font-size: 0.7rem; }
+.diff-chat-actions {
+  display: flex; gap: 4px; padding: 6px 12px;
+  border-top: 1px solid var(--border); background: var(--bg3);
+}
+.diff-chat-actions button {
+  background: var(--bg); border: 1px solid var(--border2);
+  color: var(--text2); padding: 4px 12px; border-radius: 4px;
+  font-size: 0.75rem; cursor: pointer;
+}
+.diff-chat-actions button:hover { background: var(--hover); color: var(--text); }
+
 /* ==================== TOOLBAR SCROLL ==================== */
 .titlebar {
   display: flex; align-items: center; gap: 8px;

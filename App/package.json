@@ -15,6 +15,7 @@
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^12.11.1",
+    "dockview-core": "^7.0.4",
     "fuse.js": "^7.4.2",
     "monaco-editor": "^0.45.0",
     "node-pty": "^1.1.0"

@@ -592,7 +592,8 @@ body {
 
 .app-body.layout-dockview-active #layout-container { display: flex; }
 .app-body.layout-dockview-active #sidebar,
-.app-body.layout-dockview-active .sidebar-resizer { display: none; }
+.app-body.layout-dockview-active .sidebar-resizer,
+.app-body.layout-dockview-active .main-area { display: none; }
 
 .dockview-theme-florde {
   --dv-background: var(--bg);
@@ -619,6 +620,24 @@ body {
 #layout-design-mode-toggle {
   display: flex; align-items: center; gap: 8px;
   margin: 12px 0;
+}
+
+/* Elements inside dockview panels need flex fill */
+.dockview-theme-florde .chat-panel {
+  flex: 1; min-width: 0; width: auto; height: 100%;
+  border-left: none;
+}
+.dockview-theme-florde .main-content {
+  flex: 1; min-height: 0;
+}
+.dockview-theme-florde .editor-panel {
+  flex: 1;
+}
+.dockview-theme-florde #terminal-panel,
+.dockview-theme-florde #docker-panel {
+  display: flex; flex-direction: column; flex: 1; height: 100%;
+  position: relative; inset: auto; z-index: auto;
+  border-top: none;
 }
 
 /* ==================== SIDEBAR ==================== */

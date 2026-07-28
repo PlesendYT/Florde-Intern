@@ -4,9 +4,7 @@ const LayoutManager = {
   _initialized: false,
   _active: false,
   _locked: false,
-  _placeholderComment: null,
-  _sidebarHidden: false,
-  _resizerHidden: false,
+  _restore: {},
 
   async init(containerElement) {
     if (this._initialized) return;
@@ -29,15 +27,18 @@ const LayoutManager = {
           const el = document.createElement('div');
           el.style.height = '100%';
           el.style.overflow = 'auto';
-          if (options.id !== 'editor') {
+          if (options.id === 'editor') {
             el.style.display = 'flex';
-            el.style.alignItems = 'center';
-            el.style.justifyContent = 'center';
-            el.style.color = 'var(--text3)';
-            el.style.fontSize = '0.85rem';
-            el.style.padding = '1rem';
-            el.style.textAlign = 'center';
-            el.textContent = 'Content coming in Phase 2';
+            el.style.flexDirection = 'column';
+            el.style.overflow = 'hidden';
+          }
+          if (options.id === 'files') {
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
+          }
+          if (options.id === 'git') {
+            el.style.display = 'flex';
+            el.style.flexDirection = 'column';
           }
           return {
             element: el,
@@ -59,66 +60,157 @@ const LayoutManager = {
   _registerPanels() {
     const api = this._api;
     if (!api) return;
-
     api.addPanel({ id: 'editor', title: 'Editor', params: {}, position: { direction: 'center' } });
     api.addPanel({ id: 'files', title: 'Files', params: {}, position: { direction: 'left', referencePanel: 'editor', width: 220 } });
     api.addPanel({ id: 'chat', title: 'Chat', params: {}, position: { direction: 'right', referencePanel: 'editor', width: 350 } });
+    api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'chat', height: 200 } });
     api.addPanel({ id: 'terminal', title: 'Terminal', params: {}, position: { direction: 'below', referencePanel: 'editor', height: 200 } });
     api.addPanel({ id: 'docker', title: 'Docker', params: {}, position: { direction: 'below', referencePanel: 'terminal', height: 200 } });
-    api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'docker', height: 200 } });
+  },
+
+  _insertPlaceholder(parent, id) {
+    const ph = document.createComment('layout-manager:' + id);
+    parent.insertBefore(ph, null);
+    return ph;
   },
 
   activate() {
     if (this._active || !this._initialized) return;
     this._active = true;
 
+    const api = this._api;
     const mainArea = document.querySelector('.main-area');
-    const editorPanel = this._api.getPanel('editor');
-    if (mainArea && editorPanel) {
-      this._placeholderComment = document.createComment('layout-manager');
-      mainArea.parentNode.insertBefore(this._placeholderComment, mainArea);
-      editorPanel.element.appendChild(mainArea);
-      mainArea.style.flex = 'none';
-      mainArea.style.height = '100%';
+    const mainContent = document.querySelector('.main-content');
+    if (!mainArea) { console.warn('LayoutManager: .main-area not found'); return; }
+
+    this._restore = {};
+
+    const appendToPanel = (panelId, element) => {
+      const panel = api.getPanel(panelId);
+      if (panel && element) {
+        panel.element.appendChild(element);
+      }
+    };
+
+    const replaceWithPlaceholder = (element) => {
+      if (!element || !element.parentNode) return null;
+      const ph = document.createComment('layout-manager');
+      element.parentNode.insertBefore(ph, element);
+      element.parentNode.removeChild(element);
+      return ph;
+    };
+
+    const getPanel = (id) => api.getPanel(id);
+    const panelEl = (id) => { const p = getPanel(id); return p ? p.element : null; };
+
+    // Move chat-panel out of main-content first (it's a sibling of editor-panel)
+    const chatPanel = document.querySelector('.chat-panel');
+    if (chatPanel && chatPanel.parentNode === mainContent) {
+      const ph = replaceWithPlaceholder(chatPanel);
+      this._restore.chatPanel = { element: chatPanel, parent: mainContent, placeholder: ph };
+      appendToPanel('chat', chatPanel);
     }
 
+    // Move file-tabs into editor panel
+    const fileTabs = document.getElementById('file-tabs');
+    if (fileTabs && fileTabs.parentNode === mainArea) {
+      const ph = replaceWithPlaceholder(fileTabs);
+      this._restore.fileTabs = { element: fileTabs, parent: mainArea, placeholder: ph };
+      appendToPanel('editor', fileTabs);
+    }
+
+    // Move main-content (now without chat) into editor panel
+    if (mainContent && mainContent.parentNode === mainArea) {
+      const ph = replaceWithPlaceholder(mainContent);
+      this._restore.mainContent = { element: mainContent, parent: mainArea, placeholder: ph };
+      appendToPanel('editor', mainContent);
+    }
+
+    // Move terminal panel
+    const terminal = document.getElementById('terminal-panel');
+    if (terminal && terminal.parentNode === mainArea) {
+      const wasHidden = terminal.classList.contains('hidden');
+      terminal.classList.remove('hidden');
+      const ph = replaceWithPlaceholder(terminal);
+      this._restore.terminal = { element: terminal, parent: mainArea, placeholder: ph, wasHidden };
+      appendToPanel('terminal', terminal);
+    }
+
+    // Move docker panel
+    const docker = document.getElementById('docker-panel');
+    if (docker && docker.parentNode === mainArea) {
+      const wasHidden = docker.classList.contains('hidden');
+      docker.classList.remove('hidden');
+      const ph = replaceWithPlaceholder(docker);
+      this._restore.docker = { element: docker, parent: mainArea, placeholder: ph, wasHidden };
+      appendToPanel('docker', docker);
+    }
+
+    // Move file tree from sidebar into files panel
+    const fileTree = document.getElementById('file-tree');
     const sidebar = document.getElementById('sidebar');
-    if (sidebar && !sidebar.classList.contains('hidden')) {
-      this._sidebarHidden = true;
-      sidebar.classList.add('hidden');
+    if (fileTree && fileTree.parentNode === sidebar) {
+      // Also move the sidebar header
+      const sidebarHeader = sidebar.querySelector('.sidebar-header');
+      const filesPanelEl = panelEl('files');
+      if (sidebarHeader && filesPanelEl) {
+        const ph = replaceWithPlaceholder(sidebarHeader);
+        this._restore.sidebarHeader = { element: sidebarHeader, parent: sidebar, placeholder: ph };
+        filesPanelEl.appendChild(sidebarHeader);
+      }
+      if (filesPanelEl) {
+        const ph = replaceWithPlaceholder(fileTree);
+        this._restore.fileTree = { element: fileTree, parent: sidebar, placeholder: ph };
+        filesPanelEl.appendChild(fileTree);
+      }
     }
+
+    // Move git panel from sidebar into git panel
+    const gitPanel = document.getElementById('git-panel');
+    if (gitPanel && gitPanel.parentNode === sidebar) {
+      const ph = replaceWithPlaceholder(gitPanel);
+      this._restore.gitPanel = { element: gitPanel, parent: sidebar, placeholder: ph };
+      appendToPanel('git', gitPanel);
+    }
+
+    // Hide sidebar
+    this._sidebarHidden = !sidebar.classList.contains('hidden');
+    sidebar.classList.add('hidden');
     const resizer = document.getElementById('sidebar-resizer');
-    if (resizer && !resizer.classList.contains('hidden')) {
-      this._resizerHidden = true;
-      resizer.classList.add('hidden');
-    }
+    if (resizer) resizer.classList.add('hidden');
 
+    // Show dockview
     this._container.classList.remove('hidden');
-    requestAnimationFrame(() => this._api?.layout?.());
-
     document.querySelector('.app-body')?.classList.add('layout-dockview-active');
+
+    requestAnimationFrame(() => {
+      this._api?.layout?.();
+      if (typeof editor !== 'undefined' && editor?.layout) editor.layout();
+      if (typeof DiffViewer !== 'undefined' && DiffViewer._editor?.layout) DiffViewer._editor.layout();
+    });
   },
 
   deactivate() {
     if (!this._active) return;
     this._active = false;
 
-    const mainArea = document.querySelector('.main-area');
-    if (mainArea && this._placeholderComment) {
-      this._placeholderComment.parentNode.insertBefore(mainArea, this._placeholderComment);
-      this._placeholderComment.remove();
-      this._placeholderComment = null;
-      mainArea.style.flex = '';
-      mainArea.style.height = '';
+    for (const [key, info] of Object.entries(this._restore)) {
+      if (info.element && info.placeholder && info.placeholder.parentNode) {
+        info.placeholder.parentNode.insertBefore(info.element, info.placeholder);
+        info.placeholder.remove();
+      } else if (info.element && info.parent) {
+        info.parent.appendChild(info.element);
+      }
+      if (info.wasHidden) info.element.classList.add('hidden');
     }
+    this._restore = {};
 
     if (this._sidebarHidden) {
-      document.getElementById('sidebar')?.classList.remove('hidden');
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar) sidebar.classList.remove('hidden');
+      const resizer = document.getElementById('sidebar-resizer');
+      if (resizer) resizer.classList.remove('hidden');
       this._sidebarHidden = false;
-    }
-    if (this._resizerHidden) {
-      document.getElementById('sidebar-resizer')?.classList.remove('hidden');
-      this._resizerHidden = false;
     }
 
     this._container.classList.add('hidden');
@@ -152,9 +244,9 @@ const LayoutManager = {
     api.addPanel({ id: 'editor', title: 'Editor', params: {}, position: { direction: 'center' } });
     api.addPanel({ id: 'files', title: 'Files', params: {}, position: { direction: 'left', referencePanel: 'editor', width: 220 } });
     api.addPanel({ id: 'chat', title: 'Chat', params: {}, position: { direction: 'right', referencePanel: 'editor', width: 350 } });
+    api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'chat', height: 200 } });
     api.addPanel({ id: 'terminal', title: 'Terminal', params: {}, position: { direction: 'below', referencePanel: 'editor', height: 200 } });
     api.addPanel({ id: 'docker', title: 'Docker', params: {}, position: { direction: 'below', referencePanel: 'terminal', height: 200 } });
-    api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'docker', height: 200 } });
   },
 
   async save(name) {
@@ -184,9 +276,7 @@ const LayoutManager = {
           api.fromJSON(JSON.parse(rows[0].state_json));
           return;
         }
-      } catch (e) {
-        /* SQLite fallback failed */
-      }
+      } catch (e) { /* SQLite fallback failed */ }
     } catch (e) {
       console.warn('LayoutManager: failed to load layout', name, e);
     }
@@ -205,7 +295,9 @@ const LayoutManager = {
 
   reset() {
     localStorage.removeItem('florde-layout-default');
+    this.deactivate();
     this._resetLayout();
+    this.activate();
   },
 
   get isActive() { return this._active; },

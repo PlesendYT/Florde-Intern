@@ -2467,8 +2467,7 @@ function initLayoutManager() {
   if (!container) return;
   if (LayoutManager.isInitialized) return;
   LayoutManager.init(container).then(() => {
-    const savedSetting = localStorage.getItem('florde-layout-enabled');
-    if (savedSetting === 'true' && LayoutManager.isInitialized) {
+    if (LayoutManager.isInitialized) {
       LayoutManager.activate();
     }
   });

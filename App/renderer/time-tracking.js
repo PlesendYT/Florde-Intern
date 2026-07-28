@@ -30,17 +30,14 @@ const TimeTracking = {
     this.stop();
     this._currentProject = project;
     this._startTime = new Date();
-    this._timer = setInterval(() => this._render(), 10000);
+    this._timer = setInterval(() => this._render(), 1000);
     this._render();
   },
 
   stop() {
     if (this._startTime && this._currentProject) {
       const end = new Date();
-      const seconds = Math.round((end - this._startTime) / 1000);
-      if (seconds >= 30) {
-        this._saveSession(this._currentProject, this._startTime.toISOString(), end.toISOString());
-      }
+      this._saveSession(this._currentProject, this._startTime.toISOString(), end.toISOString());
     }
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
     this._startTime = null;
@@ -55,7 +52,7 @@ const TimeTracking = {
 
   resume() {
     if (this._startTime && !this._timer) {
-      this._timer = setInterval(() => this._render(), 10000);
+      this._timer = setInterval(() => this._render(), 1000);
     }
     this._render();
   },
@@ -198,12 +195,22 @@ const TimeTracking = {
       el.id = 'time-tracker';
       el.style.cssText = 'cursor:pointer;font-size:0.8rem;color:var(--text3);margin-left:0.5rem;user-select:none;';
       el.title = 'Click to pause/resume';
+      el.onclick = () => { if (this._startTime) this.pause(); else this.resume(); };
       const ref = document.getElementById('project-name');
       if (ref && ref.parentNode) ref.parentNode.insertBefore(el, ref.nextSibling);
     }
     if (this._startTime) {
       const ms = Date.now() - this._startTime;
-      el.textContent = `▶ ${this._currentProject} ${this._format(ms)}`;
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const hrs = Math.floor(m / 60);
+      const secs = s % 60;
+      const mins = m % 60;
+      let text = `▶ ${this._currentProject} `;
+      if (hrs > 0) text += `${hrs}h `;
+      if (mins > 0 || hrs > 0) text += `${mins}m `;
+      text += `${secs}s`;
+      el.textContent = text;
       el.style.color = 'var(--accent)';
     } else {
       el.textContent = `⏸ paused`;

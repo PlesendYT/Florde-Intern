@@ -25,10 +25,20 @@ const LayoutManager = {
         showPopoutIcon: false,
         showMaximiseIcon: true,
         showCloseIcon: false,
-        createComponent: () => {
+        createComponent: (options) => {
           const el = document.createElement('div');
           el.style.height = '100%';
           el.style.overflow = 'auto';
+          if (options.id !== 'editor') {
+            el.style.display = 'flex';
+            el.style.alignItems = 'center';
+            el.style.justifyContent = 'center';
+            el.style.color = 'var(--text3)';
+            el.style.fontSize = '0.85rem';
+            el.style.padding = '1rem';
+            el.style.textAlign = 'center';
+            el.textContent = 'Content coming in Phase 2';
+          }
           return {
             element: el,
             init: () => {},

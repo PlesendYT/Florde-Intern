@@ -1016,6 +1016,7 @@
       <button class="mgmt-tab" data-tab="ollama">&#129302; Ollama</button>
       <button class="mgmt-tab" data-tab="ci">&#129302; CI</button>
       <button class="mgmt-tab" data-tab="exec">&#9678; Exec</button>
+      <button class="mgmt-tab" data-tab="dashboard">&#9201; Dashboard</button>
     </div>
 
     <!-- To-Do Content -->
@@ -1115,6 +1116,11 @@
     <div class="mgmt-content hidden" id="mgmt-ci">
       <div id="ci-tabs" style="display:flex;flex-wrap:wrap;gap:2px;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);overflow-y:auto;"></div>
       <div id="ci-results" style="flex:1;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div class="mgmt-content hidden" id="mgmt-dashboard">
+      <div id="time-dashboard-container"></div>
     </div>
 
     <!-- Execution Content -->

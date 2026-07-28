@@ -1813,3 +1813,27 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* Explain Project */
 .ci-ep-output { padding: 0.5rem; font-size: 0.85rem; white-space: pre-wrap; border: 1px solid var(--border); border-radius: 4px; background: var(--bg2); max-height: 400px; overflow-y: auto; }
 .ci-ep-copy { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; }
+
+/* ==================== TIME TRACKING ==================== */
+.time-dashboard {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; margin-bottom: 16px;
+}
+.time-dash-header {
+  font-size: 1rem; font-weight: 600; margin-bottom: 12px;
+  color: var(--text);
+}
+.time-dash-current {
+  font-size: 0.85rem; color: var(--accent); margin-bottom: 12px;
+  padding: 8px 12px; background: var(--bg3); border-radius: 6px;
+}
+.time-dash-current.paused { color: var(--text3); }
+.time-dash-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.time-dash-table th {
+  text-align: left; padding: 6px 8px; color: var(--text3);
+  font-weight: 600; border-bottom: 1px solid var(--border);
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.time-dash-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.time-dash-table tr:hover td { background: var(--hover); }
+.time-dash-total td { border-top: 2px solid var(--accent); background: var(--bg3); }

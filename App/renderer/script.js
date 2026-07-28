@@ -988,6 +988,9 @@ const WorkspaceManager = {
     if (!ws.path) { showStartMenu(); return; }
     if (currentProject && currentProject !== ws.path) {
       try { await saveSession(); } catch (e) { console.error('saveSession error:', e); }
+      if (typeof TimeTracking !== 'undefined') {
+        TimeTracking.stop();
+      }
     }
     try {
       await openProject(ws.path);
@@ -2662,6 +2665,9 @@ async function openProject(name) {
   RagManager.setProject(name);
   DecisionLog.setProject(name);
   AuditLog.setProject(name);
+  if (typeof TimeTracking !== 'undefined') {
+    TimeTracking.start(name);
+  }
 
   let savedMessages = [];
   try {
@@ -2841,6 +2847,9 @@ document.getElementById('btn-upload-plugin').addEventListener('click', () => {
 
 document.getElementById('btn-back-menu').addEventListener('click', async () => {
   await saveSession();
+  if (typeof TimeTracking !== 'undefined') {
+    TimeTracking.stop();
+  }
   showStartMenu();
 });
 
@@ -6760,6 +6769,12 @@ const ManagementPanel = {
         if (typeof CodeIntelligence !== 'undefined') {
           CodeIntelligence._resultsEl = document.getElementById('ci-results');
           CodeIntelligence._renderTools();
+        }
+        break;
+      case 'dashboard':
+        const container = document.getElementById('time-dashboard-container');
+        if (container && typeof TimeTracking !== 'undefined') {
+          TimeTracking.renderDashboard(container);
         }
         break;
     }

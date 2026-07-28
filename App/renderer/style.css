@@ -487,16 +487,13 @@ body {
 }
 .privacy-indicator.local { background: rgba(34,197,94,0.15); color: #22c55e; }
 .privacy-indicator.hybrid { background: rgba(234,179,8,0.15); color: #eab308; }
-.titlebar-controls { margin-left: auto; display: flex; gap: 0.3rem; }
-.titlebar-controls button {
-  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
-  padding: 0.3rem 0.7rem; border-radius: 5px; cursor: pointer; font-size: 0.8rem;
+.toolbar-scroll-btn {
+  display: none; background: none; border: none; color: var(--text3);
+  cursor: pointer; font-size: 10px; padding: 2px 4px; border-radius: 3px;
+  flex-shrink: 0; -webkit-app-region: no-drag;
 }
-.titlebar-controls button:hover { background: var(--hover); border-color: var(--accent); }
-.btn-toolbar-toggle { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 0.7rem; padding: 0 0.3rem; }
-.btn-toolbar-toggle:hover { color: var(--text); }
-.toolbar-content { display: inline-flex; gap: 0.3rem; align-items: center; transition: opacity 0.2s; }
-.toolbar-content.collapsed { display: none; }
+.toolbar-scroll-btn:hover { color: var(--text); background: var(--hover); }
+.toolbar-scroll-btn.visible { display: flex; align-items: center; }
 
 /* ==================== DEV UTILS DROPDOWN ==================== */
 .dev-utils-wrapper { position: relative; }

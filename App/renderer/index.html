@@ -102,48 +102,55 @@
   <!-- Main App -->
   <div id="app-view" class="hidden">
     <div class="titlebar">
-      <span class="titlebar-text">Florde</span>
-      <span id="project-name" class="titlebar-project"></span>
-      <span id="project-type-badge" class="project-type-badge"></span>
-      <span id="privacy-indicator" class="privacy-indicator" title="Privacy status"></span>
-      <div class="titlebar-controls">
-        <button class="btn-toolbar-toggle" title="Toggle Toolbar">&#9654;</button>
-        <span class="toolbar-content">
-        <button id="btn-audit-log" title="Audit Log">&#128196;</button>
-        <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
-        <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
-        <button id="btn-docker-toggle" title="Toggle Docker Panel">&#x1F433;</button>
-        <button id="btn-browser-toggle" title="Toggle Browser (Ctrl+Shift+B)">&#127760;</button>
-        <button id="btn-git-toggle" title="Toggle Git Panel">&#128203;</button>
-        <div class="dev-utils-wrapper">
-          <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
-          <div id="dev-utils-menu" class="dev-utils-menu hidden">
-            <div class="dev-utils-group">
-              <div class="dev-utils-group-label">Icons &amp; Symbols</div>
-              <a data-url="https://simpleicons.org/" class="dev-utils-link">Simple Icons</a>
-              <a data-url="https://symbl.cc/" class="dev-utils-link">SymbL</a>
-              <a data-url="https://www.w3schools.com/charsets/ref_utf_symbols.asp" class="dev-utils-link">UTF-8 Symbols</a>
+      <div class="titlebar-left">
+        <span class="titlebar-text">Florde</span>
+        <span id="project-name" class="titlebar-project"></span>
+        <span id="project-type-badge" class="project-type-badge"></span>
+        <span id="privacy-indicator" class="privacy-indicator" title="Privacy status"></span>
+      </div>
+      <button class="toolbar-scroll-btn" id="toolbar-scroll-left">&#9664;</button>
+      <div class="titlebar-center" id="titlebar-center">
+        <div class="toolbar-content" id="toolbar-content">
+          <button id="btn-audit-log" title="Audit Log">&#128196;</button>
+          <button id="btn-search-toggle" title="Search in Files (Ctrl+Shift+F)">&#128269;</button>
+          <button id="btn-terminal-toggle" title="Toggle Terminal">&#9000;</button>
+          <button id="btn-docker-toggle" title="Toggle Docker Panel">&#x1F433;</button>
+          <button id="btn-browser-toggle" title="Toggle Browser (Ctrl+Shift+B)">&#127760;</button>
+          <button id="btn-git-toggle" title="Toggle Git Panel">&#128203;</button>
+          <div class="dev-utils-wrapper">
+            <button id="btn-dev-utils" title="Dev Utilities">&#128736;</button>
+            <div id="dev-utils-menu" class="dev-utils-menu hidden">
+              <div class="dev-utils-group">
+                <div class="dev-utils-group-label">Icons &amp; Symbols</div>
+                <a data-url="https://simpleicons.org/" class="dev-utils-link">Simple Icons</a>
+                <a data-url="https://symbl.cc/" class="dev-utils-link">SymbL</a>
+                <a data-url="https://www.w3schools.com/charsets/ref_utf_symbols.asp" class="dev-utils-link">UTF-8 Symbols</a>
+              </div>
+              <div class="dev-utils-group">
+                <div class="dev-utils-group-label">Dev Tools</div>
+                <a data-url="https://codepen.io/pen/" class="dev-utils-link">CodePen</a>
+                <a data-url="https://regex101.com/" class="dev-utils-link">Regex101</a>
+                <a data-url="https://jsonlint.com/" class="dev-utils-link">JSON Lint</a>
+                <a data-url="https://www.uuidgenerator.net/" class="dev-utils-link">UUID Generator</a>
+              </div>
+              <div class="dev-utils-footer">Online only</div>
             </div>
-            <div class="dev-utils-group">
-              <div class="dev-utils-group-label">Dev Tools</div>
-              <a data-url="https://codepen.io/pen/" class="dev-utils-link">CodePen</a>
-              <a data-url="https://regex101.com/" class="dev-utils-link">Regex101</a>
-              <a data-url="https://jsonlint.com/" class="dev-utils-link">JSON Lint</a>
-              <a data-url="https://www.uuidgenerator.net/" class="dev-utils-link">UUID Generator</a>
-            </div>
-            <div class="dev-utils-footer">Online only</div>
           </div>
+          <button id="btn-toggle-diff" title="Toggle Diff Viewer" class="hidden">&#128196;</button>
+          <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
+          <button id="btn-fullscreen" title="Toggle Fullscreen (F11)">&#9974;</button>
+          <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
+          <button id="btn-ci-toggle" title="Code Intelligence">&#129302;</button>
+          <button id="btn-management-toggle" title="Management">&#128202;</button>
         </div>
-        <button id="btn-toggle-diff" title="Toggle Diff Viewer" class="hidden">&#128196;</button>
-        <button id="btn-theme-toggle" title="Toggle Theme">&#9788;</button>
-        <button id="btn-fullscreen" title="Toggle Fullscreen (F11)">&#9974;</button>
-        <button id="btn-export-zip" title="Export as ZIP">&#8681;</button>
-        <button id="btn-ci-toggle" title="Code Intelligence">&#129302;</button>
-        <button id="btn-management-toggle" title="Management (To-Do, Notes, Decisions, RAG, Skills, Ollama, Exec)" class="titlebar-btn">&#128202;</button>
-        <button id="btn-settings" title="Settings">&#9881;</button>
-        <button id="btn-save-all">Save All</button>
-        <button id="btn-back-menu">Menu</button>
-        </span>
+      </div>
+      <button class="toolbar-scroll-btn" id="toolbar-scroll-right">&#9654;</button>
+      <div class="titlebar-right">
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button id="btn-settings" title="Settings">&#9881;</button>
+          <button id="btn-save-all">Save All</button>
+          <button id="btn-back-menu">Menu</button>
+        </div>
       </div>
     </div>
 
@@ -1134,6 +1141,7 @@
   <script src="tools/ollama-manager.js"></script>
   <script src="tools/api-keys.js"></script>
   <script src="tools/code-intelligence.js"></script>
+  <script src="toolbar-scroll.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

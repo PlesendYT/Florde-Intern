@@ -584,7 +584,42 @@ body {
 }
 /* ==================== APP BODY ==================== */
 #app-view { display: flex; flex-direction: column; height: 100vh; }
-.app-body { display: flex; flex: 1; min-height: 0; }
+.app-body { display: flex; flex: 1; min-height: 0; position: relative; }
+
+/* ==================== DOCKVIEW LAYOUT ==================== */
+#layout-container { flex: 1; overflow: hidden; min-height: 0; }
+#layout-container.hidden { display: none; }
+
+.app-body.layout-dockview-active #layout-container { display: flex; }
+.app-body.layout-dockview-active #sidebar,
+.app-body.layout-dockview-active .sidebar-resizer { display: none; }
+
+.dockview-theme-florde {
+  --dv-background: var(--bg);
+  --dv-tabs-border-bottom: 1px solid var(--border);
+  --dv-tab-active-background: var(--bg3);
+  --dv-tab-active-border-bottom: 2px solid var(--accent);
+  --dv-tab-active-text: var(--text);
+  --dv-tab-inactive-text: var(--text3);
+  --dv-tab-background: var(--bg2);
+  --dv-panel-background: var(--bg);
+  --dv-resize-handle-background: var(--border);
+  --dv-separator-border: var(--border);
+  --dv-drag-over-background: rgba(124,58,237,0.1);
+  --dv-drag-over-border: 1px solid var(--accent);
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-container-scrollbar-color: var(--scrollbar);
+  --dv-icon-hover-background-color: var(--hover);
+}
+.dockview-theme-florde .dockview-tab {
+  font-size: 0.78rem; font-weight: 500;
+  padding: 4px 12px;
+}
+
+#layout-design-mode-toggle {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0;
+}
 
 /* ==================== SIDEBAR ==================== */
 .sidebar {

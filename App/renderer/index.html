@@ -156,6 +156,7 @@
     <div id="workspace-tab-bar"></div>
 
     <div class="app-body">
+      <div id="layout-container" class="hidden" style="flex:1;overflow:hidden;"></div>
       <!-- Sidebar -->
       <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
@@ -831,6 +832,12 @@
           <input type="range" id="chat-font-size" min="10" max="24" value="14">
           <label>Editor Font Size: <span id="editor-font-size-label">14px</span></label>
           <input type="range" id="editor-font-size" min="10" max="24" value="14">
+          <hr style="border:none;border-top:1px solid var(--border);margin:0.8rem 0;">
+          <label>Layout Design Mode</label>
+          <div id="layout-design-mode-toggle">
+            <div class="settings-toggle" id="layout-design-toggle" onclick="this.classList.toggle('on'); if(typeof LayoutManager!=='undefined')LayoutManager.lock(!this.classList.contains('on'))"></div>
+            <span style="font-size:0.8rem;color:var(--text3);">When active, panels can be moved, resized, and rearranged</span>
+          </div>
         </div>
       </div>
 
@@ -1134,6 +1141,7 @@
   </div>
 
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+  <script src="lib/dockview-core.min.js"></script>
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
   <script src="plugin-system.js"></script>
@@ -1149,6 +1157,7 @@
   <script src="lib/diff.min.js"></script>
   <script src="diff-view.js"></script>
   <script src="project-detector.js"></script>
+  <script src="layout-manager.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

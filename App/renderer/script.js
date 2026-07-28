@@ -987,6 +987,9 @@ const WorkspaceManager = {
     if (!ws) return;
     if (!ws.path) { showStartMenu(); return; }
     if (currentProject && currentProject !== ws.path) {
+      if (typeof LayoutManager !== 'undefined' && LayoutManager.isInitialized) {
+        LayoutManager.save('project-' + currentProject);
+      }
       try { await saveSession(); } catch (e) { console.error('saveSession error:', e); }
       if (typeof TimeTracking !== 'undefined') {
         TimeTracking.stop();
@@ -2455,6 +2458,20 @@ function showAppView() {
   document.getElementById('start-menu').classList.add('hidden');
   document.getElementById('app-view').classList.remove('hidden');
   restoreMonacoTabindex();
+  initLayoutManager();
+}
+
+function initLayoutManager() {
+  if (typeof LayoutManager === 'undefined') return;
+  const container = document.getElementById('layout-container');
+  if (!container) return;
+  if (LayoutManager.isInitialized) return;
+  LayoutManager.init(container).then(() => {
+    const savedSetting = localStorage.getItem('florde-layout-enabled');
+    if (savedSetting === 'true' && LayoutManager.isInitialized) {
+      LayoutManager.activate();
+    }
+  });
 }
 
 function restoreMonacoTabindex() {
@@ -2658,6 +2675,10 @@ document.getElementById('btn-start-settings').addEventListener('click', () => {
 // ==================== PROJECT ====================
 
 async function openProject(name) {
+  const prevProject = currentProject;
+  if (typeof LayoutManager !== 'undefined' && prevProject && prevProject !== name) {
+    LayoutManager.save('project-' + prevProject);
+  }
   currentProject = name;
   document.getElementById('project-name').textContent = name;
   TodoList.setProject(name);
@@ -2715,6 +2736,9 @@ async function openProject(name) {
   }
 
   showAppView();
+  if (typeof LayoutManager !== 'undefined' && LayoutManager.isInitialized) {
+    LayoutManager.load('project-' + name);
+  }
   renderFileTree();
   updateSandboxStatus();
   updatePrivacyIndicator();

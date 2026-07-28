@@ -52,6 +52,14 @@ class FlordeStorage {
         allowed INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      CREATE TABLE IF NOT EXISTS layout_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        state_json TEXT NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        project TEXT
+      );
     `);
     return this;
   }

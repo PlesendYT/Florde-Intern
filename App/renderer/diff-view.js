@@ -28,7 +28,10 @@ const DiffView = {
   },
 
   _computeDiff(oldText, newText) {
-    if (typeof Diff === 'undefined') return { changes: [{ added: true, value: newText || '', count: (newText || '').split('\n').length }], linesAdded: 0, linesRemoved: 0 };
+    if (typeof Diff === 'undefined') {
+      const count = (newText || '').split('\n').length;
+      return { changes: [{ added: true, value: newText || '', count }], linesAdded: count, linesRemoved: 0 };
+    }
     const changes = Diff.diffLines(oldText || '', newText || '');
     let linesAdded = 0, linesRemoved = 0;
     for (const c of changes) {

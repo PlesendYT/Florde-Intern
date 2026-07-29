@@ -82,7 +82,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #555; }
 
 /* ==================== NOTIFICATIONS ==================== */
-.notification-container {
+#notification-container {
   position: fixed; top: 1rem; right: 1rem; z-index: 9999;
   display: flex; flex-direction: column; gap: 0.5rem;
   pointer-events: none;
@@ -144,7 +144,6 @@ body {
 .start-main-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
 .start-main-subtitle { font-size: 0.75rem; color: var(--text3); margin-bottom: 1.5rem; }
 .project-list { margin-top: 0; }
-.project-list h3 { display: none; }
 #project-items { display: flex; flex-direction: column; gap: 0.4rem; }
 .project-item {
   display: flex; align-items: center; gap: 0.5rem; padding: 14px 16px;
@@ -518,7 +517,7 @@ body {
 
 /* ==================== TOOLBAR SCROLL ==================== */
 .titlebar {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 4px;
   height: 32px; padding: 0 12px;
   background: var(--bg2); border-bottom: 1px solid var(--border);
   -webkit-app-region: drag; flex-shrink: 0; overflow: hidden;
@@ -1218,10 +1217,6 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .docs-content li { margin-bottom: 0.3rem; padding-left: 0.3rem; }
 .docs-content .btn { display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; }
 
-/* ==================== FOOTER ==================== */
-.footer { text-align: center; padding: 2rem; color: var(--text3); }
-
-/* ==================== RESPONSIVE ==================== */
 /* ==================== AUDIT LOG ==================== */
 .audit-list { font-size: 0.82rem; }
 .audit-entry {
@@ -1671,6 +1666,8 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   background: var(--bg1); border-bottom: 1px solid var(--border);
   overflow-x: auto; flex-shrink: 0;
 }
+#management-subtabs::-webkit-scrollbar { height: 3px; }
+#management-subtabs::-webkit-scrollbar-thumb { background: var(--text3); border-radius: 2px; }
 .mgmt-tab {
   padding: 0.3rem 0.6rem; background: var(--bg2);
   border: 1px solid transparent; color: var(--text2); cursor: pointer;
@@ -1883,6 +1880,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   padding: 8px 12px; background: var(--bg3); border-radius: 6px;
 }
 .time-dash-current.paused { color: var(--text3); }
+#time-dashboard-container { padding: 0; }
 .time-dash-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .time-dash-table th {
   text-align: left; padding: 6px 8px; color: var(--text3);

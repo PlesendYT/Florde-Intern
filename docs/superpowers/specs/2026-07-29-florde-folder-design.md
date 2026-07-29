@@ -10,16 +10,16 @@ Every Florde project gets a `.florde/` folder in its project root directory. Thi
 projectpath/.florde/
 ├── memory/
 │   ├── rules.md            (READONLY — only user can edit)
-│   ├── memory.md           (AI-managed)
-│   ├── goals.md            (AI-managed)
-│   ├── style.md            (AI-managed)
-│   ├── architecture.md     (AI-managed)
-│   └── decisions.md        (AI-managed)
+│   ├── memory.md           (AI-managed, AI reads autonomously)
+│   ├── goals.md            (AI-managed, AI reads autonomously)
+│   ├── style.md            (AI-managed, AI reads autonomously)
+│   ├── architecture.md     (AI-managed, AI reads autonomously)
+│   └── decisions.md        (AI-managed, AI reads autonomously)
 ├── temp/
 │   ├── checklist-xxx.md
 │   └── temp-note-yyy.md
 ├── state.db                (SQLite: settings, todos, notes, decisions, audit, layout, time)
-└── .gitignore              (optional: *.db, temp/*)
+└── .gitignore              (dynamically managed via Management Panel)
 ```
 
 ## SQLite Schema (state.db)
@@ -34,6 +34,26 @@ CREATE TABLE layout_states (name TEXT PRIMARY KEY, state_json TEXT);
 CREATE TABLE time_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT, start TEXT, end TEXT, total_seconds INTEGER);
 CREATE TABLE time_summary (date TEXT, seconds INTEGER, PRIMARY KEY (date));
 ```
+
+## .gitignore (Dynamic, Management Panel controlled)
+
+Default: `*` (everything ignored). No `.florde/` files are versioned by default.
+
+Management Panel has a "Version Control" section with checkboxes:
+```
+.florde/ versionieren:
+☐ memory/             → !memory/
+☐   rules.md          → !memory/rules.md
+☐   memory.md         → !memory/memory.md
+☐   goals.md          → !memory/goals.md
+☐   style.md          → !memory/style.md
+☐   architecture.md   → !memory/architecture.md
+☐   decisions.md      → !memory/decisions.md
+☐ temp/               → !temp/
+```
+
+When a checkbox is toggled, the corresponding `!path` line is added/removed from `.florde/.gitignore`.
+The gitignore only exists inside `.florde/` (not in the project root's `.gitignore`), so it only applies to `.florde/` internals.
 
 ## .florde Folder Creation & Detection Flow
 
@@ -85,8 +105,10 @@ Allowed:
 - `architecture.md` — architecture decisions
 - `decisions.md` — technical decisions
 
-### AI Access
-- Every chat message gets ALL memory files injected as system context
+### AI Access (Tool-based, autonomous)
+- AI gets a `read_memory_file(name)` tool in system prompt to read any memory file autonomously — no user prompt needed
+- Memory files are NOT injected on every message (token efficiency) — AI reads them when it needs context
+- System prompt includes: *"You have persistent memory files in `.florde/memory/`: rules.md, memory.md, goals.md, style.md, architecture.md, decisions.md. Read them whenever you need context."*
 - AI can create new `.md` files and edit existing ones (except `rules.md`)
 - AI can request to read specific memory files at any time
 

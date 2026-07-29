@@ -1633,8 +1633,16 @@ Encrypted API Communication: Cloud model connections go directly from client to 
 Local RAG: Project context is built locally. Embeddings are generated via local models.
 ${promptExtSection}${customSection}${appsSection}`;
 
+  const memFiles = currentProject && window._memoryFileList && window._memoryFileList.length > 0
+    ? window._memoryFileList.join(', ') : '';
+  const memSection = memFiles ? `
+
+Persistent memory files (.florde/memory/): ${memFiles}
+You have persistent project memory files in .florde/memory/. Read them with !memory when you need context.
+` : '';
+
   if (hasTools) {
-    return basePrompt + `
+    return basePrompt + memSection + `
 
 
 You have tool calling capabilities. Use the available functions below to interact with files and the terminal. These functions are CALLABLE BY YOU — invoke them when needed:
@@ -2490,6 +2498,9 @@ function getSortedProjects(projects) {
 async function loadProjectList() {
   const list = document.getElementById('project-list');
   const container = document.getElementById('project-items');
+  document.getElementById('start-dashboard').classList.add('hidden');
+  document.getElementById('start-main-title').textContent = 'Recent Projects';
+  document.getElementById('start-main-subtitle').textContent = 'Continue where you left off';
   if (!window.electronAPI) { container.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:0.5rem;">App not ready</div>'; return; }
   const projects = getSortedProjects(await window.electronAPI.listProjects());
   container.innerHTML = '';
@@ -2516,13 +2527,18 @@ async function loadProjectList() {
     });
     div.querySelector('.project-del').addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm(`Delete project "${p.name}"?`)) {
-        try {
-          await window.electronAPI.deleteProject(p.name);
-          loadProjectList();
-        } catch (err) {
-          showNotification('error', 'Delete failed: ' + err.message);
+      if (!confirm(`Delete project "${p.name}"?`)) return;
+      try {
+        const result = await window.electronAPI.deleteProject(p.name);
+        if (!result.ok) throw new Error(result.error || 'unknown');
+        if (result.flordePath) {
+          if (confirm(`".florde/" folder found at:\n${result.flordePath}\n\nDelete it too?`)) {
+            await window.electronAPI.flordeDir.remove(p.name).catch(() => {});
+          }
         }
+        loadProjectList();
+      } catch (err) {
+        showNotification('error', 'Delete failed: ' + err.message);
       }
     });
     container.appendChild(div);
@@ -2541,6 +2557,52 @@ function hideModal(modalId) {
 }
 function hideAllModals() {
   document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+}
+
+function showFlordeConfirmDialog(projectName, { exists, lsKeys }) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('florde-confirm-modal');
+    const text = document.getElementById('florde-confirm-text');
+    const btns = document.getElementById('florde-confirm-buttons');
+    btns.innerHTML = '';
+    modal.classList.remove('hidden');
+
+    const close = result => {
+      modal.classList.add('hidden');
+      resolve(result);
+    };
+
+    if (exists) {
+      text.textContent = `".florde/" exists for "${projectName}". What do you want to do?` +
+        (lsKeys.length > 0 ? ` (${lsKeys.length} localStorage entries found)` : '');
+      addButton('Migrate localStorage', 'migrate', 'btn btn-primary', () => close('migrate'), btns);
+      addButton('Delete .florde', 'delete', 'btn danger', () => close('delete'), btns);
+      addButton('Cancel', 'cancel', 'btn btn-secondary', () => close(null), btns);
+    } else {
+      if (lsKeys.length > 0) {
+        text.textContent = `".florde/" not found for "${projectName}". ${lsKeys.length} localStorage entries found — create and migrate, or create fresh?`;
+        addButton('Create & Migrate', 'create_migrate', 'btn btn-primary', () => close('create_migrate'), btns);
+        addButton('Create Fresh', 'create', 'btn btn-primary', () => close('create'), btns);
+        addButton('Skip', 'skip', 'btn btn-secondary', () => close(null), btns);
+      } else {
+        text.textContent = `".florde/" not found for "${projectName}". Create it? (AI memory, todos, notes, decisions in SQLite)`;
+        addButton('Create', 'create', 'btn btn-primary', () => close('create'), btns);
+        addButton('Skip', 'skip', 'btn btn-secondary', () => close(null), btns);
+      }
+    }
+
+    modal.addEventListener('click', function onOverlay(e) {
+      if (e.target === modal) { modal.removeEventListener('click', onOverlay); close(null); }
+    });
+  });
+}
+
+function addButton(label, value, className, onClick, container) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.className = className;
+  btn.addEventListener('click', onClick);
+  container.appendChild(btn);
 }
 
 function showPromptDialog(title, text, placeholder, defaultValue) {
@@ -2665,6 +2727,17 @@ if (btnCreateLocal) {
 
 document.getElementById('btn-start-open').addEventListener('click', loadProjectList);
 
+document.getElementById('btn-start-dashboard').addEventListener('click', () => {
+  document.getElementById('project-list').classList.add('hidden');
+  document.getElementById('start-dashboard').classList.remove('hidden');
+  document.getElementById('start-main-title').textContent = 'Dashboard';
+  document.getElementById('start-main-subtitle').textContent = 'Time tracking across all projects';
+  const container = document.getElementById('start-dashboard-container');
+  if (typeof TimeTracking !== 'undefined') {
+    TimeTracking.renderDashboard(container);
+  }
+});
+
 document.getElementById('btn-start-settings').addEventListener('click', () => {
   hideAllModals();
   showModal('settings-modal');
@@ -2679,6 +2752,40 @@ async function openProject(name) {
     LayoutManager.save('project-' + prevProject);
   }
   currentProject = name;
+
+  // Initialize .florde/ directory — silent if exists, dialog if not
+  let _flordeReady = false;
+  try {
+    const hasFlorde = await window.electronAPI.flordeDir.check(name);
+    if (hasFlorde) {
+      // Already exists → init silently, no dialog
+      await window.electronAPI.flordeDb.initDb(name);
+      _flordeReady = true;
+    } else {
+      // Doesn't exist → ask user
+      const lsKeys = Object.keys(localStorage).filter(k => k.endsWith('-' + name));
+      const action = await showFlordeConfirmDialog(name, { exists: false, lsKeys });
+      if (action === 'create' || action === 'create_migrate') {
+        await window.electronAPI.flordeDb.ensureDir(name);
+        await window.electronAPI.flordeDb.initDb(name);
+        if (action === 'create_migrate' && lsKeys.length > 0) {
+          migrateLocalStorageToFlorde(name);
+        }
+        TodoList._load();
+        Notes._load();
+        DecisionLog._load();
+        AuditLog._load();
+        _flordeReady = true;
+      }
+    }
+    if (_flordeReady) {
+      try { window._memoryFileList = await window.electronAPI.flordeFs.memoryList(name); } catch { window._memoryFileList = []; }
+    }
+  } catch (e) {
+    console.error('.florde init failed:', e);
+    window._memoryFileList = [];
+  }
+
   document.getElementById('project-name').textContent = name;
   TodoList.setProject(name);
   Notes.setProject(name);
@@ -2755,6 +2862,53 @@ async function openProject(name) {
     trimChatHistory();
     renderChat();
   }
+}
+
+// ==================== LOCALSTORAGE → .florde MIGRATION ====================
+
+async function migrateLocalStorageToFlorde(projectName) {
+  const prefix = '-';
+  const keys = Object.keys(localStorage).filter(k => k.endsWith(prefix + projectName));
+  let migrated = 0;
+  for (const key of keys) {
+    try {
+      const value = localStorage.getItem(key);
+      if (!value) continue;
+      // Store in kv_store under namespace derived from key
+      const ns = key.replace(prefix + projectName, '');
+      await window.electronAPI.flordeDb.set(projectName, 'migrated', ns, value);
+      migrated++;
+    } catch (e) {
+      console.error('Migration failed for key', key, e);
+    }
+  }
+  // Also migrate current in-memory state
+  try {
+    for (const todo of TodoList._todos) {
+      await window.electronAPI.flordeDb.run(projectName,
+        'INSERT OR IGNORE INTO todos (id, text, done, created_at) VALUES (?, ?, ?, ?)',
+        [todo.id, todo.text, todo.done ? 1 : 0, todo.createdAt || new Date().toISOString()]);
+    }
+    for (const [name, note] of Object.entries(Notes._notes)) {
+      await window.electronAPI.flordeDb.run(projectName,
+        'INSERT OR REPLACE INTO notes (name, content, updated_at) VALUES (?, ?, ?)',
+        [name, note.content, new Date(note.updatedAt || Date.now()).toISOString()]);
+    }
+    for (const dec of DecisionLog._decisions) {
+      await window.electronAPI.flordeDb.run(projectName,
+        'INSERT OR IGNORE INTO decisions (title, decision, rationale, alternatives, created_at) VALUES (?, ?, ?, ?, ?)',
+        [dec.title, dec.reasons || '', dec.reasons || '', JSON.stringify(dec.alternatives || []),
+         new Date(dec.createdAt || Date.now()).toISOString()]);
+    }
+  } catch (e) {
+    console.error('State migration failed:', e);
+  }
+  showNotification('success', `Migrated ${migrated} localStorage entries to .florde/ for "${projectName}"`);
+  // Reload project state from DB
+  TodoList._load();
+  Notes._load();
+  DecisionLog._load();
+  AuditLog._load();
 }
 
 // ==================== PLUGIN MARKETPLACE ====================
@@ -4384,6 +4538,81 @@ async function summarizeChat() {
   } catch {}
 }
 
+async function handleFlordeCommand(text) {
+  const project = currentProject;
+  if (!project) return false;
+  const parts = text.trim().split(/\s+/);
+  const cmd = parts[0];
+  if (cmd === '!memory' || cmd === '!rules' || cmd === '!temp') {
+    chatHistory.push({ role: 'user', content: text });
+    trimChatHistory();
+    renderChat();
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg ai';
+    msgDiv.innerHTML = '<div class="msg-label">Florde AI</div>';
+    document.getElementById('chat-messages').appendChild(msgDiv);
+    const contentDiv = document.createElement('div');
+    msgDiv.appendChild(contentDiv);
+    try {
+      let result = '';
+      if (cmd === '!rules') {
+        const content = await window.electronAPI.flordeFs.memoryRead(project, 'rules.md');
+        result = '📋 **rules.md**:\n\n```markdown\n' + (content || '*empty*') + '\n```';
+      } else if (cmd === '!memory') {
+        if (parts[1] === 'save' && parts.length >= 3) {
+          const key = parts[2];
+          const value = parts.slice(3).join(' ');
+          const current = await window.electronAPI.flordeFs.memoryRead(project, 'memory.md') || '';
+          const updated = current + '\n- **' + key + '**: ' + value + '\n';
+          await window.electronAPI.flordeFs.memoryWrite(project, 'memory.md', updated);
+          result = '✅ Saved to memory.md';
+        } else if (parts[1] === 'show' || parts.length === 1) {
+          const content = await window.electronAPI.flordeFs.memoryRead(project, 'memory.md');
+          result = '📝 **memory.md**:\n\n```markdown\n' + (content || '*empty*') + '\n```';
+        } else if (parts[1] === 'clear') {
+          const def = '# AI Memory\n\n*Key context the AI should remember across sessions.*\n';
+          await window.electronAPI.flordeFs.memoryWrite(project, 'memory.md', def);
+          result = '✅ memory.md cleared';
+        } else if (parts[1] === 'list') {
+          const files = await window.electronAPI.flordeFs.memoryList(project);
+          result = '📂 **Memory files**:\n' + files.map(f => '- ' + f).join('\n');
+        } else {
+          const file = parts[1];
+          const content = await window.electronAPI.flordeFs.memoryRead(project, file);
+          result = '📄 **' + file + '**:\n\n```markdown\n' + (content || '*empty*') + '\n```';
+        }
+      } else if (cmd === '!temp') {
+        if (parts[1] === 'list' || parts.length === 1) {
+          const files = await window.electronAPI.flordeFs.tempList(project);
+          result = '📂 **Temp files**:\n' + (files.length ? files.map(f => '- ' + f.name + ' (' + f.size + 'b)').join('\n') : '*empty*');
+        } else if (parts[1] === 'read' && parts[2]) {
+          const content = await window.electronAPI.flordeFs.tempRead(project, parts[2]);
+          result = '📄 **' + parts[2] + '**:\n\n```\n' + (content || '*not found*') + '\n```';
+        } else if (parts[1] === 'write' && parts[2] && parts.length >= 4) {
+          const fn = parts[2];
+          const content = parts.slice(3).join(' ');
+          await window.electronAPI.flordeFs.tempWrite(project, fn, content);
+          result = '✅ Written to temp/' + fn;
+        } else if (parts[1] === 'delete' && parts[2]) {
+          await window.electronAPI.flordeFs.tempDelete(project, parts[2]);
+          result = '✅ Deleted temp/' + parts[2];
+        } else {
+          result = 'Usage: !temp (list|read <file>|write <file> <content>|delete <file>)';
+        }
+      }
+      contentDiv.innerHTML = formatMessageContent(result);
+    } catch (e) {
+      contentDiv.innerHTML = formatMessageContent('❌ Error: ' + e.message);
+    }
+    chatHistory.push({ role: 'assistant', content: contentDiv.textContent || contentDiv.innerText || '' });
+    trimChatHistory();
+    renderChat();
+    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    return true;
+  }
+  return false;
+}
+
 async function sendMessage(text) {
   const input = document.getElementById('chat-input');
   if (!text) text = input.value.trim();
@@ -4407,6 +4636,10 @@ async function sendMessage(text) {
       updatePendingTaskBadge();
     } catch {}
   }
+
+  // Handle .florde chat commands
+  const handled = await handleFlordeCommand(text);
+  if (handled) { if (input) input.value = ''; return; }
 
   const provider = document.getElementById('provider-select').value;
   if (!provider || !providers[provider]) {
@@ -6492,6 +6725,7 @@ const TabGroupManager = {
 const TodoList = {
   _todos: [],
   _currentProject: null,
+  _useDb: false,
 
   init() {
     document.getElementById('btn-todo-toggle')?.addEventListener('click', () => this.toggle());
@@ -6523,29 +6757,59 @@ const TodoList = {
     document.getElementById('todo-panel')?.classList.add('hidden');
   },
 
-  add() {
+  async add() {
     const input = document.getElementById('todo-input');
     const text = input?.value.trim();
     if (!text) return;
-    this._todos.push({ id: Date.now(), text, done: false, createdAt: Date.now() });
+    if (this._useDb) {
+      const r = await window.electronAPI.flordeDb.run(this._currentProject,
+        'INSERT INTO todos (text) VALUES (?)', [text]);
+      if (r && r.lastInsertRowid) {
+        this._todos.push({ id: r.lastInsertRowid, text, done: 0, createdAt: new Date().toISOString() });
+      }
+    } else {
+      this._todos.push({ id: Date.now(), text, done: 0, createdAt: new Date().toISOString() });
+    }
     this._save();
     this.render();
     if (input) input.value = '';
   },
 
-  toggleItem(id) {
+  async toggleItem(id) {
     const item = this._todos.find(t => t.id === id);
-    if (item) { item.done = !item.done; this._save(); this.render(); }
-  },
-
-  deleteItem(id) {
-    this._todos = this._todos.filter(t => t.id !== id);
+    if (!item) return;
+    item.done = item.done ? 0 : 1;
+    if (this._useDb) {
+      await window.electronAPI.flordeDb.run(this._currentProject,
+        'UPDATE todos SET done = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [item.done, id]);
+    }
     this._save();
     this.render();
   },
 
-  _load() {
+  async deleteItem(id) {
+    this._todos = this._todos.filter(t => t.id !== id);
+    if (this._useDb) {
+      await window.electronAPI.flordeDb.run(this._currentProject,
+        'DELETE FROM todos WHERE id = ?', [id]);
+    }
+    this._save();
+    this.render();
+  },
+
+  async _load() {
+    this._useDb = false;
     if (!this._currentProject) return;
+    try {
+      const hasDb = await window.electronAPI.flordeDir.check(this._currentProject);
+      if (hasDb) {
+        const rows = await window.electronAPI.flordeDb.query(this._currentProject,
+          'SELECT * FROM todos ORDER BY created_at DESC');
+        this._todos = rows || [];
+        this._useDb = true;
+        return;
+      }
+    } catch {}
     try {
       const key = 'florde-todos-' + this._currentProject;
       const data = localStorage.getItem(key);
@@ -6554,7 +6818,7 @@ const TodoList = {
   },
 
   _save() {
-    if (!this._currentProject) return;
+    if (!this._currentProject || this._useDb) return;
     localStorage.setItem('florde-todos-' + this._currentProject, JSON.stringify(this._todos));
   },
 
@@ -6602,6 +6866,7 @@ const Notes = {
   _currentProject: null,
   _dirty: false,
   _previewMode: false,
+  _useDb: false,
 
   init() {
     document.getElementById('btn-notes-toggle')?.addEventListener('click', () => this.toggle());
@@ -6636,8 +6901,15 @@ const Notes = {
 
   hide() { document.getElementById('notes-panel')?.classList.add('hidden'); },
 
-  create() {
+  async create() {
     const name = prompt('Note name:') || 'note-' + Date.now();
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          'INSERT OR REPLACE INTO notes (name, content, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          [name, '# ' + name + '\n\n']);
+      } catch {}
+    }
     this._notes[name] = { content: '# ' + name + '\n\n', updatedAt: Date.now() };
     this._activeNote = name;
     this._save();
@@ -6645,28 +6917,57 @@ const Notes = {
     this._loadNote(name);
   },
 
-  save() {
+  async save() {
     if (!this._activeNote || !this._dirty) return;
     const editor = document.getElementById('notes-editor');
     if (this._notes[this._activeNote]) {
       this._notes[this._activeNote].content = editor?.value || '';
       this._notes[this._activeNote].updatedAt = Date.now();
     }
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          'UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE name = ?',
+          [editor?.value || '', this._activeNote]);
+      } catch {}
+    }
     this._dirty = false;
     this._save();
   },
 
-  remove(name) {
+  async remove(name) {
     delete this._notes[name];
     if (this._activeNote === name) this._activeNote = Object.keys(this._notes)[0] || null;
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          'DELETE FROM notes WHERE name = ?', [name]);
+      } catch {}
+    }
     this._save();
     this._renderList();
     if (this._activeNote) this._loadNote(this._activeNote);
     else { document.getElementById('notes-editor').value = ''; document.getElementById('notes-preview').innerHTML = ''; }
   },
 
-  _load() {
+  async _load() {
+    this._useDb = false;
     if (!this._currentProject) return;
+    try {
+      const hasDb = await window.electronAPI.flordeDir.check(this._currentProject);
+      if (hasDb) {
+        const rows = await window.electronAPI.flordeDb.query(this._currentProject,
+          'SELECT name, content, updated_at FROM notes ORDER BY name');
+        this._notes = {};
+        for (const row of rows) {
+          this._notes[row.name] = { content: row.content, updatedAt: new Date(row.updated_at).getTime() };
+        }
+        const names = Object.keys(this._notes);
+        this._activeNote = names[0] || null;
+        this._useDb = true;
+        return;
+      }
+    } catch {}
     try {
       const key = 'florde-notes-' + this._currentProject;
       this._notes = JSON.parse(localStorage.getItem(key)) || {};
@@ -6676,7 +6977,7 @@ const Notes = {
   },
 
   _save() {
-    if (!this._currentProject) return;
+    if (!this._currentProject || this._useDb) return;
     localStorage.setItem('florde-notes-' + this._currentProject, JSON.stringify(this._notes));
   },
 
@@ -6754,6 +7055,26 @@ const ManagementPanel = {
         if (tab) this.switchTab(tab);
       });
     });
+    document.getElementById('btn-florde-init')?.addEventListener('click', async () => {
+      if (!currentProject) return;
+      await window.electronAPI.flordeDb.ensureDir(currentProject);
+      await window.electronAPI.flordeDb.initDb(currentProject);
+      window._memoryFileList = await window.electronAPI.flordeFs.memoryList(currentProject);
+      this._refreshFlordeTab();
+      showNotification('success', '.florde initialized for ' + currentProject);
+    });
+    document.getElementById('btn-florde-migrate')?.addEventListener('click', async () => {
+      if (!currentProject) return;
+      await migrateLocalStorageToFlorde(currentProject);
+    });
+    document.getElementById('btn-florde-remove')?.addEventListener('click', async () => {
+      if (!currentProject) return;
+      if (!confirm('Remove .florde folder for ' + currentProject + '? Data will stay in localStorage.')) return;
+      await window.electronAPI.flordeDir.remove(currentProject);
+      window._memoryFileList = [];
+      this._refreshFlordeTab();
+      showNotification('info', '.florde removed for ' + currentProject);
+    });
   },
 
   toggle() {
@@ -6787,7 +7108,7 @@ const ManagementPanel = {
     this._refreshActiveTab();
   },
 
-  _refreshActiveTab() {
+  async _refreshActiveTab() {
     switch (this._activeTab) {
       case 'todo': TodoList.render(); break;
       case 'notes': Notes._renderList(); if (Notes._activeNote) Notes._loadNote(Notes._activeNote); break;
@@ -6798,12 +7119,74 @@ const ManagementPanel = {
           CodeIntelligence._renderTools();
         }
         break;
-      case 'dashboard':
-        const container = document.getElementById('time-dashboard-container');
-        if (container && typeof TimeTracking !== 'undefined') {
-          TimeTracking.renderDashboard(container);
-        }
+      case 'florde':
+        await this._refreshFlordeTab();
         break;
+    }
+  },
+
+  async _refreshFlordeTab() {
+    const project = currentProject;
+    if (!project) return;
+    const statusEl = document.getElementById('florde-status');
+    const memListEl = document.getElementById('florde-memory-list');
+    const tempListEl = document.getElementById('florde-temp-list');
+    const giEl = document.getElementById('florde-gitignore');
+    if (!statusEl) return;
+    try {
+      const has = await window.electronAPI.flordeDir.check(project);
+      const dbPath = await window.electronAPI.flordeDb.getDbPath(project);
+      const dirPath = await window.electronAPI.flordeDir.getPath(project);
+      let html = has ? '✅ .florde exists' : '❌ No .florde folder';
+      if (dirPath) html += `<br><span style="font-size:0.65rem;color:var(--text3);">📁 ${escapeHtml(dirPath)}</span>`;
+      if (dbPath) html += `<br><span style="font-size:0.65rem;color:var(--text3);">🗄️ ${escapeHtml(dbPath)}</span>`;
+      statusEl.innerHTML = html;
+      if (has) {
+        const memFiles = await window.electronAPI.flordeFs.memoryList(project);
+        memListEl.innerHTML = memFiles.length
+          ? memFiles.map(f => `<div style="padding:0.1rem 0;">📄 ${f}</div>`).join('')
+          : '<em>No memory files</em>';
+        const tempFiles = await window.electronAPI.flordeFs.tempList(project);
+        tempListEl.innerHTML = tempFiles.length
+          ? tempFiles.map(f => `<div style="padding:0.1rem 0;display:flex;justify-content:space-between;">
+              <span>📄 ${f.name} (${f.size}b)</span>
+              <button class="btn-temp-delete" data-file="${f.name}" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.7rem;">✕</button>
+            </div>`).join('')
+          : '<em>No temp files</em>';
+        tempListEl.querySelectorAll('.btn-temp-delete').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await window.electronAPI.flordeFs.tempDelete(project, btn.dataset.file);
+            this._refreshFlordeTab();
+          });
+        });
+        const giState = await window.electronAPI.flordeDir.getGitignoreState(project);
+        const entries = [
+          { id: 'memory', label: 'memory/', path: 'memory/' },
+          { id: 'rules', label: '  rules.md', path: 'memory/rules.md' },
+          { id: 'memory-md', label: '  memory.md', path: 'memory/memory.md' },
+          { id: 'goals', label: '  goals.md', path: 'memory/goals.md' },
+          { id: 'style', label: '  style.md', path: 'memory/style.md' },
+          { id: 'arch', label: '  architecture.md', path: 'memory/architecture.md' },
+          { id: 'decisions-md', label: '  decisions.md', path: 'memory/decisions.md' },
+          { id: 'temp', label: 'temp/', path: 'temp/' },
+        ];
+        giEl.innerHTML = '<div style="margin-bottom:0.3rem;font-size:0.7rem;color:var(--text3);">Track these in git:</div>' +
+          entries.map(e => `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.7rem;cursor:pointer;padding:0.05rem 0;">
+            <input type="checkbox" class="gi-checkbox" data-path="${e.path}" ${giState.includes(e.path) ? 'checked' : ''}>
+            ${e.label}
+          </label>`).join('');
+        giEl.querySelectorAll('.gi-checkbox').forEach(cb => {
+          cb.addEventListener('change', async () => {
+            await window.electronAPI.flordeDir.setGitignoreEntry(project, cb.dataset.path, cb.checked);
+          });
+        });
+      } else {
+        memListEl.innerHTML = '<em>Init .florde to see memory files</em>';
+        tempListEl.innerHTML = '';
+        giEl.innerHTML = '';
+      }
+    } catch (e) {
+      statusEl.textContent = '⚠ Error: ' + e.message;
     }
   }
 };
@@ -6813,6 +7196,7 @@ const ManagementPanel = {
 const DecisionLog = {
   _decisions: [],
   _currentProject: null,
+  _useDb: false,
 
   init() {
     document.getElementById('btn-decision-new')?.addEventListener('click', () => this.showModal());
@@ -6824,36 +7208,87 @@ const DecisionLog = {
     this.render();
   },
 
-  add(data) {
-    const entry = {
-      id: Date.now(),
-      title: data.title,
-      date: data.date || new Date().toISOString().split('T')[0],
-      reasons: data.reasons || '',
-      alternatives: data.alternatives || [],
-      createdAt: Date.now()
-    };
-    this._decisions.unshift(entry);
+  async add(data) {
+    if (this._useDb) {
+      try {
+        const r = await window.electronAPI.flordeDb.run(this._currentProject,
+          'INSERT INTO decisions (title, decision, rationale, alternatives) VALUES (?, ?, ?, ?)',
+          [data.title, data.decision || data.reasons || '', data.reasons || '', JSON.stringify(data.alternatives || [])]
+        );
+        if (r && r.lastInsertRowid) {
+          this._decisions.unshift({
+            id: r.lastInsertRowid,
+            title: data.title,
+            date: data.date || new Date().toISOString().split('T')[0],
+            reasons: data.reasons || '',
+            alternatives: data.alternatives || [],
+            createdAt: Date.now()
+          });
+        }
+      } catch (e) { console.error('DecisionLog add failed', e); }
+    } else {
+      const entry = {
+        id: Date.now(),
+        title: data.title,
+        date: data.date || new Date().toISOString().split('T')[0],
+        reasons: data.reasons || '',
+        alternatives: data.alternatives || [],
+        createdAt: Date.now()
+      };
+      this._decisions.unshift(entry);
+    }
     this._save();
     this.render();
   },
 
-  edit(id, data) {
+  async edit(id, data) {
     const idx = this._decisions.findIndex(d => d.id === id);
     if (idx === -1) return;
     Object.assign(this._decisions[idx], data);
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          'UPDATE decisions SET title = ?, decision = ?, rationale = ?, alternatives = ? WHERE id = ?',
+          [data.title, data.decision || data.reasons || '', data.reasons || '', JSON.stringify(data.alternatives || []), id]
+        );
+      } catch {}
+    }
     this._save();
     this.render();
   },
 
-  delete(id) {
+  async delete(id) {
     this._decisions = this._decisions.filter(d => d.id !== id);
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          'DELETE FROM decisions WHERE id = ?', [id]);
+      } catch {}
+    }
     this._save();
     this.render();
   },
 
-  _load() {
+  async _load() {
+    this._useDb = false;
     if (!this._currentProject) return;
+    try {
+      const hasDb = await window.electronAPI.flordeDir.check(this._currentProject);
+      if (hasDb) {
+        const rows = await window.electronAPI.flordeDb.query(this._currentProject,
+          'SELECT * FROM decisions ORDER BY created_at DESC');
+        this._decisions = (rows || []).map(r => ({
+          id: r.id,
+          title: r.title,
+          date: r.created_at ? r.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          reasons: r.rationale || r.decision || '',
+          alternatives: (() => { try { return JSON.parse(r.alternatives || '[]'); } catch { return []; } })(),
+          createdAt: new Date(r.created_at || Date.now()).getTime()
+        }));
+        this._useDb = true;
+        return;
+      }
+    } catch {}
     try {
       const key = 'florde-decisions-' + this._currentProject;
       this._decisions = JSON.parse(localStorage.getItem(key)) || [];
@@ -6861,7 +7296,7 @@ const DecisionLog = {
   },
 
   _save() {
-    if (!this._currentProject) return;
+    if (!this._currentProject || this._useDb) return;
     localStorage.setItem('florde-decisions-' + this._currentProject, JSON.stringify(this._decisions));
   },
 
@@ -6952,6 +7387,7 @@ const AuditLog = {
   _currentProject: null,
   _aiMode: false,
   _maxLogs: 500,
+  _useDb: false,
 
   init() {
     // Overlay tab switching
@@ -6994,7 +7430,7 @@ const AuditLog = {
     this._load();
   },
 
-  log(entry) {
+  async log(entry) {
     const logEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString(),
@@ -7009,11 +7445,33 @@ const AuditLog = {
     };
     this._logs.unshift(logEntry);
     if (this._logs.length > this._maxLogs) this._logs.length = this._maxLogs;
+    if (this._useDb) {
+      try {
+        await window.electronAPI.flordeDb.run(this._currentProject,
+          `INSERT INTO audit_log (project, event_type, data) VALUES (?, ?, ?)`,
+          [this._currentProject, entry.type || 'unknown', JSON.stringify(logEntry)]
+        );
+      } catch {}
+    }
     this._save();
   },
 
-  _load() {
+  async _load() {
+    this._useDb = false;
     if (!this._currentProject) return;
+    try {
+      const hasDb = await window.electronAPI.flordeDir.check(this._currentProject);
+      if (hasDb) {
+        const rows = await window.electronAPI.flordeDb.query(this._currentProject,
+          'SELECT data FROM audit_log WHERE project = ? ORDER BY id DESC LIMIT ?',
+          [this._currentProject, this._maxLogs]);
+        if (rows && rows.length > 0) {
+          this._logs = rows.map(r => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean);
+          this._useDb = true;
+          return;
+        }
+      }
+    } catch {}
     try {
       const key = 'florde-audit-ki-' + this._currentProject;
       this._logs = JSON.parse(localStorage.getItem(key)) || [];
@@ -7021,7 +7479,7 @@ const AuditLog = {
   },
 
   _save() {
-    if (!this._currentProject) return;
+    if (!this._currentProject || this._useDb) return;
     localStorage.setItem('florde-audit-ki-' + this._currentProject, JSON.stringify(this._logs));
   },
 

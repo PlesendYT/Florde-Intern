@@ -139,6 +139,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDbPath: (n) => ipcRenderer.invoke('florde:get-db-path', n),
   },
 
+  flordeDir: {
+    check: (n) => ipcRenderer.invoke('florde:check-dir', n),
+    remove: (n) => ipcRenderer.invoke('florde:remove-dir', n),
+    getGitignoreState: (n) => ipcRenderer.invoke('florde:get-gitignore-state', n),
+    setGitignoreEntry: (n, e, x) => ipcRenderer.invoke('florde:set-gitignore-entry', n, e, x),
+    getPath: (n) => ipcRenderer.invoke('florde:get-dir-path', n),
+  },
+
+  flordeFs: {
+    memoryRead: (project, file) => ipcRenderer.invoke('florde:memory-read', project, file),
+    memoryWrite: (project, file, content) => ipcRenderer.invoke('florde:memory-write', project, file, content),
+    memoryList: (project) => ipcRenderer.invoke('florde:memory-list', project),
+    tempRead: (project, file) => ipcRenderer.invoke('florde:temp-read', project, file),
+    tempWrite: (project, file, content) => ipcRenderer.invoke('florde:temp-write', project, file, content),
+    tempList: (project) => ipcRenderer.invoke('florde:temp-list', project),
+    tempDelete: (project, file) => ipcRenderer.invoke('florde:temp-delete', project, file),
+  },
+
   terminal: {
     create: (opts) => ipcRenderer.invoke('terminal:create', opts),
     resize: (opts) => ipcRenderer.invoke('terminal:resize', opts),

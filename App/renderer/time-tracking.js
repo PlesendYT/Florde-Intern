@@ -37,12 +37,16 @@ const TimeTracking = {
   stop() {
     if (this._startTime && this._currentProject) {
       const end = new Date();
-      this._saveSession(this._currentProject, this._startTime.toISOString(), end.toISOString());
+      const start = this._startTime.toISOString();
+      const project = this._currentProject;
+      // Synchronous localStorage save (works during beforeunload, no IPC)
+      const data = JSON.parse(localStorage.getItem('florde-time-tracking') || '{"sessions":[]}');
+      data.sessions.push({ project, start, end: end.toISOString() });
+      localStorage.setItem('florde-time-tracking', JSON.stringify(data));
     }
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
     this._startTime = null;
     this._currentProject = null;
-    this._render();
   },
 
   pause() {
@@ -58,14 +62,16 @@ const TimeTracking = {
   },
 
   async _saveSession(project, start, end) {
-    const sql = `INSERT INTO time_sessions (project, start, end) VALUES (?, ?, ?)`;
+    // Always save to localStorage (shared store across all projects)
+    const data = JSON.parse(localStorage.getItem('florde-time-tracking') || '{"sessions":[]}');
+    data.sessions.push({ project, start, end });
+    localStorage.setItem('florde-time-tracking', JSON.stringify(data));
+    // Best-effort per-project DB save
     try {
-      await window.electronAPI.flordeDb.run('florde', sql, [project, start, end]);
-    } catch (e) {
-      const data = JSON.parse(localStorage.getItem('florde-time-tracking') || '{"sessions":[]}');
-      data.sessions.push({ project, start, end });
-      localStorage.setItem('florde-time-tracking', JSON.stringify(data));
-    }
+      await window.electronAPI.flordeDb.run(project || 'florde',
+        `INSERT INTO time_sessions (project, start, end) VALUES (?, ?, ?)`,
+        [project, start, end]);
+    } catch { /* DB save is best-effort */ }
   },
 
   async _autoSave() {
@@ -80,17 +86,10 @@ const TimeTracking = {
   },
 
   async _getSessions(project) {
-    let rows = [];
-    try {
-      rows = await window.electronAPI.flordeDb.query('florde',
-        'SELECT * FROM time_sessions' + (project ? ' WHERE project = ?' : '') + ' ORDER BY start',
-        project ? [project] : []
-      );
-    } catch (e) {
-      const data = JSON.parse(localStorage.getItem('florde-time-tracking') || '{"sessions":[]}');
-      rows = data.sessions;
-      if (project) rows = rows.filter(s => s.project === project);
-    }
+    // Always read from localStorage (contains all projects' sessions)
+    const data = JSON.parse(localStorage.getItem('florde-time-tracking') || '{"sessions":[]}');
+    let rows = data.sessions;
+    if (project) rows = rows.filter(s => s.project === project);
     return rows;
   },
 
@@ -189,32 +188,7 @@ const TimeTracking = {
   },
 
   _render() {
-    let el = document.getElementById('time-tracker');
-    if (!el) {
-      el = document.createElement('span');
-      el.id = 'time-tracker';
-      el.style.cssText = 'cursor:pointer;font-size:0.8rem;color:var(--text3);margin-left:0.5rem;user-select:none;';
-      el.title = 'Click to pause/resume';
-      el.onclick = () => { if (this._startTime) this.pause(); else this.resume(); };
-      const ref = document.getElementById('project-name');
-      if (ref && ref.parentNode) ref.parentNode.insertBefore(el, ref.nextSibling);
-    }
-    if (this._startTime) {
-      const ms = Date.now() - this._startTime;
-      const s = Math.floor(ms / 1000);
-      const m = Math.floor(s / 60);
-      const hrs = Math.floor(m / 60);
-      const secs = s % 60;
-      const mins = m % 60;
-      let text = `▶ ${this._currentProject} `;
-      if (hrs > 0) text += `${hrs}h `;
-      if (mins > 0 || hrs > 0) text += `${mins}m `;
-      text += `${secs}s`;
-      el.textContent = text;
-      el.style.color = 'var(--accent)';
-    } else {
-      el.textContent = `⏸ paused`;
-      el.style.color = 'var(--text3)';
-    }
+    // Internal only — no visible timer element in the UI.
+    // The _timer interval keeps running so auto-save triggers.
   }
 };

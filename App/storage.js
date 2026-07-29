@@ -60,6 +60,47 @@ class FlordeStorage {
         is_default INTEGER DEFAULT 0,
         project TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        done INTEGER DEFAULT 0,
+        priority TEXT DEFAULT 'medium',
+        tags TEXT DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        content TEXT DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS decisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        rationale TEXT,
+        alternatives TEXT DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS time_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        start TIMESTAMP NOT NULL,
+        end TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS time_summary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        project TEXT,
+        total_seconds REAL DEFAULT 0,
+        UNIQUE(date, project)
+      );
     `);
     return this;
   }

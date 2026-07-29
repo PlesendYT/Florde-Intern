@@ -226,6 +226,13 @@ const LayoutManager = {
     const api = this._api;
     if (!api) return;
     try {
+      const dbRows = await window.electronAPI?.flordeDb?.query?.('florde', "SELECT state_json FROM layout_states WHERE name = 'default' LIMIT 1");
+      if (dbRows && dbRows.length > 0) {
+        api.fromJSON(JSON.parse(dbRows[0].state_json));
+        return;
+      }
+    } catch {}
+    try {
       const saved = localStorage.getItem('florde-layout-default');
       if (saved) {
         api.fromJSON(JSON.parse(saved));
@@ -253,9 +260,13 @@ const LayoutManager = {
     const api = this._api;
     if (!api) return;
     const state = api.toJSON();
+    const projectName = name.replace(/^project-/, '');
     localStorage.setItem(`florde-layout-${name}`, JSON.stringify(state));
     try {
-      await window.electronAPI.flordeDb?.run?.('florde', 'INSERT OR REPLACE INTO layout_states (name, state_json) VALUES (?, ?)', [name, JSON.stringify(state)]);
+      await window.electronAPI.flordeDb?.run?.(projectName,
+        `INSERT INTO layout_states (name, state_json, is_default, project) VALUES (?, ?, 0, ?)
+         ON CONFLICT(name) DO UPDATE SET state_json = excluded.state_json`,
+        [name, JSON.stringify(state), projectName]);
     } catch (e) {
       /* SQLite save is optional */
     }
@@ -264,6 +275,7 @@ const LayoutManager = {
   async load(name) {
     const api = this._api;
     if (!api) return;
+    const projectName = name.replace(/^project-/, '');
     try {
       const saved = localStorage.getItem(`florde-layout-${name}`);
       if (saved) {
@@ -271,7 +283,8 @@ const LayoutManager = {
         return;
       }
       try {
-        const rows = await window.electronAPI.flordeDb?.query?.('florde', 'SELECT state_json FROM layout_states WHERE name = ?', [name]);
+        const rows = await window.electronAPI.flordeDb?.query?.(projectName,
+          'SELECT state_json FROM layout_states WHERE name = ?', [name]);
         if (rows && rows.length > 0) {
           api.fromJSON(JSON.parse(rows[0].state_json));
           return;

@@ -18,16 +18,20 @@
         <button id="btn-start-new" class="start-sidebar-btn primary"><span class="btn-icon">+</span> New Sandbox</button>
         <button id="btn-start-local" class="start-sidebar-btn"><span class="btn-icon">&#128194;</span> Open Project</button>
         <button id="btn-start-open" class="start-sidebar-btn"><span class="btn-icon">&#9201;</span> Recent</button>
+        <button id="btn-start-dashboard" class="start-sidebar-btn"><span class="btn-icon">&#9201;</span> Dashboard</button>
         <button id="btn-start-settings" class="start-sidebar-btn"><span class="btn-icon">&#9881;</span> Settings</button>
         <button id="btn-start-plugins" class="start-sidebar-btn"><span class="btn-icon">&#129513;</span> Plugins</button>
       </div>
     </div>
     <div class="start-main">
-      <div class="start-main-title">Recent Projects</div>
-      <div class="start-main-subtitle">Continue where you left off</div>
+      <div class="start-main-title" id="start-main-title">Recent Projects</div>
+      <div class="start-main-subtitle" id="start-main-subtitle">Continue where you left off</div>
       <div id="project-list" class="project-list">
         <h3>Recent Projects</h3>
         <div id="project-items"></div>
+      </div>
+      <div id="start-dashboard" class="hidden">
+        <div id="start-dashboard-container"></div>
       </div>
     </div>
   </div>
@@ -96,6 +100,14 @@
         <button id="btn-prompt-cancel" class="btn btn-secondary">Cancel</button>
         <button id="btn-prompt-ok" class="btn btn-primary">OK</button>
       </div>
+    </div>
+  </div>
+
+  <div id="florde-confirm-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:500px;">
+      <h2>.florde Project State</h2>
+      <p id="florde-confirm-text" style="color:var(--text2);margin-bottom:1.5rem;line-height:1.5;"></p>
+      <div id="florde-confirm-buttons" class="modal-actions" style="gap:0.5rem;"></div>
     </div>
   </div>
 
@@ -1023,7 +1035,7 @@
       <button class="mgmt-tab" data-tab="ollama">&#129302; Ollama</button>
       <button class="mgmt-tab" data-tab="ci">&#129302; CI</button>
       <button class="mgmt-tab" data-tab="exec">&#9678; Exec</button>
-      <button class="mgmt-tab" data-tab="dashboard">&#9201; Dashboard</button>
+      <button class="mgmt-tab" data-tab="florde">&#128194; .florde</button>
     </div>
 
     <!-- To-Do Content -->
@@ -1125,9 +1137,23 @@
       <div id="ci-results" style="flex:1;overflow-y:auto;"></div>
     </div>
 
-    <!-- Dashboard Content -->
-    <div class="mgmt-content hidden" id="mgmt-dashboard">
-      <div id="time-dashboard-container"></div>
+    <!-- .florde Content -->
+    <div class="mgmt-content hidden" id="mgmt-florde">
+      <div style="padding:0.5rem;">
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;">&#128194; .florde Project State</div>
+        <div id="florde-status" style="font-size:0.75rem;margin-bottom:0.5rem;color:var(--text3);word-break:break-all;">Checking...</div>
+        <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.5rem;">
+          <button id="btn-florde-init" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;">Init .florde</button>
+          <button id="btn-florde-migrate" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;">Migrate Data</button>
+          <button id="btn-florde-remove" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;color:#ef4444;">Remove .florde</button>
+        </div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128196; Memory Files</div>
+        <div id="florde-memory-list" style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem;"></div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128203; Temp Files</div>
+        <div id="florde-temp-list" style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem;"></div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128203; Version Control (.gitignore)</div>
+        <div id="florde-gitignore" style="font-size:0.75rem;color:var(--text3);"></div>
+      </div>
     </div>
 
     <!-- Execution Content -->

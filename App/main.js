@@ -146,8 +146,15 @@ ipcMain.handle('create-local-project', async (event, name, folderPath) => {
 
 ipcMain.handle('delete-project', (event, name) => {
   const dir = path.join(getProjectsDir(), name);
-  if (fs.existsSync(dir)) { fs.rmSync(dir, { recursive: true }); return true; }
-  return false;
+  if (!fs.existsSync(dir)) return { ok: false, error: 'not found' };
+  const meta = getProjectMeta(name);
+  let flordePath = null;
+  if (meta && meta.type === 'local') {
+    const fd = getFlordeDir(name);
+    if (fd && fs.existsSync(fd)) flordePath = fd;
+  }
+  fs.rmSync(dir, { recursive: true });
+  return { ok: true, flordePath };
 });
 
 ipcMain.handle('load-session', (event, name) => {
@@ -208,6 +215,10 @@ ipcMain.handle('project-write-file', (event, name, filePath, content) => {
   if (!root) return false;
   const full = resolveSafe(root, filePath);
   if (!full) return false;
+  const normalized = full.replace(/\\/g, '/');
+  if (normalized.includes('/.florde/memory/rules.md')) {
+    throw new Error('rules.md is read-only — edit it directly in the file system or use the Management Panel');
+  }
   const dir = path.dirname(full);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(full, content, 'utf-8');
@@ -1016,29 +1027,122 @@ function getFlordeStore(projectName) {
   }
 }
 
-function ensureFlordeDir(projectName) {
+const MEMORY_FILES = ['rules.md', 'memory.md', 'goals.md', 'style.md', 'architecture.md', 'decisions.md'];
+
+const MEMORY_DEFAULTS = {
+  'rules.md': '# Project Rules\n\n*Add your development rules here. The AI will follow these instructions.*\n',
+  'memory.md': '# AI Memory\n\n*Key context the AI should remember across sessions.*\n',
+  'goals.md': '# Goals\n\n*Current project goals and objectives.*\n',
+  'style.md': '# Style Preferences\n\n*Code style, naming conventions, UI preferences.*\n',
+  'architecture.md': '# Architecture\n\n*Architecture decisions, design patterns, data flow.*\n',
+  'decisions.md': '# Decision Log\n\n*Key decisions made during development.*\n'
+};
+
+function getFlordeDir(projectName) {
   if (!projectName) return null;
   const root = getProjectRoot(projectName);
   if (!root) return null;
-  const flordeDir = path.join(root, '.florde');
-  if (!fs.existsSync(flordeDir)) fs.mkdirSync(flordeDir, { recursive: true });
+  // For local projects, traverse up to find the real project root
+  // (e.g. when the user pointed to addons/ or src/ instead of the root)
+  // so .florde/ goes to the actual project root, not a subdirectory
   const meta = getProjectMeta(projectName);
   if (meta && meta.type === 'local') {
-    const gitignorePath = path.join(root, '.gitignore');
-    if (fs.existsSync(gitignorePath)) {
-      const content = fs.readFileSync(gitignorePath, 'utf-8');
-      if (!content.includes('.florde/')) {
-        fs.appendFileSync(gitignorePath, '\n# Florde project data\n.florde/\n');
-      }
-    } else {
-      fs.writeFileSync(gitignorePath, '# Florde project data\n.florde/\n');
+    const projRoot = findProjectRoot(root);
+    if (projRoot) return path.join(projRoot, '.florde');
+  }
+  return path.join(root, '.florde');
+}
+
+const PROJECT_MARKERS = ['.git', '.hg', 'project.godot', 'package.json', 'CMakeLists.txt', '.sln', 'pom.xml', 'build.gradle'];
+
+function findProjectRoot(startPath) {
+  let current = path.resolve(startPath);
+  const root = path.parse(current).root;
+  while (current && current !== root) {
+    for (const marker of PROJECT_MARKERS) {
+      if (fs.existsSync(path.join(current, marker))) return current;
     }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
+function initFlordeDir(projectName) {
+  if (!projectName) return null;
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return null;
+  if (!fs.existsSync(flordeDir)) fs.mkdirSync(flordeDir, { recursive: true });
+  const memDir = path.join(flordeDir, 'memory');
+  if (!fs.existsSync(memDir)) fs.mkdirSync(memDir, { recursive: true });
+  const tempDir = path.join(flordeDir, 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  const gitkeep = path.join(tempDir, '.gitkeep');
+  if (!fs.existsSync(gitkeep)) fs.writeFileSync(gitkeep, '');
+  MEMORY_FILES.forEach(f => {
+    const fp = path.join(memDir, f);
+    if (!fs.existsSync(fp)) {
+      fs.writeFileSync(fp, MEMORY_DEFAULTS[f] || '', 'utf-8');
+    }
+  });
+  const giPath = path.join(flordeDir, '.gitignore');
+  if (!fs.existsSync(giPath)) {
+    fs.writeFileSync(giPath, '# .florde gitignore — manage exclusions in Management Panel\n*\n');
   }
   return flordeDir;
 }
 
+function getGitignoreState(projectName) {
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return [];
+  const giPath = path.join(flordeDir, '.gitignore');
+  if (!fs.existsSync(giPath)) return [];
+  const content = fs.readFileSync(giPath, 'utf-8');
+  const excluded = [];
+  content.split('\n').forEach(line => {
+    const m = line.match(/^!(.+)$/);
+    if (m) excluded.push(m[1]);
+  });
+  return excluded;
+}
+
+function setGitignoreEntry(projectName, entry, exclude) {
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return;
+  const giPath = path.join(flordeDir, '.gitignore');
+  let lines = fs.existsSync(giPath) ? fs.readFileSync(giPath, 'utf-8').split('\n') : ['*\n'];
+  const pattern = '!' + entry;
+  if (exclude) {
+    if (!lines.some(l => l.trim() === pattern)) lines.push(pattern);
+  } else {
+    lines = lines.filter(l => l.trim() !== pattern);
+  }
+  fs.writeFileSync(giPath, lines.join('\n').replace(/\n{3,}/g, '\n\n'), 'utf-8');
+}
+
 ipcMain.handle('florde:ensure-dir', (event, projectName) => {
-  return ensureFlordeDir(projectName) !== null;
+  return initFlordeDir(projectName) !== null;
+});
+
+ipcMain.handle('florde:check-dir', (event, projectName) => {
+  const dir = getFlordeDir(projectName);
+  return dir ? fs.existsSync(dir) : false;
+});
+
+ipcMain.handle('florde:remove-dir', (event, projectName) => {
+  const dir = getFlordeDir(projectName);
+  if (!dir || !fs.existsSync(dir)) return false;
+  fs.rmSync(dir, { recursive: true });
+  return true;
+});
+
+ipcMain.handle('florde:get-gitignore-state', (event, projectName) => {
+  return getGitignoreState(projectName);
+});
+
+ipcMain.handle('florde:set-gitignore-entry', (event, projectName, entry, exclude) => {
+  setGitignoreEntry(projectName, entry, exclude);
 });
 
 ipcMain.handle('florde:init-db', (event, projectName) => {
@@ -1096,6 +1200,79 @@ ipcMain.handle('florde:get-db-path', (event, projectName) => {
   const root = getProjectRoot(projectName);
   if (!root) return null;
   return path.join(root, '.florde', 'database.db');
+});
+
+ipcMain.handle('florde:get-dir-path', (event, projectName) => {
+  const dir = getFlordeDir(projectName);
+  return dir;
+});
+
+// ==================== FLORDE MEMORY / TEMP FILES ====================
+
+function flordeFilePath(projectName, subdir, fileName) {
+  if (!projectName || !fileName) return null;
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return null;
+  const full = path.resolve(path.join(flordeDir, subdir, fileName));
+  if (!full.startsWith(path.resolve(path.join(flordeDir, subdir)))) return null;
+  return full;
+}
+
+ipcMain.handle('florde:memory-read', (event, projectName, fileName) => {
+  const full = flordeFilePath(projectName, 'memory', fileName);
+  if (!full || !fs.existsSync(full)) return null;
+  return fs.readFileSync(full, 'utf-8');
+});
+
+ipcMain.handle('florde:memory-write', (event, projectName, fileName, content) => {
+  if (fileName === 'rules.md') throw new Error('rules.md is read-only');
+  const full = flordeFilePath(projectName, 'memory', fileName);
+  if (!full) return false;
+  const dir = path.dirname(full);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(full, content, 'utf-8');
+  return true;
+});
+
+ipcMain.handle('florde:memory-list', (event, projectName) => {
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return [];
+  const memDir = path.join(flordeDir, 'memory');
+  if (!fs.existsSync(memDir)) return [];
+  return fs.readdirSync(memDir).filter(f => f.endsWith('.md')).sort();
+});
+
+ipcMain.handle('florde:temp-read', (event, projectName, fileName) => {
+  const full = flordeFilePath(projectName, 'temp', fileName);
+  if (!full || !fs.existsSync(full)) return null;
+  return fs.readFileSync(full, 'utf-8');
+});
+
+ipcMain.handle('florde:temp-write', (event, projectName, fileName, content) => {
+  const full = flordeFilePath(projectName, 'temp', fileName);
+  if (!full) return false;
+  const dir = path.dirname(full);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(full, content, 'utf-8');
+  return true;
+});
+
+ipcMain.handle('florde:temp-list', (event, projectName) => {
+  const flordeDir = getFlordeDir(projectName);
+  if (!flordeDir) return [];
+  const tempDir = path.join(flordeDir, 'temp');
+  if (!fs.existsSync(tempDir)) return [];
+  return fs.readdirSync(tempDir).filter(f => f !== '.gitkeep').sort().map(f => {
+    const stat = fs.statSync(path.join(tempDir, f));
+    return { name: f, size: stat.size, mtime: stat.mtimeMs };
+  });
+});
+
+ipcMain.handle('florde:temp-delete', (event, projectName, fileName) => {
+  const full = flordeFilePath(projectName, 'temp', fileName);
+  if (!full || !fs.existsSync(full)) return false;
+  fs.rmSync(full);
+  return true;
 });
 
 // ==================== APP ====================

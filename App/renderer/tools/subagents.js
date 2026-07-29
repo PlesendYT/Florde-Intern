@@ -4,6 +4,7 @@ class SubagentInstance {
     this.parentSessionId = parentSessionId;
     this.goal = goal;
     this.context = context;
+    this.taskDescription = goal;
     this.status = 'pending';
     this.summary = '';
     this.createdAt = Date.now();
@@ -121,9 +122,7 @@ ${context}`;
     const prov = providers[providerId];
     if (!prov) throw new Error('No active provider: ' + providerId);
 
-    const tools = this._buildTools();
-
-    const filteredTools = tools.filter(t => t.function?.name !== 'spawn_subagent');
+    const filteredTools = this._buildTools();
     const supportsTools = prov.supportsTools ? true : await checkToolSupport(prov, providerId);
 
     const systemWithTools = { role: 'system', content: this._systemPrompt };
@@ -154,7 +153,6 @@ ${context}`;
         };
       }
 
-      this.addMessage('assistant', content);
       return { content };
     } else {
       const response = await prov.sendMessage(msgs, () => {});
@@ -169,7 +167,6 @@ ${context}`;
           }
         };
       }
-      this.addMessage('assistant', text);
       return { content: text };
     }
   }

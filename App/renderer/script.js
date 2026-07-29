@@ -187,6 +187,7 @@ function getActiveTools() {
     { type: 'function', function: { name: 'browser_forward', description: 'Go forward to the next page in browser history.', parameters: { type: 'object', properties: {} } } },
     { type: 'function', function: { name: 'browser_reload', description: 'Reload the current browser page.', parameters: { type: 'object', properties: {} } } },
     { type: 'function', function: { name: 'browser_evaluate', description: 'Execute custom JavaScript code in the browser page context and return the result.', parameters: { type: 'object', properties: { code: { type: 'string', description: 'JavaScript code to execute' } }, required: ['code'] } } },
+    { type: 'function', function: { name: 'spawn_subagent', description: 'Delegate a subtask to a subagent that works autonomously. The subagent has its own AI conversation and tool access, but cannot spawn further subagents. Returns the subagent ID for status tracking.', parameters: { type: 'object', properties: { goal: { type: 'string', description: 'Clear, detailed description of what the subagent should accomplish' }, context: { type: 'string', description: 'Context from the parent task that the subagent needs to know (files, state, decisions, etc.)' } }, required: ['goal', 'context'] } } },
   ];
   const appTools = _getAppToolDefs();
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
@@ -1090,7 +1091,7 @@ const PermissionManager = {
   init() {
     const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     this._rules = settings.permissions || {};
-    const allTools = ['read_file', 'write_file', 'delete_file', 'edit_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
+    const allTools = ['read_file', 'write_file', 'delete_file', 'edit_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'spawn_subagent', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
     allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
   },
 
@@ -4283,6 +4284,37 @@ async function executeToolCall(name, args) {
       const evalResult = await BrowserPanel.evaluate(args.code);
       return 'Result: ' + (typeof evalResult === 'object' ? JSON.stringify(evalResult) : String(evalResult));
 
+    case 'spawn_subagent':
+      if (!args || !args.goal || !args.context) throw new Error('goal and context required for spawn_subagent');
+      const session = ChatManager.getActive();
+      const parentSessionId = session?.id || 'unknown';
+
+      appendSubagentStatus(parentSessionId, `⚡ Spawne Subagent für: ${args.goal.slice(0, 80)}...`);
+
+      const subagent = window.SubagentManager.create(
+        parentSessionId,
+        args.goal,
+        args.context,
+        async (toolName, toolArgs) => {
+          return true;
+        },
+        (type, data) => {
+          if (typeof window._subagentLiveCallback === 'function') {
+            window._subagentLiveCallback(subagent.id, type, data);
+          }
+          if (type === 'system') {
+            appendSubagentStatus(parentSessionId, data);
+          }
+        }
+      );
+
+      subagent.start().catch(err => {
+        console.error('Subagent failed:', err);
+        appendSubagentStatus(parentSessionId, `❌ Subagent ${subagent.id} fehlgeschlagen: ${err.message}`);
+      });
+
+      return `Subagent '${subagent.id}' gestartet mit Aufgabe: ${args.goal}`;
+
     default:
       // Check if this is a connected app tool (e.g. make_list_scenarios)
       if (APP_TOOL_LOOKUP[name]) {
@@ -4305,6 +4337,20 @@ async function executeToolCall(name, args) {
       }
       throw new Error('Unknown tool: ' + name);
   }
+}
+
+function appendSubagentStatus(sessionId, text) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  let statusEl = container.querySelector('.subagent-status:last-child');
+  if (!statusEl || statusEl.dataset.sessionId !== sessionId) {
+    statusEl = document.createElement('div');
+    statusEl.className = 'chat-msg ai subagent-status';
+    statusEl.dataset.sessionId = sessionId;
+    container.appendChild(statusEl);
+  }
+  statusEl.innerHTML = '<div class="msg-label">Subagent-Status</div><div class="subagent-status-text">' + formatMessageContent(text) + '</div>';
+  container.scrollTop = container.scrollHeight;
 }
 
 // Execute a named tool for a connected app (e.g. make_list_scenarios, github_create_issue)
@@ -4610,6 +4656,105 @@ async function handleFlordeCommand(text) {
     document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
     return true;
   }
+
+  // ===== Slash commands =====
+
+  // /help
+  if (cmd === '/help') {
+    chatHistory.push({ role: 'user', content: '📖 Help' });
+    trimChatHistory();
+    renderChat();
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg ai';
+    msgDiv.innerHTML = '<div class="msg-label">Florde AI</div>';
+    document.getElementById('chat-messages').appendChild(msgDiv);
+    const contentDiv = document.createElement('div');
+    msgDiv.appendChild(contentDiv);
+    const staticCmds = [
+      { icon: '📖', cmd: '/help', desc: 'Show all available commands' },
+      { icon: '📄', cmd: '/summarize', desc: 'Summarize the last task' },
+      { icon: '📄', cmd: '/summarize all', desc: 'Summarize the entire conversation' },
+      { icon: '⚡', cmd: '/git status', desc: 'Show git repository status' },
+      { icon: '⚡', cmd: '/git log [n]', desc: 'Show git commits (default: 10)' },
+      { icon: '⚡', cmd: '/run <command>', desc: 'Execute shell command (AI führt aus, z.B. /run npm start)' },
+    ];
+    const staticHtml = '**Befehle:**\n\n' + staticCmds.map(c => c.icon + ' **' + c.cmd + '** — ' + c.desc).join('\n');
+    let appHtml = '';
+    if (window._connectedAppIds && window._connectedAppIds.length && typeof CONNECTED_APPS !== 'undefined') {
+      const appLines = window._connectedAppIds.map(id => {
+        const app = CONNECTED_APPS.find(a => a.id === id);
+        return app ? app.icon + ' **/' + id + '** — ' + app.desc : null;
+      }).filter(Boolean);
+      if (appLines.length) {
+        appHtml = '\n\n**Verbundene Dienste:**\n' + appLines.join('\n');
+      }
+    }
+    contentDiv.innerHTML = formatMessageContent(staticHtml + appHtml);
+    chatHistory.push({ role: 'assistant', content: contentDiv.textContent || contentDiv.innerText || '' });
+    trimChatHistory();
+    renderChat();
+    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    return true;
+  }
+
+  // /git status
+  if (cmd === '/git' && parts[1] === 'status') {
+    chatHistory.push({ role: 'user', content: '⚡ Git Status' });
+    trimChatHistory();
+    renderChat();
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg ai';
+    msgDiv.innerHTML = '<div class="msg-label">Florde AI</div>';
+    document.getElementById('chat-messages').appendChild(msgDiv);
+    const contentDiv = document.createElement('div');
+    msgDiv.appendChild(contentDiv);
+    try {
+      const result = await window.electronAPI.gitStatus(project);
+      if (!result) {
+        contentDiv.innerHTML = formatMessageContent('✅ Clean working tree — no changes');
+      } else {
+        contentDiv.innerHTML = formatMessageContent('```\n' + result + '\n```');
+      }
+    } catch (e) {
+      contentDiv.innerHTML = formatMessageContent('❌ Error: ' + e.message);
+    }
+    chatHistory.push({ role: 'assistant', content: contentDiv.textContent || contentDiv.innerText || '' });
+    trimChatHistory();
+    renderChat();
+    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    return true;
+  }
+
+  // /git log [limit]
+  if (cmd === '/git' && parts[1] === 'log') {
+    const limit = parseInt(parts[2]) || 10;
+    chatHistory.push({ role: 'user', content: '⚡ Git Log (letzte ' + limit + ')' });
+    trimChatHistory();
+    renderChat();
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg ai';
+    msgDiv.innerHTML = '<div class="msg-label">Florde AI</div>';
+    document.getElementById('chat-messages').appendChild(msgDiv);
+    const contentDiv = document.createElement('div');
+    msgDiv.appendChild(contentDiv);
+    try {
+      const commits = await window.electronAPI.gitLog(project, limit);
+      if (!commits || commits.length === 0) {
+        contentDiv.innerHTML = formatMessageContent('No commits found.');
+      } else {
+        const lines = commits.map(c => '`' + c.shortHash + '` ' + c.date + ' ' + c.author + ' — ' + c.message);
+        contentDiv.innerHTML = formatMessageContent(lines.join('\n'));
+      }
+    } catch (e) {
+      contentDiv.innerHTML = formatMessageContent('❌ Error: ' + e.message);
+    }
+    chatHistory.push({ role: 'assistant', content: contentDiv.textContent || contentDiv.innerText || '' });
+    trimChatHistory();
+    renderChat();
+    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    return true;
+  }
+
   return false;
 }
 
@@ -4637,6 +4782,33 @@ async function sendMessage(text) {
     } catch {}
   }
 
+  // Pre-process AI-targeted /commands before handleFlordeCommand
+  let _hideUserMsg = false;
+  const trimmed = text.trim();
+  const firstSlash = trimmed.match(/^\/([a-zA-Z]+)/);
+  if (firstSlash) {
+    const slashCmd = firstSlash[1].toLowerCase();
+    const rest = trimmed.slice(firstSlash[0].length).trim();
+    if (slashCmd === 'summarize') {
+      if (rest.toLowerCase() === 'all') {
+        text = '📄 Summarize the entire conversation history comprehensively. Include key decisions, insights, and action items.';
+      } else {
+        text = '📄 Summarize the most recent task or exchange briefly. Focus on what was accomplished and any decisions made.';
+      }
+    } else if (slashCmd === 'run') {
+      _hideUserMsg = true;
+      text = '⚡ Execute the following command in the project using the exec_command tool: ' + rest;
+    } else if (slashCmd !== 'help' && slashCmd !== 'git' && !trimmed.startsWith('!')) {
+      const connectedApps = window._connectedAppIds || [];
+      if (typeof CONNECTED_APPS !== 'undefined') {
+        const appInfo = CONNECTED_APPS.find(a => a.id === slashCmd);
+        if (appInfo && connectedApps.includes(slashCmd)) {
+          text = '⚡ Using ' + appInfo.icon + ' ' + appInfo.name + ': ' + (rest || 'help') + '. Use the available ' + slashCmd + '_* tools.';
+        }
+      }
+    }
+  }
+
   // Handle .florde chat commands
   const handled = await handleFlordeCommand(text);
   if (handled) { if (input) input.value = ''; return; }
@@ -4662,7 +4834,9 @@ async function sendMessage(text) {
   updatePrivacyIndicator();
 
   const userImages = _attachedImages.length > 0 ? [..._attachedImages] : undefined;
-  chatHistory.push({ role: 'user', content: text, _images: userImages });
+  if (!_hideUserMsg) {
+    chatHistory.push({ role: 'user', content: text, _images: userImages });
+  }
   trimChatHistory();
   if (input) input.value = '';
   _attachedImages = [];
@@ -4792,6 +4966,9 @@ async function sendMessage(text) {
       if (rc) base.reasoning_content = rc;
       return base;
     })];
+    if (_hideUserMsg) {
+      messages.push({ role: 'user', content: text });
+    }
     if (allImages.length > 0) {
       if (provider === 'ollama') {
         prov._pendingImages = allImages.map(i => i.dataUrl.replace(/^data:image\/\w+;base64,/, ''));

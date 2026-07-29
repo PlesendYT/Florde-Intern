@@ -155,6 +155,7 @@ body {
 .project-item .project-type { font-size: 0.7rem; color: var(--accent); background: rgba(124,58,237,0.15); padding: 0.1rem 0.4rem; border-radius: 4px; }
 .project-del { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 1.1rem; padding: 0 0.3rem; }
 .project-del:hover { color: #ef4444; }
+#start-dashboard { flex: 1; overflow-y: auto; max-width: 800px; }
 
 /* ==================== BUTTONS ==================== */
 .btn { display: inline-block; padding: 0.7rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.2s; cursor: pointer; border: none; font-size: 0.9rem; }

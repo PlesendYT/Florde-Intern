@@ -523,7 +523,7 @@ body {
   -webkit-app-region: drag; flex-shrink: 0; overflow: hidden;
 }
 .titlebar button, .titlebar select, .titlebar input { -webkit-app-region: no-drag; }
-.titlebar-left { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.titlebar-left { display: flex; align-items: center; gap: 6px; flex-shrink: 0; -webkit-app-region: drag; }
 .titlebar-center {
   display: flex; overflow-x: auto; white-space: nowrap;
   flex-shrink: 1; min-width: 0; gap: 2px; align-items: center;
@@ -538,7 +538,7 @@ body {
 .titlebar-center button:hover { background: var(--hover); border-color: var(--accent); }
 .titlebar-center::-webkit-scrollbar { height: 3px; }
 .titlebar-center::-webkit-scrollbar-thumb { background: var(--text3); border-radius: 2px; }
-.titlebar-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.titlebar-right { display: flex; align-items: center; gap: 2px; flex-shrink: 0; -webkit-app-region: drag; }
 .titlebar-text { font-size: 12px; color: var(--text3); font-weight: 600; }
 .titlebar-project { font-size: 12px; color: var(--text2); margin-left: 4px; }
 .project-type-badge {

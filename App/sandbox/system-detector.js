@@ -1,14 +1,6 @@
 const os = require('os');
 const { execSync } = require('child_process');
 
-const BACKENDS = [
-  { type: 'none', label: 'Keine Sandbox', minRam: 0, minCores: 0, minVram: 0, requiresVision: false },
-  { type: 'firejail', label: 'Firejail', minRam: 0, minCores: 0, minVram: 0, requiresVision: false },
-  { type: 'docker', label: 'Docker', minRam: 8192, minCores: 2, minVram: 0, requiresVision: false },
-  { type: 'podman', label: 'Podman', minRam: 8192, minCores: 2, minVram: 0, requiresVision: false },
-  { type: 'vmware', label: 'VMware', minRam: 16384, minCores: 4, minVram: 4096, requiresVision: false },
-];
-
 class SystemDetector {
   static async detect() {
     const cpus = os.cpus();

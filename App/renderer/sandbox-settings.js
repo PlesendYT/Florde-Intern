@@ -46,15 +46,19 @@ const SandboxSettings = {
     });
 
     document.getElementById('btn-sandbox-detect')?.addEventListener('click', async () => {
-      const spec = await window.electronAPI.sandbox.detect();
-      const recs = await window.electronAPI.sandbox.recommend(spec);
-      const div = document.getElementById('sandbox-recommendation');
-      div.innerHTML = '<strong>System:</strong><br>' +
-        `CPU: ${spec.cpu.model} (${spec.cpu.cores} Cores)<br>` +
-        `RAM: ${spec.ram.total} MB<br>` +
-        `GPU: ${spec.gpu.model}${spec.gpu.vram > 0 ? ' (' + spec.gpu.vram + ' MB VRAM)' : ''}<br>` +
-        `<br><strong>Empfehlung:</strong><br>` +
-        recs.map(r => `• ${r.label}: ${r.reason}`).join('<br>');
+      try {
+        const spec = await window.electronAPI.sandbox.detect();
+        const recs = await window.electronAPI.sandbox.recommend(spec);
+        const div = document.getElementById('sandbox-recommendation');
+        div.innerHTML = '<strong>System:</strong><br>' +
+          `CPU: ${spec.cpu.model} (${spec.cpu.cores} Cores)<br>` +
+          `RAM: ${spec.ram.total} MB<br>` +
+          `GPU: ${spec.gpu.model}${spec.gpu.vram > 0 ? ' (' + spec.gpu.vram + ' MB VRAM)' : ''}<br>` +
+          `<br><strong>Empfehlung:</strong><br>` +
+          recs.map(r => `• ${r.type}: ${r.reason}`).join('<br>');
+      } catch (err) {
+        showNotification('error', 'Fehler: ' + err.message);
+      }
     });
   }
 };

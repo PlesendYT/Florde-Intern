@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -15,7 +15,7 @@ class FirejailBackend extends SandboxBackend {
     super();
     this._workspaceDir = workspaceDir;
     this._profilePath = path.join(os.homedir(), '.config', 'florde', 'firejail.profile');
-    this._containerName = 'florde-sandbox';
+
   }
 
   async isAvailable() {
@@ -37,7 +37,7 @@ seccomp
 noroot
 whitelist ${this._workspaceDir}
 netfilter
-${this._networkRule()}
+${this._networkRule('none')}
 `;
     fs.mkdirSync(path.dirname(this._profilePath), { recursive: true });
     fs.writeFileSync(this._profilePath, profile);
@@ -64,14 +64,14 @@ ${this._networkRule()}
     try {
       const network = options.network || 'none';
       const profile = this._profilePath;
-      const firejailCmd = `firejail --profile=${profile} --private-cwd=${cwd} bash -c ${JSON.stringify(command)}`;
-      const output = execSync(firejailCmd, {
+      const result = spawnSync('firejail', ['--profile', profile, '--private-cwd', cwd, 'bash', '-c', command], {
         timeout: options.timeout || 30000,
-        encoding: 'utf-8'
+        encoding: 'utf-8',
+        stdio: 'pipe',
       });
-      return { ok: true, output, code: 0 };
+      return { ok: result.status === 0, output: result.stdout || result.stderr, code: result.status ?? -1 };
     } catch (e) {
-      return { ok: false, output: e.stderr || e.message, code: e.status || -1 };
+      return { ok: false, output: e.message, code: -1 };
     }
   }
 

@@ -1,4 +1,3 @@
-const path = require('path');
 const { NoneBackend } = require('./backends/none');
 const { FirejailBackend } = require('./backends/firejail');
 const { SystemDetector } = require('./system-detector');

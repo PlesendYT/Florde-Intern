@@ -1,5 +1,6 @@
-const { spawnSync } = require('child_process');
 const crypto = require('crypto');
+const path = require('path');
+const { spawnSync } = require('child_process');
 const { SandboxBackend } = require('../backend');
 
 class DockerBackend extends SandboxBackend {
@@ -13,7 +14,16 @@ class DockerBackend extends SandboxBackend {
     this._workspaceDir = workspaceDir;
     this._image = options.image || 'florde/sandbox:minimal';
     this._containerId = null;
+    this._containerName = null;
     this._network = options.network || 'bridge';
+  }
+
+  _resolvePath(filePath) {
+    const resolved = path.resolve('/workspace', filePath);
+    if (!resolved.startsWith('/workspace/') && resolved !== '/workspace') {
+      throw new Error('Access denied: path traversal detected');
+    }
+    return resolved;
   }
 
   _generateContainerName() {
@@ -21,13 +31,15 @@ class DockerBackend extends SandboxBackend {
     return `florde-sbx-${suffix}`;
   }
 
-  _run(args, timeout = 30000) {
+  _run(args, timeout = 30000, input = null) {
     try {
-      const r = spawnSync(this._binary, args, {
+      const opts = {
         timeout,
         encoding: 'utf-8',
         stdio: 'pipe',
-      });
+      };
+      if (input !== null) opts.input = input;
+      const r = spawnSync(this._binary, args, opts);
       const ok = r.status === 0 && !r.error && !r.signal;
       return { ok, stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), code: r.status ?? -1 };
     } catch (e) {
@@ -48,7 +60,10 @@ class DockerBackend extends SandboxBackend {
     // Pull image if not already present
     const pullResult = this._run(['pull', this._image], 120000);
     if (!pullResult.ok) {
-      // If pull fails because image already exists locally in a tag mismatch, ignore
+      const isRateLimited = pullResult.stderr.includes('rate') || pullResult.stderr.includes('too many requests');
+      if (!isRateLimited) {
+        // Image may already exist locally despite non-zero exit (e.g., tag resolution)
+      }
     }
 
     // Create container
@@ -82,33 +97,32 @@ class DockerBackend extends SandboxBackend {
       'sh', '-c', command,
     ], timeout);
 
-    return { ok: result.ok, output: result.stdout || result.stderr, code: result.code };
+    const output = result.stderr ? `${result.stdout}\n${result.stderr}`.trim() : result.stdout;
+    return { ok: result.ok, output, code: result.code };
   }
 
   async readFile(filePath) {
     if (!this._initialized) await this.init();
-    const result = this._run(['exec', this._containerName, 'cat', `/workspace/${filePath}`]);
+    const target = this._resolvePath(filePath);
+    const result = this._run(['exec', this._containerName, 'cat', target]);
     if (!result.ok) throw new Error('Failed to read file: ' + result.stderr);
     return result.stdout;
   }
 
   async writeFile(filePath, content) {
     if (!this._initialized) await this.init();
-    const dir = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+    const target = this._resolvePath(filePath);
+    const dir = target.includes('/') ? target.substring(0, target.lastIndexOf('/')) : '';
     if (dir) {
-      this._run(['exec', this._containerName, 'mkdir', '-p', `/workspace/${dir}`]);
+      this._run(['exec', this._containerName, 'mkdir', '-p', dir]);
     }
-    const result = spawnSync(this._binary, ['exec', '-i', this._containerName, 'sh', '-c', `cat > /workspace/${filePath}`], {
-      input: content,
-      encoding: 'utf-8',
-      timeout: 10000,
-    });
-    if (result.error || result.status !== 0) throw new Error('Failed to write file');
+    const result = this._run(['exec', '-i', this._containerName, 'sh', '-c', `cat > ${target}`], 10000, content);
+    if (!result.ok) throw new Error('Failed to write file');
   }
 
   async listFiles(dirPath) {
     if (!this._initialized) await this.init();
-    const target = dirPath ? `/workspace/${dirPath}` : '/workspace';
+    const target = this._resolvePath(dirPath || '');
     const result = this._run(['exec', this._containerName, 'ls', '-1', target]);
     if (!result.ok) throw new Error('Failed to list files: ' + result.stderr);
     return result.stdout.split('\n').filter(Boolean);
@@ -116,7 +130,8 @@ class DockerBackend extends SandboxBackend {
 
   async deleteFile(filePath) {
     if (!this._initialized) await this.init();
-    const result = this._run(['exec', this._containerName, 'rm', '-f', `/workspace/${filePath}`]);
+    const target = this._resolvePath(filePath);
+    const result = this._run(['exec', this._containerName, 'rm', '-f', target]);
     if (!result.ok) throw new Error('Failed to delete file: ' + result.stderr);
   }
 

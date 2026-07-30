@@ -31,7 +31,7 @@ describe('SandboxManager', () => {
   });
 
   describe('backends getter', () => {
-    it('should return an array of backend type names', () => {
+    it('should return all registered backend type names', () => {
       const names = manager.backends;
       assert.deepStrictEqual(names, ['none', 'firejail', 'docker', 'podman']);
     });

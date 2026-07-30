@@ -65,7 +65,11 @@ class SystemDetector {
 
   static async _checkBinary(name) {
     try {
-      execSync(`which ${name} 2>/dev/null || where ${name} 2>nul`, { stdio: 'ignore' });
+      if (os.platform() === 'win32') {
+        execSync(`where ${name} 2>nul`, { stdio: 'ignore' });
+      } else {
+        execSync(`which ${name} 2>/dev/null`, { stdio: 'ignore' });
+      }
       return true;
     } catch {
       return false;

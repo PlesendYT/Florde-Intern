@@ -11,20 +11,25 @@
 ### Dateistruktur
 
 ```
-App/renderer/sandbox/
-  manager.js              ← SandboxManager (Singleton)
-  backend.js              ← SandboxBackend (abstract base class)
-  backends/
-    none-backend.js       ← Aktuelles execSync-Verhalten (Fallback)
-    firejail-backend.js   ← firejail --profile=...
-    docker-backend.js     ← docker run/exec
-    podman-backend.js     ← podman run/exec
-    vmware-backend.js     ← vmrun + VNC-Screen
-  system-detector.js      ← CPU/RAM/GPU-Erkennung + Empfehlung
-  sandbox-settings.js     ← Settings-UI-Komponente
-
-App/main.js               ← sandboxExec IPC angepasst
-App/preload.js            ← Sandbox-API exponiert
+App/
+├── sandbox/
+│   ├── manager.js              ← SandboxManager (Singleton)
+│   ├── backend.js              ← SandboxBackend (abstract)
+│   ├── backends/
+│   │   ├── none.js             ← Aktuelles execSync-Verhalten (Fallback)
+│   │   ├── firejail.js         ← firejail --profile=...
+│   │   ├── docker.js           ← docker run/exec
+│   │   ├── podman.js           ← podman run/exec
+│   │   └── vmware.js           ← vmrun + VNC-Screen
+│   ├── system-detector.js      ← CPU/RAM/GPU-Erkennung + Empfehlung
+│   └── os-templates.js         ← OS-Template-Definitionen
+│
+├── main.js                     ← IPC-Handler, Initialisierung
+├── preload.js                  ← Sandbox-API für Renderer
+│
+└── renderer/
+    ├── sandbox-settings.js     ← Settings-UI (renderer-safe)
+    └── script.js               ← executeToolCall nutzt SandboxManager per IPC
 ```
 
 ### SandboxBackend (abstract)
@@ -136,10 +141,25 @@ Identisch zu Docker, nur `podman` statt `docker`. Rootless, kein Daemon.
 
 ### VMWareBackend
 
+**OS-Templates:**
+
+| Name | Typ | Image |
+|------|-----|-------|
+| Ubuntu Server | headless | `ubuntu-24.04-server.iso` |
+| Ubuntu Desktop | desktop | `ubuntu-24.04-desktop.iso` |
+| Debian | headless | `debian-12.iso` |
+| Fedora Workstation | desktop | `fedora-40-workstation.iso` |
+| Arch Linux | desktop/headless | `archlinux-YYYY.MM.DD.iso` |
+| Tiny10 | headless | `tiny10-23h2.iso` (Fallback: Windows 10 LTSC) |
+| Windows Server | headless | `windows-server-2022.iso` |
+| Custom | benutzerdefiniert | Eigene ISO/IMG per Drag&Drop, Pfadauswahl oder Datei-Dialog |
+
+Templates definiert in `App/sandbox/os-templates.js`. Florde lädt das ISO selbst herunter oder verwendet ein vorhandenes. Bei Custom kann der User eine beliebige ISO/IMG/VDMK/VMDK angeben.
+
 **init:**
-- Template-VM auswählen (Windows/Linux/Ubuntu/etc.)
-- `vmrun -T ws start /path/to/vm.vmx nogui`
-- `vmrun -T ws runProgramInGuest ...` für erste Setup-Skripte
+- Template-VM auswählen
+- `vmrun -T ws start /path/to/florde-template.vmx nogui`
+- Automatische Installation (preseed/kickstart/unattend)
 - `vmrun -T ws snapshot` als Baseline
 
 **exec:** `vmrun -T ws -gu user -gp pass runProgramInGuest /path/to/vm.vmx -interactive -activeWindow '<cmd>'`
@@ -225,22 +245,32 @@ Alternative: VMWare Sandbox (empfohlen bei Vision-Aufgaben)
 
 ## 4. Integration in Florde
 
-### exec_command
+### Main Process Init
 
-`executeToolCall('exec_command', args)` → `sandboxManager.exec(args.command)` statt `window.electronAPI.sandboxExec(...)`.
+```js
+// main.js
+const { SandboxManager } = require('./sandbox/manager');
+const sandboxManager = new SandboxManager();
+```
 
-Der Main-Process bekommt einen neuen IPC-Handler `sandbox:exec`, der je nach Backend-Typ routed.
+### IPC Handler
 
-### Main Process (main.js)
+Neue Handler in `main.js`:
+- `sandbox:init` → `sandboxManager.switchBackend(type)`
+- `sandbox:exec` → `sandboxManager.exec(cmd, opts)`
+- `sandbox:read-file` / `sandbox:write-file` / `sandbox:list-files` / `sandbox:delete-file`
+- `sandbox:detect` → `SystemDetector.detect()`
+- `sandbox:recommend` → `SystemDetector.recommend(spec)`
+- `sandbox:vm-screenshot` → `sandboxManager.active.screenshot()`
+- `sandbox:vm-snapshot` → `sandboxManager.active.createSnapshot(name)`
+- `sandbox:vm-mouse` → `sandboxManager.active.sendMouse(x, y, button)`
+- `sandbox:vm-key` → `sandboxManager.active.sendKey(key)`
 
-Neue IPC-Handler:
-- `sandbox:init` → Backend initialisieren
-- `sandbox:exec` → Befehl ausführen
-- `sandbox:read-file` / `sandbox:write-file` etc.
-- `sandbox:switch` → Backend wechseln
-- `sandbox:detect` → System erkennen
+### Renderer Integration
 
-Bestehende Handler (`sandbox-exec`, `sandbox-read-file`) bleiben als Fallback für NoneBackend.
+`executeToolCall('exec_command', args)` → `window.electronAPI.sandbox.exec(cmd, opts)` (neuer preload-Pfad).
+
+Bestehende Handler (`sandbox-exec`, `sandbox-read-file`) bleiben als Fallback für NoneBackend oder werden durch die neuen Handler ersetzt.
 
 ### Settings UI
 

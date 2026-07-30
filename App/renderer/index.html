@@ -278,6 +278,7 @@
                 <input type="file" id="chat-image-input" accept="image/*" multiple hidden>
                 <span id="token-count" class="token-count">0 tokens</span>
                 <span id="pending-task-badge" class="pending-task-badge hidden" title="Pending task scheduled — will be resumed on next message">&#x1F4CB; Task</span>
+                <button id="btn-subagents" title="Subagent-Status anzeigen" class="btn-icon">&#x1F916;</button>
               </div>
             </div>
           </div>
@@ -1162,6 +1163,20 @@
         <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;margin-left:auto;">Clear</button>
       </div>
       <div id="execution-list"></div>
+    </div>
+  </div>
+
+  <!-- Subagents Overlay -->
+  <div id="subagents-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:0.5rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem;">
+        <h2 style="margin:0;font-size:1.1rem;">Subagent-Status</h2>
+        <div style="display:flex;gap:0.3rem;">
+          <button id="btn-subagents-abort-all" class="btn btn-small" style="background:var(--danger);">Alle abbrechen</button>
+          <button id="btn-subagents-close" class="btn btn-small">Schließen</button>
+        </div>
+      </div>
+      <div id="subagents-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.5rem;"></div>
     </div>
   </div>
 

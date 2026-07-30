@@ -9246,3 +9246,87 @@ document.getElementById('btn-toggle-diff')?.addEventListener('click', () => {
 document.getElementById('btn-close-diff')?.addEventListener('click', () => {
   DiffViewer.hide();
 });
+
+// ==================== SUBAGENTS OVERLAY ====================
+
+function initSubagentsOverlay() {
+  const btn = document.getElementById('btn-subagents');
+  const modal = document.getElementById('subagents-modal');
+  const closeBtn = document.getElementById('btn-subagents-close');
+  const abortAllBtn = document.getElementById('btn-subagents-abort-all');
+  const list = document.getElementById('subagents-list');
+
+  if (!btn || !modal) return;
+
+  btn.addEventListener('click', () => {
+    modal.classList.remove('hidden');
+    renderSubagentsList();
+  });
+
+  closeBtn?.addEventListener('click', () => modal.classList.add('hidden'));
+
+  abortAllBtn?.addEventListener('click', () => {
+    if (confirm('Alle Subagenten abbrechen?')) {
+      window.SubagentManager?.abortAll();
+      renderSubagentsList();
+    }
+  });
+
+  // Close on background click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+
+  // Register live streaming callback
+  window._subagentLiveCallback = (id, type, data) => {
+    renderSubagentsList();
+  };
+
+  // Poll every 2s for live updates (falls callback missed)
+  setInterval(() => {
+    if (!modal.classList.contains('hidden')) {
+      renderSubagentsList();
+    }
+  }, 2000);
+}
+
+function renderSubagentsList() {
+  const list = document.getElementById('subagents-list');
+  if (!list || !window.SubagentManager) return;
+
+  const instances = window.SubagentManager.getAll();
+  if (instances.length === 0) {
+    list.innerHTML = '<div style="color:var(--text3);text-align:center;padding:2rem;">Keine Subagenten aktiv</div>';
+    return;
+  }
+
+  list.innerHTML = instances.map(inst => {
+    const statusLabel = inst.status.charAt(0).toUpperCase() + inst.status.slice(1);
+    const timeAgo = Math.floor((Date.now() - inst.createdAt) / 1000);
+    const timeStr = timeAgo < 60 ? `vor ${timeAgo}s` : `vor ${Math.floor(timeAgo / 60)}m`;
+    const output = inst._messages.slice(-5).map(m =>
+      (m.role === 'user' ? '> ' : '') + m.content.slice(0, 200)
+    ).join('\n---\n');
+
+    return `<div class="subagent-card ${inst.status}">
+      <div class="subagent-card-header">
+        <span><span class="subagent-card-id">${inst.id}</span> <span class="subagent-card-goal">${escapeHtml(inst.goal.slice(0, 60))}</span></span>
+        <span class="subagent-card-status ${inst.status}">${statusLabel} · ${timeStr}</span>
+      </div>
+      <div class="subagent-card-output">${escapeHtml(output || '(keine Ausgabe)')}</div>
+    </div>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Init on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSubagentsOverlay);
+} else {
+  initSubagentsOverlay();
+}

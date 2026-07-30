@@ -1001,7 +1001,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .btn-icon:hover { background: var(--hover); color: var(--accent); }
 .chat-input-area textarea {
   flex: 1; background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
-  padding: 0.65rem 0.75rem; border-radius: 8px; font-size: var(--chat-font-size, 14px); resize: vertical; font-family: inherit; min-height: 40px;
+  padding: 0.65rem 0.75rem; border-radius: 8px; font-size: var(--chat-font-size, 14px); resize: vertical; font-family: inherit; min-height: 40px; max-height: 150px; overflow-y: auto;
 }
 .chat-input-area textarea:focus { outline: none; border-color: var(--accent); }
 .chat-input-footer { display: flex; align-items: center; gap: 0.4rem; }
@@ -1573,8 +1573,9 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .skill-autocomplete {
   position: absolute; bottom: 100%; left: 0; right: 0;
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  max-height: 200px; overflow-y: auto; z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
+  max-height: 300px; overflow-y: auto; z-index: 100; box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
 }
+
 .skill-autocomplete.hidden { display: none; }
 .skill-auto-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; cursor: pointer; }
 .skill-auto-item.selected, .skill-auto-item:hover { background: var(--hover); }
@@ -1917,3 +1918,40 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   border-radius: 4px;
 }
 .project-action-btn:hover { background: var(--hover); color: var(--text); }
+
+/* ==================== SUBAGENT CARDS ==================== */
+.subagent-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  background: var(--bg1);
+}
+.subagent-card.pending { border-left: 3px solid #888; }
+.subagent-card.running { border-left: 3px solid #3b82f6; }
+.subagent-card.completed { border-left: 3px solid #22c55e; }
+.subagent-card.failed { border-left: 3px solid #ef4444; }
+.subagent-card.aborted { border-left: 3px solid #f59e0b; }
+.subagent-card-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 0.3rem;
+}
+.subagent-card-id { font-weight: 600; color: var(--accent); }
+.subagent-card-goal { color: var(--text2); }
+.subagent-card-status { font-size: 0.75rem; padding: 1px 6px; border-radius: 3px; background: var(--bg2); }
+.subagent-card-status.running { background: #3b82f6; color: white; }
+.subagent-card-status.completed { background: #22c55e; color: white; }
+.subagent-card-status.failed { background: #ef4444; color: white; }
+.subagent-card-status.aborted { background: #f59e0b; color: white; }
+.subagent-card-output {
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  background: var(--bg2);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

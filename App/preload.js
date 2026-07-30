@@ -33,6 +33,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sandboxExec: (s, c) => ipcRenderer.invoke('sandbox-exec', s, c),
   downloadSandboxFile: (s) => ipcRenderer.invoke('download-sandbox-file', s),
 
+  sandbox: {
+    exec: (cmd, opts) => ipcRenderer.invoke('sandbox:exec', cmd, opts),
+    readFile: (p) => ipcRenderer.invoke('sandbox:read-file', p),
+    writeFile: (p, c) => ipcRenderer.invoke('sandbox:write-file', p, c),
+    listFiles: (p) => ipcRenderer.invoke('sandbox:list-files', p),
+    deleteFile: (p) => ipcRenderer.invoke('sandbox:delete-file', p),
+    switchBackend: (t) => ipcRenderer.invoke('sandbox:switch', t),
+    detect: () => ipcRenderer.invoke('sandbox:detect'),
+    recommend: (s) => ipcRenderer.invoke('sandbox:recommend', s),
+    status: () => ipcRenderer.invoke('sandbox:status'),
+    vmScreenshot: () => ipcRenderer.invoke('sandbox:vm-screenshot'),
+    vmSnapshot: (n) => ipcRenderer.invoke('sandbox:vm-snapshot', n),
+    vmMouse: (x, y, b) => ipcRenderer.invoke('sandbox:vm-mouse', x, y, b),
+    vmKey: (k) => ipcRenderer.invoke('sandbox:vm-key', k),
+  },
+
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
   unwatchProject: (n) => ipcRenderer.invoke('unwatch-project', n),
   onFileChanged: (callback) => {

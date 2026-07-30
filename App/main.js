@@ -3,10 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const { execSync, spawnSync } = require('child_process');
 const FlordeStorage = require('./storage');
+const { SandboxManager } = require('./sandbox/manager');
 
 const _flordeStores = new Map(); // projectName -> FlordeStorage instance
 
 let mainWindow;
+let sandboxManager;
 let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
 function getSettingsPath() { if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json'); return _settingsPath; }
 function getProjectsDir() { if (!_projectsDir) _projectsDir = path.join(app.getPath('userData'), 'projects'); return _projectsDir; }
@@ -42,6 +44,7 @@ function createWindow() {
 app.whenReady().then(() => {
   if (!fs.existsSync(getProjectsDir())) fs.mkdirSync(getProjectsDir(), { recursive: true });
   if (!fs.existsSync(getSandboxDir())) fs.mkdirSync(getSandboxDir(), { recursive: true });
+  sandboxManager = new SandboxManager(getSandboxDir());
   createWindow();
 });
 
@@ -359,6 +362,50 @@ ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
     return { ok: false, output: e.stderr || e.message, code: e.status };
   }
 });
+
+// ==================== SANDBOX MANAGER ====================
+
+ipcMain.handle('sandbox:exec', async (event, command, options) => {
+  return sandboxManager.exec(command, options);
+});
+
+ipcMain.handle('sandbox:read-file', async (event, filePath) => {
+  return sandboxManager.readFile(filePath);
+});
+
+ipcMain.handle('sandbox:write-file', async (event, filePath, content) => {
+  return sandboxManager.writeFile(filePath, content);
+});
+
+ipcMain.handle('sandbox:list-files', async (event, dirPath) => {
+  return sandboxManager.listFiles(dirPath);
+});
+
+ipcMain.handle('sandbox:delete-file', async (event, filePath) => {
+  return sandboxManager.deleteFile(filePath);
+});
+
+ipcMain.handle('sandbox:switch', async (event, type) => {
+  await sandboxManager.switchBackend(type);
+  return { ok: true, active: sandboxManager.activeType };
+});
+
+ipcMain.handle('sandbox:detect', async () => {
+  return sandboxManager.detect();
+});
+
+ipcMain.handle('sandbox:recommend', async (event, spec) => {
+  return sandboxManager.recommend(spec);
+});
+
+ipcMain.handle('sandbox:status', async () => {
+  return { active: sandboxManager.activeType, backends: sandboxManager.backends };
+});
+
+ipcMain.handle('sandbox:vm-screenshot', async () => sandboxManager.screenshot());
+ipcMain.handle('sandbox:vm-snapshot', async (event, name) => sandboxManager.createSnapshot(name));
+ipcMain.handle('sandbox:vm-mouse', async (event, x, y, button) => sandboxManager.sendMouse(x, y, button));
+ipcMain.handle('sandbox:vm-key', async (event, key) => sandboxManager.sendKey(key));
 
 // ==================== FILE WATCHER ====================
 

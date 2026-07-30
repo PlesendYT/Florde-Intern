@@ -9318,12 +9318,6 @@ function renderSubagentsList() {
   }).join('');
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 // Init on DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initSubagentsOverlay);

@@ -22,7 +22,7 @@ class NoneBackend extends SandboxBackend {
     const resolved = path.resolve(cwd);
     const allowed = path.resolve(this._sandboxDir);
 
-    if (!resolved.startsWith(allowed)) {
+    if (resolved !== allowed && !resolved.startsWith(allowed + path.sep)) {
       return { ok: false, output: 'Access denied: invalid path', code: -1 };
     }
     if (UNSAFE_PATTERN.test(command)) {
@@ -42,27 +42,31 @@ class NoneBackend extends SandboxBackend {
   }
 
   async readFile(filePath) {
+    const allowed = path.resolve(this._sandboxDir);
     const resolved = path.resolve(this._sandboxDir, filePath);
-    if (!resolved.startsWith(path.resolve(this._sandboxDir))) throw new Error('Access denied');
+    if (resolved !== allowed && !resolved.startsWith(allowed + path.sep)) throw new Error('Access denied');
     return fs.readFileSync(resolved, 'utf-8');
   }
 
   async writeFile(filePath, content) {
+    const allowed = path.resolve(this._sandboxDir);
     const resolved = path.resolve(this._sandboxDir, filePath);
-    if (!resolved.startsWith(path.resolve(this._sandboxDir))) throw new Error('Access denied');
+    if (resolved !== allowed && !resolved.startsWith(allowed + path.sep)) throw new Error('Access denied');
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
     fs.writeFileSync(resolved, content, 'utf-8');
   }
 
   async listFiles(dirPath) {
+    const allowed = path.resolve(this._sandboxDir);
     const resolved = path.resolve(this._sandboxDir, dirPath || '');
-    if (!resolved.startsWith(path.resolve(this._sandboxDir))) throw new Error('Access denied');
+    if (resolved !== allowed && !resolved.startsWith(allowed + path.sep)) throw new Error('Access denied');
     return fs.readdirSync(resolved);
   }
 
   async deleteFile(filePath) {
+    const allowed = path.resolve(this._sandboxDir);
     const resolved = path.resolve(this._sandboxDir, filePath);
-    if (!resolved.startsWith(path.resolve(this._sandboxDir))) throw new Error('Access denied');
+    if (resolved !== allowed && !resolved.startsWith(allowed + path.sep)) throw new Error('Access denied');
     fs.unlinkSync(resolved);
   }
 }

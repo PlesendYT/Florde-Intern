@@ -136,6 +136,15 @@ describe('NoneBackend', () => {
         { message: 'Access denied' }
       );
     });
+
+    it('should reject sibling dir with similar prefix (path.sep guard)', async () => {
+      const evilBasename = path.basename(sandboxDir) + '_evil';
+      const evilPath = path.join('..', evilBasename, 'file.txt');
+      await assert.rejects(
+        () => backend.readFile(evilPath),
+        { message: 'Access denied' }
+      );
+    });
   });
 
   describe('writeFile', () => {

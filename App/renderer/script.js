@@ -4065,7 +4065,7 @@ async function executeToolCall(name, args) {
       logToTerminal('AI executing: ' + args.command + ' in ' + execDir, 'command');
       const risk = assessShellRisk(args.command);
       logToTerminal('Shell risk level: ' + risk, risk === 'critical' || risk === 'high' ? 'warn' : 'info');
-      const execResult = await window.electronAPI.sandboxExec(execDir, args.command);
+      const execResult = await window.electronAPI.sandbox.exec(args.command, { cwd: execDir });
       const outputText = typeof execResult === 'string' ? execResult : (execResult && execResult.output ? execResult.output : '');
       // Insert expandable shell view into the current AI message
       const shellView = showExpandableShellView(args.command, outputText);

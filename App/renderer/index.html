@@ -412,6 +412,7 @@
         <button class="settings-tab" data-tab="security">Security</button>
         <button class="settings-tab" data-tab="api-keys">API Keys</button>
         <button class="settings-tab" data-tab="mcp">MCP Servers</button>
+        <button class="settings-tab" data-tab="sandbox">Sandbox</button>
       </div>
 
       <!-- General Tab -->
@@ -875,6 +876,11 @@
         <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Server hinzufügen</button>
       </div>
 
+      <!-- Sandbox Settings Tab -->
+      <div class="settings-tab-content" data-tab="sandbox">
+        <div id="sandbox-settings-content"></div>
+      </div>
+
       <div id="settings-validation" class="settings-validation hidden"></div>
 
       <div class="modal-actions">
@@ -1199,6 +1205,7 @@
   <script src="project-detector.js"></script>
   <script src="layout-manager.js"></script>
   <script src="tools/subagents.js"></script>
+  <script src="sandbox-settings.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

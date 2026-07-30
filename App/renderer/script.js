@@ -4342,14 +4342,11 @@ async function executeToolCall(name, args) {
 function appendSubagentStatus(sessionId, text) {
   const container = document.getElementById('chat-messages');
   if (!container) return;
-  let statusEl = container.querySelector('.subagent-status:last-child');
-  if (!statusEl || statusEl.dataset.sessionId !== sessionId) {
-    statusEl = document.createElement('div');
-    statusEl.className = 'chat-msg ai subagent-status';
-    statusEl.dataset.sessionId = sessionId;
-    container.appendChild(statusEl);
-  }
+  const statusEl = document.createElement('div');
+  statusEl.className = 'chat-msg ai subagent-status';
+  statusEl.dataset.sessionId = sessionId;
   statusEl.innerHTML = '<div class="msg-label">Subagent-Status</div><div class="subagent-status-text">' + formatMessageContent(text) + '</div>';
+  container.appendChild(statusEl);
   container.scrollTop = container.scrollHeight;
 }
 

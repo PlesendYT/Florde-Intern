@@ -8,6 +8,7 @@ class SubagentInstance {
     this.status = 'pending';
     this.summary = '';
     this.createdAt = Date.now();
+    this.completedAt = null;
     this._messages = [];
     this._onChunk = onChunk;
     this._permissionCallback = permissionCallback;
@@ -49,6 +50,7 @@ ${context}`;
     this._aborted = true;
     this.status = 'aborted';
     this._abortController?.abort();
+    this.completedAt = Date.now();
     this._onChunk?.('system', `🛑 Agent '${this.id}' abgebrochen`);
   }
 
@@ -78,7 +80,8 @@ ${context}`;
           this._onChunk?.('tool', `Agent '${this.id}': ${response.tool_call.name}(${JSON.stringify(response.tool_call.args)})`);
           const result = await this._executeTool(response.tool_call);
           this.addMessage('assistant', `Tool ${response.tool_call.name} executed.`);
-          this.addMessage('user', `Tool result: ${result}`);
+          const truncated = String(result).slice(0, 1000);
+          this.addMessage('user', `Tool result: ${truncated}`);
         } else {
           const text = response.content || '';
           this.addMessage('assistant', text);
@@ -87,6 +90,7 @@ ${context}`;
 
           if (this._isDone(text)) {
             this.status = 'completed';
+            this.completedAt = Date.now();
             this._onChunk?.('system', `✅ Agent '${this.id}' abgeschlossen`);
             this._onChunk?.('done', this.summary);
             return;
@@ -95,12 +99,14 @@ ${context}`;
       } catch (err) {
         if (this._aborted) return;
         this.status = 'failed';
+        this.completedAt = Date.now();
         this.summary = `Fehler: ${err.message}`;
         this._onChunk?.('system', `❌ Agent '${this.id}' fehlgeschlagen: ${err.message}`);
         return;
       }
     }
     this.status = 'completed';
+    this.completedAt = Date.now();
     this.summary = 'Maximale Anzahl an Runden erreicht.';
     this._onChunk?.('system', `⚠️ Agent '${this.id}': Maximale Runden erreicht`);
   }

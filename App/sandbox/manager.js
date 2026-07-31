@@ -2,6 +2,8 @@ const { NoneBackend } = require('./backends/none');
 const { FirejailBackend } = require('./backends/firejail');
 const { DockerBackend } = require('./backends/docker');
 const { PodmanBackend } = require('./backends/podman');
+const { VMWareBackend } = require('./backends/vmware');
+const { QEMUBackend } = require('./backends/qemu');
 const { SystemDetector } = require('./system-detector');
 
 class SandboxManager {
@@ -16,6 +18,8 @@ class SandboxManager {
     this._register('firejail', new FirejailBackend(workspaceDir));
     this._register('docker', new DockerBackend(workspaceDir));
     this._register('podman', new PodmanBackend(workspaceDir));
+    this._register('vmware', new VMWareBackend(workspaceDir));
+    this._register('qemu', new QEMUBackend(workspaceDir));
   }
 
   _register(type, backend) {

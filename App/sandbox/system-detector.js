@@ -15,6 +15,7 @@ class SystemDetector {
     const hasPodman = await SystemDetector._checkBinary('podman');
     const hasFirejail = await SystemDetector._checkBinary('firejail');
     const hasVmware = await SystemDetector._checkBinary('vmrun');
+    const hasQemu = await SystemDetector._checkBinary('virsh');
 
     return {
       cpu: {
@@ -31,6 +32,7 @@ class SystemDetector {
         podman: hasPodman,
         firejail: hasFirejail,
         vmware: hasVmware,
+        qemu: hasQemu,
       }
     };
   }

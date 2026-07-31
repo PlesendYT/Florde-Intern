@@ -33,7 +33,7 @@ describe('SandboxManager', () => {
   describe('backends getter', () => {
     it('should return all registered backend type names', () => {
       const names = manager.backends;
-      assert.deepStrictEqual(names, ['none', 'firejail', 'docker', 'podman']);
+      assert.deepStrictEqual(names, ['none', 'firejail', 'docker', 'podman', 'vmware', 'qemu']);
     });
   });
 
@@ -312,7 +312,7 @@ describe('SandboxManager', () => {
         ram: { total: 0 },
         cpu: { cores: 0 },
         gpu: { model: 'none', vram: 0 },
-        tools: { docker: false, podman: false, firejail: false, vmware: false },
+        tools: { docker: false, podman: false, firejail: false, vmware: false, qemu: false },
         os: { platform: 'linux' },
         hasVisionModel: false,
       };

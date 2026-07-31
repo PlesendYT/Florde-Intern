@@ -23,6 +23,8 @@ const SandboxSettings = {
             <option value="firejail" ${status.active === 'firejail' ? 'selected' : ''}>Firejail</option>
             <option value="docker" ${status.active === 'docker' ? 'selected' : ''}>Docker</option>
             <option value="podman" ${status.active === 'podman' ? 'selected' : ''}>Podman</option>
+            <option value="vmware" ${status.active === 'vmware' ? 'selected' : ''}>VMware</option>
+            <option value="qemu" ${status.active === 'qemu' ? 'selected' : ''}>QEMU/KVM</option>
           </select>
           <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--text3);">
             Aktuell: <strong>${status.active}</strong>

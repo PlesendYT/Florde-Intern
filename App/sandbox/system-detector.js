@@ -99,6 +99,15 @@ class SystemDetector {
       }
     }
 
+    if (tools.qemu && ram.total >= 8192 && cpu.cores >= 2) {
+      if (!hasVisionModel || gpu.vram >= 2048) {
+        const score = hasVisionModel ? (ram.total >= 16384 ? 4 : 2) : (ram.total >= 16384 ? 5 : 4);
+        recommendations.push({ type: 'qemu', reason: 'VM-Isolation via KVM, günstiger als VMware', score });
+      } else {
+        recommendations.push({ type: 'qemu', reason: 'KVM möglich, aber VRAM für Vision knapp', score: 1 });
+      }
+    }
+
     recommendations.sort((a, b) => b.score - a.score);
     return recommendations;
   }

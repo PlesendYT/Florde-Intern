@@ -77,6 +77,8 @@ class SandboxManager {
   async deleteFile(filePath) { return this.active.deleteFile(filePath); }
 
   // VM operations (throw on non-VM backends)
+  async startVM() { return this.active.startVM(); }
+  async stopVM() { return this.active.stopVM(); }
   async screenshot() { return this.active.screenshot(); }
   async sendMouse(x, y, button) { return this.active.sendMouse(x, y, button); }
   async sendKey(key) { return this.active.sendKey(key); }

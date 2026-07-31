@@ -3,7 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { SandboxBackend } = require('../backend');
-const { getTemplate } = require('../os-templates');
 const { VNCClient } = require('../vnc-client');
 
 class QEMUBackend extends SandboxBackend {

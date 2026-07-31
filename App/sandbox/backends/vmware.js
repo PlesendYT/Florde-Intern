@@ -4,6 +4,19 @@ const fs = require('fs');
 const os = require('os');
 const { SandboxBackend } = require('../backend');
 const { getTemplate } = require('../os-templates');
+const { VNCClient } = require('../vnc-client');
+
+const KEY_MAP = {
+  enter: 0xff0d, backspace: 0xff08, tab: 0xff09,
+  escape: 0xff1b, space: 0x0020,
+  up: 0xff52, down: 0xff54, left: 0xff51, right: 0xff53,
+  f1: 0xffbe, f2: 0xffbf, f3: 0xffc0, f4: 0xffc1,
+  f5: 0xffc2, f6: 0xffc3, f7: 0xffc4, f8: 0xffc5,
+  f9: 0xffc6, f10: 0xffc7, f11: 0xffc8, f12: 0xffc9,
+  home: 0xff50, end: 0xff57, pageup: 0xff55, pagedown: 0xff56,
+  insert: 0xff63, delete: 0xffff,
+  control: 0xffe3, ctrl: 0xffe3, alt: 0xffe9, shift: 0xffe1,
+};
 
 class VMWareBackend extends SandboxBackend {
   get type() { return 'vmware'; }
@@ -80,12 +93,28 @@ class VMWareBackend extends SandboxBackend {
 
   async sendMouse(x, y, button = 'left') {
     if (!this._initialized) throw new Error('VM not initialized');
-    throw new Error('sendMouse requires VNC connection — see VNC task');
+    if (!this._vncPort) throw new Error('VNC not configured for this VM');
+    const vnc = new VNCClient({ port: this._vncPort });
+    try {
+      await vnc.connect();
+      const btnMap = { left: 1, middle: 2, right: 3 };
+      vnc.sendMouse(x, y, btnMap[button] || 0);
+    } finally {
+      vnc.disconnect();
+    }
   }
 
   async sendKey(key) {
     if (!this._initialized) throw new Error('VM not initialized');
-    throw new Error('sendKey requires VNC connection — see VNC task');
+    if (!this._vncPort) throw new Error('VNC not configured for this VM');
+    const vnc = new VNCClient({ port: this._vncPort });
+    try {
+      await vnc.connect();
+      const keysym = KEY_MAP[key.toLowerCase()] || key.charCodeAt(0);
+      vnc.sendKey(keysym);
+    } finally {
+      vnc.disconnect();
+    }
   }
 
   async createSnapshot(name) {

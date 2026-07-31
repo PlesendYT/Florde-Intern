@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { SandboxBackend } = require('../backend');
 const { getTemplate } = require('../os-templates');
+const { VNCClient } = require('../vnc-client');
 
 class QEMUBackend extends SandboxBackend {
   get type() { return 'qemu'; }
@@ -17,6 +18,7 @@ class QEMUBackend extends SandboxBackend {
     this._domainName = null;
     this._guestUser = null;
     this._guestPass = null;
+    this._vncPort = null;
   }
 
   _run(args, timeout = 30000) {
@@ -104,7 +106,15 @@ class QEMUBackend extends SandboxBackend {
 
   async sendMouse(x, y, button) {
     if (!this._initialized) throw new Error('VM not initialized');
-    throw new Error('sendMouse requires VNC connection — see VNC task');
+    if (!this._vncPort) throw new Error('VNC not configured for this VM');
+    const vnc = new VNCClient({ port: this._vncPort });
+    try {
+      await vnc.connect();
+      const btnMap = { left: 1, middle: 2, right: 3 };
+      vnc.sendMouse(x, y, btnMap[button] || 0);
+    } finally {
+      vnc.disconnect();
+    }
   }
 
   async sendKey(key) {

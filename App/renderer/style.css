@@ -1955,3 +1955,49 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ===== Editor/Chat Mode ===== */
+.mode-toggle-btn {
+  background: transparent; border: 1px solid transparent; color: var(--text3);
+  font-size: 0.8rem; cursor: pointer; padding: 2px 8px; border-radius: 4px;
+  font-family: monospace;
+}
+.mode-toggle-btn:hover { color: var(--text); background: var(--bg3); }
+.mode-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+
+body.app-mode-editor .chat-panel { width: 320px; min-width: 320px; }
+body.app-mode-chat .chat-panel { flex: 1; min-width: 300px; }
+body.app-mode-editor .editor-panel { flex: 1; }
+body.app-mode-chat .editor-panel { width: 300px; min-width: 240px; }
+
+/* ===== Editor Action Menu ===== */
+.editor-action-menu {
+  position: fixed; z-index: 10002; display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); padding: 4px; gap: 2px;
+}
+.eam-btn {
+  background: transparent; border: none; color: var(--text); text-align: left;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+}
+.eam-btn:hover { background: var(--bg3); }
+
+/* ===== Inline Diff Decorations ===== */
+.inline-diff-added { background: rgba(34,197,94,0.18); }
+.inline-diff-added-gutter { border-left: 3px solid #22c55e; }
+.inline-diff-removed { background: rgba(239,68,68,0.18); }
+.inline-diff-removed-gutter { border-left: 3px solid #ef4444; }
+.inline-diff-glyph { background: #22c55e; border-radius: 50%; }
+
+/* ===== Hunk Toolbar ===== */
+#hunk-toolbar {
+  position: fixed; z-index: 10003; display: none; gap: 4px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.ht-btn {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
+  font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+}
+.ht-btn:hover { background: var(--accent); color: #fff; }
+.ht-edit { border-style: dashed; }

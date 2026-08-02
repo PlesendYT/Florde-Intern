@@ -8884,6 +8884,15 @@ function renderInlineDiffDecorations(fileName) {
   inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, decos);
 }
 
+function findHunkAtLine(state, lineNo) {
+  const hunks = computeHunks(state.originalText, state.currentText);
+  const lineCount = editor.getModel().getLineCount();
+  return hunks.find(h =>
+    h.added.some(x => x.line === lineNo) ||
+    (h.removed.length > 0 && h.added.length === 0 && lineNo === Math.max(1, Math.min(h.startLine, lineCount)))
+  );
+}
+
 function initInlineDiffHover() {
   if (!editor) return;
   editor.onMouseDown((e) => {
@@ -8891,15 +8900,19 @@ function initInlineDiffHover() {
     const state = fileName ? inlineDiffStates[fileName] : null;
     if (!state || !e.target || !e.target.position) { hideHunkToolbar(); return; }
     const lineNo = e.target.position.lineNumber;
-    const hunks = computeHunks(state.originalText, state.currentText);
-    const hunk = hunks.find(h =>
-      h.added.some(x => x.line === lineNo) ||
-      (h.removed.length > 0 && h.added.length === 0 && lineNo === Math.max(1, Math.min(h.startLine, editor.getModel().getLineCount())))
-    );
+    const hunk = findHunkAtLine(state, lineNo);
     if (hunk) showHunkToolbar(fileName, hunk);
     else hideHunkToolbar();
   });
-  editor.onDidChangeCursorPosition(() => hideHunkToolbar());
+  editor.onDidChangeCursorPosition((e) => {
+    const fileName = getActiveFileName();
+    const state = fileName ? inlineDiffStates[fileName] : null;
+    const bar = document.getElementById('hunk-toolbar');
+    if (!state || !e.position) { hideHunkToolbar(); return; }
+    const hunk = findHunkAtLine(state, e.position.lineNumber);
+    if (hunk) showHunkToolbar(fileName, hunk);
+    else if (bar && bar.style.display === 'flex') hideHunkToolbar();
+  });
   editor.onDidChangeCursorSelection((e) => {
     const sel = e.selection;
     if (sel && !sel.isEmpty() && editor.getModel()) {
@@ -8964,7 +8977,7 @@ function applyHunkDecision(fileName, hunkId, kind, lineNo) {
   if (next === state) return;
   inlineDiffStates[fileName] = next;
   if (kind === 'reject' || kind === 'rejectLine') {
-    editor.getModel().setValue(next.currentText);
+    if (editor && editor.getModel()) editor.getModel().setValue(next.currentText);
     persistEditorToDisk(fileName);
   }
   renderInlineDiffDecorations(fileName);
@@ -8994,7 +9007,7 @@ function rejectCurrentFile() {
   if (!fileName || !inlineDiffStates[fileName]) return;
   const state = inlineDiffStates[fileName];
   const r = rejectAll(state);
-  editor.getModel().setValue(r.state.currentText);
+  if (editor && editor.getModel()) editor.getModel().setValue(r.state.currentText);
   inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
   delete inlineDiffStates[fileName];
   persistEditorToDisk(fileName);

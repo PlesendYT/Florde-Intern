@@ -3976,7 +3976,7 @@ async function executeToolCall(name, args) {
             tabContents[sp] = content;
             tabDirty[sp] = false;
             if (wfIdx === activeTabIndex && editor) {
-              editor.setValue(content);
+              applyInlineDiffToEditor(sp, content);
             }
           }
           written.push(sp);
@@ -4009,11 +4009,13 @@ async function executeToolCall(name, args) {
         tabContents[_writePath] = args.content;
         tabDirty[_writePath] = false;
         if (wfIdx === activeTabIndex && editor) {
-          editor.setValue(args.content);
+          applyInlineDiffToEditor(_writePath, args.content);
         }
       }
       renderFileTree();
-      DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
+      if (!(wfIdx >= 0 && wfIdx === activeTabIndex)) {
+        DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
+      }
       // Auto git commit if in a git repo
       try {
         const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
@@ -4110,11 +4112,13 @@ async function executeToolCall(name, args) {
           tabContents[efPath] = content;
           tabDirty[efPath] = false;
           if (efIdx === activeTabIndex && editor) {
-            editor.setValue(content);
+            applyInlineDiffToEditor(efPath, content);
           }
         }
         renderFileTree();
-        DiffViewer.show([{ name: efPath, content, language: detectLanguage(efPath) }]);
+        if (!(efIdx >= 0 && efIdx === activeTabIndex)) {
+          DiffViewer.show([{ name: efPath, content, language: detectLanguage(efPath) }]);
+        }
         try {
           const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
           if (gitDir) {
@@ -8759,8 +8763,8 @@ require(['vs/editor/editor.main'], () => {
       theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
       automaticLayout: true,
       fontSize: 13,
-      readOnly: true,
-      domReadOnly: true,
+      readOnly: false,
+      domReadOnly: false,
       minimap: { enabled: false },
       wordWrap: 'on',
       lineNumbers: 'on',
@@ -8768,7 +8772,10 @@ require(['vs/editor/editor.main'], () => {
       scrollBeyondLastLine: false,
       padding: { top: 8, bottom: 8 },
     });
-    setupCodeToolbar(editor);
+    EditorMode.onModeChange = applyModeToLayout;
+    applyModeToLayout(EditorMode.getMode());
+    EditorMode.onAction = handleEditorAction;
+    initInlineDiffHover();
 
     // Restore active tab if one was opened before Monaco was ready
     if (activeTabIndex >= 0 && activeTabIndex < openTabs.length) {
@@ -8788,67 +8795,192 @@ require(['vs/editor/editor.main'], () => {
 
 // ==================== CODE SELECTION TOOLBAR ====================
 
-let codeToolbar = null;
+const inlineDiffStates = {};
+let inlineDiffDecoIds = [];
 
-function setupCodeToolbar(ed) {
-  const toolbar = document.createElement('div');
-  toolbar.id = 'code-toolbar';
-  toolbar.className = 'hidden';
-  toolbar.innerHTML = `
-    <button class="ct-btn" data-action="explain">Explain Me</button>
-    <button class="ct-btn" data-action="optimize">Code Optimizer</button>
-    <button class="ct-btn" data-action="search">Search Code</button>
-  `;
-  document.body.appendChild(toolbar);
-  codeToolbar = toolbar;
+function applyModeToLayout(mode) {
+  const body = document.body;
+  body.classList.toggle('app-mode-editor', mode === 'editor');
+  body.classList.toggle('app-mode-chat', mode === 'chat');
+  const btnE = document.getElementById('btn-mode-editor');
+  const btnC = document.getElementById('btn-mode-chat');
+  if (btnE) btnE.classList.toggle('active', mode === 'editor');
+  if (btnC) btnC.classList.toggle('active', mode === 'chat');
+}
 
-  toolbar.querySelectorAll('.ct-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sel = ed.getSelection();
-      const text = ed.getModel() ? ed.getModel().getValueInRange(sel) : '';
-      if (!text.trim()) return;
-      const fileName = openTabs[activeTabIndex] || 'unknown';
-      const lang = tabLanguages[fileName] || detectLanguage(fileName) || '';
-      switch (btn.dataset.action) {
-        case 'explain':
-          hideCodeToolbar();
-          sendMessage('Erkläre mir diesen Codeabschnitt ausführlich auf Deutsch.\n\n```' + lang + '\n' + text + '\n```');
-          break;
-        case 'optimize':
-          hideCodeToolbar();
-          showOptimizePrompt(text, lang, fileName);
-          break;
-        case 'search':
-          hideCodeToolbar();
-          searchCodeOnline(text, lang, fileName);
-          break;
-      }
+document.getElementById('btn-mode-editor')?.addEventListener('click', () => EditorMode.setMode('editor'));
+document.getElementById('btn-mode-chat')?.addEventListener('click', () => EditorMode.setMode('chat'));
+
+function handleEditorAction(action, ctx) {
+  if (!editor || !editor.getModel()) return;
+  const fileName = getActiveFileName() || 'unknown';
+  const sel = editor.getSelection();
+  const text = ctx.text || (editor.getModel().getValueInRange(sel) || '');
+  if (!text.trim()) return;
+  const lang = ctx.lang || tabLanguages[fileName] || detectLanguage(fileName) || '';
+  if (action === 'whatis' || action === 'explain') {
+    sendMessage(EditorMode._buildPrompt(action, { text, lang, fileName }));
+    return;
+  }
+  let goal = '';
+  if (action === 'improve') {
+    const g = prompt('Verbesserungsziel (optional):', '');
+    if (g === null) return;
+    goal = g;
+  } else if (action === 'change') {
+    const g = prompt('Was soll geändert werden?:', '');
+    if (g === null) return;
+    goal = g;
+  }
+  const promptText = EditorMode._buildPrompt(action, { text, lang, fileName, goal });
+  sendMessage(promptText);
+}
+
+function applyInlineDiffToEditor(fileName, newContent) {
+  if (!editor || !editor.getModel()) return;
+  if (fileName !== (getActiveFileName() || '')) return;
+  const originalText = editor.getModel().getValue();
+  inlineDiffStates[fileName] = createDiffState(fileName, originalText, newContent);
+  editor.getModel().setValue(newContent);
+  renderInlineDiffDecorations(fileName);
+}
+
+function renderInlineDiffDecorations(fileName) {
+  if (!editor || !editor.getModel()) return;
+  const state = inlineDiffStates[fileName];
+  if (!state) { inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []); return; }
+  const hunks = computeHunks(state.originalText, state.currentText);
+  const lineCount = editor.getModel().getLineCount();
+  const decos = [];
+  hunks.forEach(h => {
+    const pendingAdded = h.added.filter(x => !state.accepted.has(x.text));
+    pendingAdded.forEach(x => {
+      decos.push({
+        range: new monaco.Range(x.line, 1, x.line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'inline-diff-added',
+          linesDecorationsClassName: 'inline-diff-added-gutter',
+          glyphMargin: true,
+          glyphMarginClassName: 'inline-diff-glyph'
+        }
+      });
     });
-  });
-
-  ed.onDidChangeCursorSelection((e) => {
-    const sel = e.selection;
-    if (sel && !sel.isEmpty() && ed.getModel()) {
-      showCodeToolbar(ed, sel);
-    } else {
-      hideCodeToolbar();
+    if (pendingAdded.length === 0 && h.removed.length > 0) {
+      const dl = Math.max(1, Math.min(h.startLine, lineCount));
+      decos.push({
+        range: new monaco.Range(dl, 1, dl, 1),
+        options: { isWholeLine: true, className: 'inline-diff-removed', linesDecorationsClassName: 'inline-diff-removed-gutter' }
+      });
     }
   });
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, decos);
 }
 
-function showCodeToolbar(ed, sel) {
-  if (!codeToolbar) return;
-  const pos = ed.getScrolledVisiblePosition(sel.getStartPosition());
-  if (!pos) return;
+function initInlineDiffHover() {
+  if (!editor) return;
+  editor.onMouseDown((e) => {
+    const fileName = getActiveFileName();
+    const state = fileName ? inlineDiffStates[fileName] : null;
+    if (!state || !e.target || !e.target.position) { hideHunkToolbar(); return; }
+    const lineNo = e.target.position.lineNumber;
+    const hunks = computeHunks(state.originalText, state.currentText);
+    const hunk = hunks.find(h =>
+      h.added.some(x => x.line === lineNo) ||
+      (h.removed.length > 0 && h.added.length === 0 && lineNo === Math.max(1, Math.min(h.startLine, editor.getModel().getLineCount())))
+    );
+    if (hunk) showHunkToolbar(fileName, hunk);
+    else hideHunkToolbar();
+  });
+  editor.onDidChangeCursorPosition(() => hideHunkToolbar());
+}
+
+function showHunkToolbar(fileName, hunk) {
+  let bar = document.getElementById('hunk-toolbar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'hunk-toolbar'; document.body.appendChild(bar); }
+  bar.innerHTML =
+    '<button class="ht-btn" data-k="accept">Accept</button>' +
+    '<button class="ht-btn" data-k="reject">Reject</button>' +
+    '<button class="ht-btn" data-k="acceptLine">Accept Line</button>' +
+    '<button class="ht-btn" data-k="rejectLine">Reject Line</button>' +
+    '<button class="ht-btn" data-k="acceptAll">Accept All</button>' +
+    '<button class="ht-btn" data-k="rejectAll">Reject All</button>';
+  const pos = editor.getScrolledVisiblePosition({ lineNumber: hunk.added[0] ? hunk.added[0].line : hunk.startLine, column: 1 });
   const editorDom = document.getElementById('editor-container');
-  const editorRect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
-  codeToolbar.style.left = (editorRect.left + pos.left + 10) + 'px';
-  codeToolbar.style.top = (editorRect.top + pos.top - 40) + 'px';
-  codeToolbar.classList.remove('hidden');
+  const rect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
+  bar.style.left = (rect.left + (pos ? pos.left : 0) + 10) + 'px';
+  bar.style.top = (rect.top + (pos ? pos.top : 0) - 40) + 'px';
+  bar.style.display = 'flex';
+  bar.onclick = (ev) => {
+    const b = ev.target.closest('.ht-btn');
+    if (!b) return;
+    if (b.dataset.k === 'accept') applyHunkDecision(fileName, hunk.id, 'accept');
+    else if (b.dataset.k === 'reject') applyHunkDecision(fileName, hunk.id, 'reject');
+    else if (b.dataset.k === 'acceptLine') applyHunkDecision(fileName, hunk.id, 'acceptLine', hunk.added[0] && hunk.added[0].line);
+    else if (b.dataset.k === 'rejectLine') applyHunkDecision(fileName, hunk.id, 'rejectLine', hunk.added[0] && hunk.added[0].line);
+    else if (b.dataset.k === 'acceptAll') commitCurrentFile();
+    else if (b.dataset.k === 'rejectAll') rejectCurrentFile();
+  };
 }
 
-function hideCodeToolbar() {
-  if (codeToolbar) codeToolbar.classList.add('hidden');
+function hideHunkToolbar() {
+  const bar = document.getElementById('hunk-toolbar');
+  if (bar) bar.style.display = 'none';
+}
+
+function applyHunkDecision(fileName, hunkId, kind, lineNo) {
+  const state = inlineDiffStates[fileName];
+  if (!state) return;
+  let edits = [], next;
+  if (kind === 'accept') { next = acceptHunk(state, hunkId); }
+  else if (kind === 'reject') { const r = rejectHunk(state, hunkId); edits = r.edits; next = r.state; }
+  else if (kind === 'acceptLine') { next = acceptLine(state, hunkId, lineNo); }
+  else if (kind === 'rejectLine') { const r = rejectLine(state, hunkId, lineNo); edits = r.edits; next = r.state; }
+  if (edits.length) { applyEditsToMonaco(edits); persistEditorToDisk(fileName); }
+  inlineDiffStates[fileName] = next;
+  renderInlineDiffDecorations(fileName);
+  hideHunkToolbar();
+}
+
+function applyEditsToMonaco(edits) {
+  if (!editor || !editor.getModel() || !edits) return;
+  const ops = edits.map(e => ({
+    range: new monaco.Range(e.startLine, 1, Math.max(e.startLine, e.endLine), 1),
+    text: e.newLines.length ? e.newLines.join('\n') : '',
+    forceMoveMarkers: true
+  }));
+  editor.executeEdits('inline-diff', ops);
+}
+
+function persistEditorToDisk(fileName) {
+  if (!currentProject || !editor || !editor.getModel()) return;
+  const content = editor.getModel().getValue();
+  tabContents[fileName] = content;
+  tabDirty[fileName] = false;
+  window.electronAPI.projectWriteFile(currentProject, fileName, content).catch(() => {});
+  renderTabs();
+}
+
+function commitCurrentFile() {
+  const fileName = getActiveFileName();
+  if (!fileName || !inlineDiffStates[fileName]) return;
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
+  delete inlineDiffStates[fileName];
+  hideHunkToolbar();
+  logToTerminal('Änderungen übernommen (bereits gespeichert).', 'success');
+}
+
+function rejectCurrentFile() {
+  const fileName = getActiveFileName();
+  if (!fileName || !inlineDiffStates[fileName]) return;
+  const state = inlineDiffStates[fileName];
+  const r = rejectAll(state);
+  applyEditsToMonaco(r.edits);
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
+  delete inlineDiffStates[fileName];
+  persistEditorToDisk(fileName);
+  hideHunkToolbar();
+  logToTerminal('Alle Änderungen verworfen, Original wiederhergestellt.', 'info');
 }
 
 function showOptimizePrompt(code, lang, fileName) {

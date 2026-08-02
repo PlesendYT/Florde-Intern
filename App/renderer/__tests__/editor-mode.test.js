@@ -14,6 +14,7 @@ function mockStore() {
 
 beforeEach(() => {
   EditorMode._store = mockStore();
+  EditorMode._mode = null;
   EditorMode.onModeChange = null;
 });
 

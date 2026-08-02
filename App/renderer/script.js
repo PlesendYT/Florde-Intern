@@ -2478,6 +2478,7 @@ function initLayoutManager() {
   LayoutManager.init(container).then(() => {
     if (LayoutManager.isInitialized) {
       LayoutManager.activate();
+      if (typeof EditorMode !== 'undefined') applyModeToLayout(EditorMode.getMode());
     }
   });
 }
@@ -8808,6 +8809,23 @@ function applyModeToLayout(mode) {
   const btnC = document.getElementById('btn-mode-chat');
   if (btnE) btnE.classList.toggle('active', mode === 'editor');
   if (btnC) btnC.classList.toggle('active', mode === 'chat');
+
+  try {
+    const api = (typeof LayoutManager !== 'undefined' && LayoutManager._api) || null;
+    if (api) {
+      const editorP = api.getPanel('editor');
+      const chatP = api.getPanel('chat');
+      if (mode === 'chat') {
+        if (editorP) editorP.api.setVisible(false);
+        if (chatP) { chatP.api.setVisible(true); chatP.api.setActive(); }
+      } else {
+        if (editorP) { editorP.api.setVisible(true); editorP.api.setActive(); }
+        if (chatP) { chatP.api.setVisible(true); chatP.api.setSize({ width: 320 }); }
+      }
+    }
+  } catch (e) {
+    console.warn('applyModeToLayout dockview error:', e);
+  }
 }
 
 document.getElementById('btn-mode-editor')?.addEventListener('click', () => EditorMode.setMode('editor'));

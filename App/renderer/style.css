@@ -1965,10 +1965,13 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .mode-toggle-btn:hover { color: var(--text); background: var(--bg3); }
 .mode-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
 
-body.app-mode-editor .chat-panel { width: 320px; min-width: 320px; }
-body.app-mode-chat .chat-panel { flex: 1; min-width: 300px; }
-body.app-mode-editor .editor-panel { flex: 1; }
-body.app-mode-chat .editor-panel { width: 300px; min-width: 240px; }
+/* Chat mode: only chat fills the window */
+body.app-mode-chat .chat-panel { flex: 1 !important; width: auto !important; min-width: 300px; }
+body.app-mode-chat .editor-panel { display: none !important; }
+
+/* Editor mode: editor fills, chat as fixed sidebar */
+body.app-mode-editor .editor-panel { display: flex !important; flex: 1 1 auto !important; }
+body.app-mode-editor .chat-panel { flex: 0 0 320px !important; width: 320px !important; min-width: 320px; }
 
 /* ===== Editor Action Menu ===== */
 .editor-action-menu {

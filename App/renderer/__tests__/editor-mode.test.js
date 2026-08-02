@@ -19,8 +19,8 @@ beforeEach(() => {
 });
 
 describe('EditorMode.setMode', () => {
-  it('defaults to editor when no stored mode', () => {
-    assert.strictEqual(EditorMode.getMode(), 'editor');
+  it('defaults to chat when no stored mode', () => {
+    assert.strictEqual(EditorMode.getMode(), 'chat');
   });
   it('persists chat mode', () => {
     EditorMode.setMode('chat');
@@ -34,7 +34,7 @@ describe('EditorMode.setMode', () => {
   });
   it('rejects invalid mode', () => {
     EditorMode.setMode('bogus');
-    assert.strictEqual(EditorMode.getMode(), 'editor');
+    assert.strictEqual(EditorMode.getMode(), 'chat');
   });
   it('fires onModeChange callback', () => {
     let fired = null;

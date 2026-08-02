@@ -12,11 +12,11 @@ const EditorMode = {
       const stored = this._store.getItem(EDITOR_MODE_KEY);
       if (stored === 'chat' || stored === 'editor') return stored;
     }
-    return 'editor';
+    return 'chat';
   },
 
   setMode(mode) {
-    if (mode !== 'chat' && mode !== 'editor') return this._mode || 'editor';
+    if (mode !== 'chat' && mode !== 'editor') return this._mode || 'chat';
     this._mode = mode;
     if (this._store) this._store.setItem(EDITOR_MODE_KEY, mode);
     if (this.onModeChange) this.onModeChange(mode);

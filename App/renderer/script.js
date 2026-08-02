@@ -3146,6 +3146,7 @@ async function switchTab(index) {
       });
       modelDisposables.set(name, disposable);
     }
+    renderInlineDiffDecorations(name);
   }
   renderTabs();
 }
@@ -4013,7 +4014,7 @@ async function executeToolCall(name, args) {
         }
       }
       renderFileTree();
-      if (!(wfIdx >= 0 && wfIdx === activeTabIndex)) {
+      if (!(wfIdx >= 0 && wfIdx === activeTabIndex && editor)) {
         DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
       }
       // Auto git commit if in a git repo
@@ -4116,7 +4117,7 @@ async function executeToolCall(name, args) {
           }
         }
         renderFileTree();
-        if (!(efIdx >= 0 && efIdx === activeTabIndex)) {
+        if (!(efIdx >= 0 && efIdx === activeTabIndex && editor)) {
           DiffViewer.show([{ name: efPath, content, language: detectLanguage(efPath) }]);
         }
         try {
@@ -8793,10 +8794,11 @@ require(['vs/editor/editor.main'], () => {
   }
 });
 
-// ==================== CODE SELECTION TOOLBAR ====================
+// ==================== MODE TOGGLE + INLINE DIFF ====================
 
 const inlineDiffStates = {};
 let inlineDiffDecoIds = [];
+let inlineDiffDecoModel = null;
 
 function applyModeToLayout(mode) {
   const body = document.body;
@@ -8847,6 +8849,11 @@ function applyInlineDiffToEditor(fileName, newContent) {
 
 function renderInlineDiffDecorations(fileName) {
   if (!editor || !editor.getModel()) return;
+  const model = editor.getModel();
+  if (inlineDiffDecoModel !== model) {
+    inlineDiffDecoIds = [];
+    inlineDiffDecoModel = model;
+  }
   const state = inlineDiffStates[fileName];
   if (!state) { inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []); return; }
   const hunks = computeHunks(state.originalText, state.currentText);
@@ -8866,7 +8873,7 @@ function renderInlineDiffDecorations(fileName) {
         }
       });
     });
-    if (pendingAdded.length === 0 && h.removed.length > 0) {
+    if (h.added.length === 0 && h.removed.length > 0) {
       const dl = Math.max(1, Math.min(h.startLine, lineCount));
       decos.push({
         range: new monaco.Range(dl, 1, dl, 1),
@@ -8893,6 +8900,24 @@ function initInlineDiffHover() {
     else hideHunkToolbar();
   });
   editor.onDidChangeCursorPosition(() => hideHunkToolbar());
+  editor.onDidChangeCursorSelection((e) => {
+    const sel = e.selection;
+    if (sel && !sel.isEmpty() && editor.getModel()) {
+      const fileName = getActiveFileName() || 'unknown';
+      const lang = tabLanguages[fileName] || detectLanguage(fileName) || '';
+      const text = editor.getModel().getValueInRange(sel);
+      const pos = editor.getScrolledVisiblePosition(sel.getStartPosition());
+      const editorDom = document.getElementById('editor-container');
+      const editorRect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
+      EditorMode.showSelectionMenu(sel, {
+        text, lang, fileName,
+        position: { left: editorRect.left + (pos ? pos.left : 0) + 10, top: editorRect.top + (pos ? pos.top : 0) - 40 }
+      });
+    } else {
+      const existing = document.getElementById('editor-action-menu');
+      if (existing) existing.remove();
+    }
+  });
 }
 
 function showHunkToolbar(fileName, hunk) {
@@ -8931,25 +8956,19 @@ function hideHunkToolbar() {
 function applyHunkDecision(fileName, hunkId, kind, lineNo) {
   const state = inlineDiffStates[fileName];
   if (!state) return;
-  let edits = [], next;
+  let next;
   if (kind === 'accept') { next = acceptHunk(state, hunkId); }
-  else if (kind === 'reject') { const r = rejectHunk(state, hunkId); edits = r.edits; next = r.state; }
+  else if (kind === 'reject') { next = rejectHunk(state, hunkId).state; }
   else if (kind === 'acceptLine') { next = acceptLine(state, hunkId, lineNo); }
-  else if (kind === 'rejectLine') { const r = rejectLine(state, hunkId, lineNo); edits = r.edits; next = r.state; }
-  if (edits.length) { applyEditsToMonaco(edits); persistEditorToDisk(fileName); }
+  else if (kind === 'rejectLine') { next = rejectLine(state, hunkId, lineNo).state; }
+  if (next === state) return;
   inlineDiffStates[fileName] = next;
+  if (kind === 'reject' || kind === 'rejectLine') {
+    editor.getModel().setValue(next.currentText);
+    persistEditorToDisk(fileName);
+  }
   renderInlineDiffDecorations(fileName);
   hideHunkToolbar();
-}
-
-function applyEditsToMonaco(edits) {
-  if (!editor || !editor.getModel() || !edits) return;
-  const ops = edits.map(e => ({
-    range: new monaco.Range(e.startLine, 1, Math.max(e.startLine, e.endLine), 1),
-    text: e.newLines.length ? e.newLines.join('\n') : '',
-    forceMoveMarkers: true
-  }));
-  editor.executeEdits('inline-diff', ops);
 }
 
 function persistEditorToDisk(fileName) {
@@ -8975,7 +8994,7 @@ function rejectCurrentFile() {
   if (!fileName || !inlineDiffStates[fileName]) return;
   const state = inlineDiffStates[fileName];
   const r = rejectAll(state);
-  applyEditsToMonaco(r.edits);
+  editor.getModel().setValue(r.state.currentText);
   inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
   delete inlineDiffStates[fileName];
   persistEditorToDisk(fileName);

@@ -61,10 +61,12 @@ const SmartSearch = {
       const fn = this._sources[c];
       if (!fn) { out[c] = null; return; }
       try {
+        let timer = null;
         const res = await Promise.race([
           Promise.resolve(fn(q)),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000))
+          new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('timeout')), 3000); })
         ]);
+        clearTimeout(timer);
         out[c] = Array.isArray(res) ? res : [];
       } catch (e) { out[c] = []; }
     }));

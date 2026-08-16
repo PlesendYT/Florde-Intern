@@ -5641,7 +5641,12 @@ const DEFAULT_SHORTCUTS = {
   saveFile: { label: 'Save current file', keys: 'Ctrl+S', ctrl: true, key: 's', shift: false, alt: false, fn: () => saveCurrentFile() },
   newFile: { label: 'New file', keys: 'Ctrl+N', ctrl: true, key: 'n', shift: false, alt: false, fn: () => { const name = prompt('File name:'); if (name) { tabContents[name] = ''; tabLanguages[name] = detectLanguage(name); tabDirty[name] = true; openTabs.push(name); switchTab(openTabs.length - 1); renderFileTree(); } } },
   closeTab: { label: 'Close current tab', keys: 'Ctrl+W', ctrl: true, key: 'w', shift: false, alt: false, fn: () => { if (activeTabIndex >= 0) closeTab(activeTabIndex); } },
-  commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+P', ctrl: true, key: 'p', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
+  commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+O', ctrl: true, key: 'o', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
+  smartSearch: {
+    label: 'Smart search (all)',
+    keys: 'Ctrl+Shift+P', ctrl: true, shift: true, key: 'p',
+    fn: () => { if (currentProject) SmartSearch.open(); }
+  },
   searchFiles: { label: 'Search in files', keys: 'Ctrl+Shift+F', ctrl: true, key: 'f', shift: true, alt: false, fn: () => { document.getElementById('btn-search-toggle').click(); } },
   toggleSidebar: { label: 'Toggle sidebar', keys: 'Ctrl+B', ctrl: true, key: 'b', shift: false, alt: false, fn: () => { const sb = document.getElementById('sidebar'); const resizer = document.getElementById('sidebar-resizer'); sb.classList.toggle('hidden'); if (resizer) resizer.classList.toggle('hidden'); localStorage.setItem('florde-sidebar-hidden', sb.classList.contains('hidden') ? '1' : '0'); } },
   nextTab: { label: 'Next tab', keys: 'Ctrl+Tab', ctrl: true, key: 'Tab', shift: false, alt: false, fn: () => { if (openTabs.length > 1) { const next = (activeTabIndex + 1 + openTabs.length) % openTabs.length; switchTab(next); } } },
@@ -8720,6 +8725,89 @@ initConnectedApps();
 if (typeof KeybindManager !== 'undefined') KeybindManager.init();
 if (typeof SkillsManager !== 'undefined') SkillsManager.init();
 if (typeof OllamaManager !== 'undefined') OllamaManager.init();
+
+SmartSearch.setSources({
+  file: async (q) => {
+    const list = await window.electronAPI.projectListFiles(currentProject);
+    return list.filter(f => f.toLowerCase().includes(q.toLowerCase())).map(f => ({ name: f.split('/').pop(), path: f }));
+  },
+  symbol: async (q) => {
+    const list = await window.electronAPI.projectListFiles(currentProject);
+    const out = [];
+    for (const f of list.slice(0, 60)) {
+      if (!/\.(js|jsx|ts|tsx|py|html|css)$/.test(f)) continue;
+      let content = '';
+      try { content = await window.electronAPI.projectReadFile(currentProject, f) || ''; } catch (e) { continue; }
+      const lang = f.endsWith('.py') ? 'python' : f.endsWith('.html') ? 'html' : f.endsWith('.css') ? 'css' : 'javascript';
+      const syms = extractSymbols(content, lang);
+      syms.forEach(s => {
+        if (s.name.toLowerCase().includes(q.toLowerCase())) out.push({ ...s, file: f, category: 'symbol' });
+      });
+    }
+    return out.slice(0, 30);
+  },
+  memory: async (q) => {
+    const names = await window.electronAPI.flordeFs.memoryList(currentProject) || [];
+    const out = [];
+    for (const n of names) {
+      const content = await window.electronAPI.flordeFs.memoryRead(currentProject, n) || '';
+      const path = '.florde/memory/' + n;
+      if (content.toLowerCase().includes(q.toLowerCase()) || n.toLowerCase().includes(q.toLowerCase())) {
+        out.push({ name: n, content, path });
+      }
+    }
+    return out;
+  },
+  commit: async (q) => {
+    const commits = await window.electronAPI.gitLog(currentProject, 50) || [];
+    return commits.filter(c => c.message.toLowerCase().includes(q.toLowerCase())).map(c => ({ message: c.message, shortHash: c.shortHash, date: c.date, author: c.author }));
+  },
+  todo: async (q) => {
+    if (typeof TodoList === 'undefined') return [];
+    return TodoList._todos.filter(t => t.text.toLowerCase().includes(q.toLowerCase())).map(t => ({ text: t.text, done: !!t.done }));
+  },
+  decision: async (q) => {
+    if (typeof DecisionLog === 'undefined') return [];
+    return DecisionLog._decisions.filter(d => (d.title + ' ' + d.reasons).toLowerCase().includes(q.toLowerCase())).map(d => ({ title: d.title, decision: d.reasons }));
+  },
+  issue: async (q) => {
+    if (!(window._connectedAppIds || []).includes('github')) return [];
+    try {
+      const text = await executeAppTool('github_search_issues', { q, per_page: 8 });
+      const parsed = JSON.parse(text);
+      const items = (parsed && parsed.items) || [];
+      return items.map(it => ({ title: it.title, url: it.html_url || '', description: it.body || '' }));
+    } catch (e) { return []; }
+  }
+});
+
+SmartSearch.onNavigate = (nav) => {
+  switch (nav.action) {
+    case 'openTab':
+      openTab(nav.value);
+      break;
+    case 'openTabAtLine':
+      openTab(nav.value.path);
+      setTimeout(() => {
+        if (editor && editor.getModel()) {
+          editor.revealLineInCenter(nav.value.line);
+          editor.setPosition({ lineNumber: nav.value.line, column: 1 });
+          editor.focus();
+        }
+      }, 200);
+      break;
+    case 'openGit':
+      document.getElementById('btn-git-toggle')?.click();
+      break;
+    case 'openPanel':
+      document.getElementById('btn-management-toggle')?.click();
+      setTimeout(() => document.querySelector('.mgmt-tab[data-tab="' + nav.value + '"]')?.click(), 150);
+      break;
+    case 'openUrl':
+      window.open(nav.value, '_blank');
+      break;
+  }
+};
 
 // Hook Ollama Hub download button
 document.getElementById('btn-ollama-hub-download')?.addEventListener('click', () => {

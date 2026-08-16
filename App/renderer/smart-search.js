@@ -12,6 +12,15 @@ function _hasTerm(term, values) {
   return values.some(v => v && String(v).toLowerCase().includes(t));
 }
 
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const SmartSearch = {
   _sources: {},
 
@@ -89,7 +98,7 @@ const SmartSearch = {
       const arr = results[c];
       if (!arr) { out[c] = null; continue; }
       const f = map[c] ? arr.filter(map[c]) : arr;
-      out[c] = f.length ? f : (f.length === 0 ? null : f);
+      out[c] = f.length ? f : null;
       if (out[c] === null) delete out[c];
     }
     return out;
@@ -125,12 +134,12 @@ const SmartSearch = {
     for (const c of Object.keys(labels)) {
       const items = filtered[c];
       if (!items || !items.length) continue;
-      html += `<div class="ss-cat">${labels[c]}</div>`;
+      html += `<div class="ss-cat">${esc(labels[c])}</div>`;
       items.slice(0, 8).forEach((it, i) => {
         html += `<div class="ss-item" data-cat="${c}" data-idx="${i}">${_itemTitle(c, it)}<div class="ss-sub">${_itemSub(c, it)}</div></div>`;
       });
     }
-    if (!html) html = '<div class="ss-empty">Keine Treffer</div>';
+    if (!html) html = '<div class="ss-empty">' + esc('Keine Treffer') + '</div>';
     container.innerHTML = html;
     container.querySelectorAll('.ss-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -147,25 +156,25 @@ const SmartSearch = {
 
 function _itemTitle(c, it) {
   switch (c) {
-    case 'file': return it.name;
-    case 'symbol': return it.name + ' <span class="ss-kind">(' + it.kind + ')</span>';
-    case 'issue': return it.title;
-    case 'memory': return it.name;
-    case 'commit': return '`' + it.shortHash + '` ' + it.message;
-    case 'todo': return it.text + (it.done ? ' ✓' : '');
-    case 'decision': return it.title;
+    case 'file': return esc(it.name);
+    case 'symbol': return esc(it.name) + ' <span class="ss-kind">(' + esc(it.kind) + ')</span>';
+    case 'issue': return esc(it.title);
+    case 'memory': return esc(it.name);
+    case 'commit': return '`' + esc(it.shortHash) + '` ' + esc(it.message);
+    case 'todo': return esc(it.text) + (it.done ? ' ✓' : '');
+    case 'decision': return esc(it.title);
     default: return '';
   }
 }
 
 function _itemSub(c, it) {
   switch (c) {
-    case 'file': return it.path;
-    case 'symbol': return it.file + ':' + it.line;
-    case 'issue': return it.url;
-    case 'memory': return it.path;
-    case 'commit': return it.date + ' — ' + it.author;
-    case 'decision': return (it.decision || '').slice(0, 80);
+    case 'file': return esc(it.path);
+    case 'symbol': return esc(it.file) + ':' + esc(it.line);
+    case 'issue': return esc(it.url);
+    case 'memory': return esc(it.path);
+    case 'commit': return esc(it.date) + ' — ' + esc(it.author);
+    case 'decision': return esc((it.decision || '').slice(0, 80));
     default: return '';
   }
 }

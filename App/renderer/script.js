@@ -5668,7 +5668,7 @@ function shortcutMatch(e, s) {
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return false;
     return true;
   }
-  return (e.ctrlKey || e.metaKey) === s.ctrl && e.key === s.key && e.shiftKey === s.shift && e.altKey === s.alt;
+  return (e.ctrlKey || e.metaKey) === s.ctrl && e.key.toLowerCase() === s.key.toLowerCase() && e.shiftKey === s.shift && e.altKey === s.alt;
 }
 
 document.addEventListener('keydown', (e) => {
@@ -8774,7 +8774,14 @@ SmartSearch.setSources({
     if (!(window._connectedAppIds || []).includes('github')) return [];
     try {
       const text = await executeAppTool('github_search_issues', { q, per_page: 8 });
-      const parsed = JSON.parse(text);
+      let parsed = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start !== -1 && end > start) parsed = JSON.parse(text.slice(start, end + 1));
+      }
       const items = (parsed && parsed.items) || [];
       return items.map(it => ({ title: it.title, url: it.html_url || '', description: it.body || '' }));
     } catch (e) { return []; }
@@ -8797,11 +8804,17 @@ SmartSearch.onNavigate = (nav) => {
       }, 200);
       break;
     case 'openGit':
-      document.getElementById('btn-git-toggle')?.click();
+      try {
+        const api = (typeof LayoutManager !== 'undefined' && LayoutManager._api) || null;
+        if (api) {
+          const gitP = api.getPanel('git');
+          if (gitP) { gitP.api.setVisible(true); gitP.api.setActive(); }
+        }
+        if (typeof GitPanel !== 'undefined') GitPanel.refresh();
+      } catch (e) { console.warn('openGit dockview error:', e); }
       break;
     case 'openPanel':
-      document.getElementById('btn-management-toggle')?.click();
-      setTimeout(() => document.querySelector('.mgmt-tab[data-tab="' + nav.value + '"]')?.click(), 150);
+      if (typeof ManagementPanel !== 'undefined') ManagementPanel.show(nav.value);
       break;
     case 'openUrl':
       window.open(nav.value, '_blank');

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Florde</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="i18n.js"></script>
 </head>
 <body>
   <div id="notification-container" class="notification-container"></div>
@@ -13,19 +14,19 @@
   <div id="start-menu">
     <div class="start-sidebar">
       <div class="start-logo">Florde</div>
-      <div class="start-tagline">AI-powered coding environment</div>
+      <div class="start-tagline" lang-key="start_tagline">AI-powered coding environment</div>
       <div class="start-sidebar-btns">
-        <button id="btn-start-new" class="start-sidebar-btn primary"><span class="btn-icon">+</span> New Sandbox</button>
-        <button id="btn-start-local" class="start-sidebar-btn"><span class="btn-icon">&#128194;</span> Open Project</button>
-        <button id="btn-start-open" class="start-sidebar-btn"><span class="btn-icon">&#9201;</span> Recent</button>
-        <button id="btn-start-dashboard" class="start-sidebar-btn"><span class="btn-icon">&#128202;</span> Dashboard</button>
-        <button id="btn-start-settings" class="start-sidebar-btn"><span class="btn-icon">&#9881;</span> Settings</button>
-        <button id="btn-start-plugins" class="start-sidebar-btn"><span class="btn-icon">&#129513;</span> Plugins</button>
+        <button id="btn-start-new" class="start-sidebar-btn primary"><span class="btn-icon">+</span> <span lang-key="start_new_sandbox">New Sandbox</span></button>
+        <button id="btn-start-local" class="start-sidebar-btn"><span class="btn-icon">&#128194;</span> <span lang-key="start_open_project">Open Project</span></button>
+        <button id="btn-start-open" class="start-sidebar-btn"><span class="btn-icon">&#9201;</span> <span lang-key="start_recent">Recent</span></button>
+        <button id="btn-start-dashboard" class="start-sidebar-btn"><span class="btn-icon">&#128202;</span> <span lang-key="start_dashboard">Dashboard</span></button>
+        <button id="btn-start-settings" class="start-sidebar-btn"><span class="btn-icon">&#9881;</span> <span lang-key="start_settings">Settings</span></button>
+        <button id="btn-start-plugins" class="start-sidebar-btn"><span class="btn-icon">&#129513;</span> <span lang-key="start_plugins">Plugins</span></button>
       </div>
     </div>
     <div class="start-main">
-      <div class="start-main-title" id="start-main-title">Recent Projects</div>
-      <div class="start-main-subtitle" id="start-main-subtitle">Continue where you left off</div>
+      <div class="start-main-title" id="start-main-title" lang-key="start_recent_projects">Recent Projects</div>
+      <div class="start-main-subtitle" id="start-main-subtitle" lang-key="start_continue">Continue where you left off</div>
       <div id="project-list" class="project-list">
         <div id="project-items"></div>
       </div>
@@ -38,14 +39,14 @@
   <!-- New Sandbox Project Modal -->
   <div id="new-project-modal" class="modal hidden">
     <div class="modal-content" style="max-width:550px;">
-      <h2>New Sandbox Project</h2>
+      <h2 lang-key="modal_new_sandbox">New Sandbox Project</h2>
       <div class="settings-form">
-        <label for="new-project-name">Project Name</label>
+        <label for="new-project-name" lang-key="project_name">Project Name</label>
         <input type="text" id="new-project-name" placeholder="my-project" autofocus />
       </div>
       <div class="modal-actions">
-        <button id="btn-create-project" class="btn btn-primary">Create</button>
-        <button id="btn-cancel-new" class="btn btn-secondary">Cancel</button>
+        <button id="btn-create-project" class="btn btn-primary" lang-key="create">Create</button>
+        <button id="btn-cancel-new" class="btn btn-secondary" lang-key="cancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -53,19 +54,19 @@
   <!-- New Local Project Modal -->
   <div id="local-project-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>Open Local Project</h2>
+      <h2 lang-key="modal_open_local">Open Local Project</h2>
       <div class="settings-form">
-        <label for="local-project-name">Project Name</label>
+        <label for="local-project-name" lang-key="project_name">Project Name</label>
         <input type="text" id="local-project-name" placeholder="my-project" />
-        <label for="local-project-path">Folder Path</label>
+        <label for="local-project-path" lang-key="folder_path">Folder Path</label>
         <div style="display:flex;gap:0.5rem;">
           <input type="text" id="local-project-path" placeholder="C:\path\to\folder" readonly style="flex:1;" />
-          <button id="btn-browse-folder" class="btn btn-secondary" style="white-space:nowrap;">Browse</button>
+          <button id="btn-browse-folder" class="btn btn-secondary" style="white-space:nowrap;" lang-key="browse">Browse</button>
         </div>
       </div>
       <div class="modal-actions">
-        <button id="btn-create-local" class="btn btn-primary">Open</button>
-        <button id="btn-cancel-local" class="btn btn-secondary">Cancel</button>
+        <button id="btn-create-local" class="btn btn-primary" lang-key="open">Open</button>
+        <button id="btn-cancel-local" class="btn btn-secondary" lang-key="cancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -73,38 +74,38 @@
   <!-- Question Modal -->
   <div id="question-modal" class="modal hidden">
     <div class="modal-content" style="max-width:550px;">
-      <h2 id="question-title">Florde Has a Question</h2>
+      <h2 id="question-title" lang-key="florde_question">Florde Has a Question</h2>
       <p id="question-text" style="color:var(--text2);margin-bottom:1.5rem;line-height:1.5;"></p>
       <div id="question-choices" class="question-choices"></div>
       <div id="custom-answer-container" style="display:none;margin-top:0.75rem;">
         <input id="custom-answer-input" type="text" placeholder="Your answer..."
           style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
           onkeydown="if(event.key==='Enter')document.getElementById('btn-submit-custom').click()">
-        <button id="btn-submit-custom" class="btn btn-primary" style="margin-top:0.5rem;width:100%;">Submit</button>
+        <button id="btn-submit-custom" class="btn btn-primary" style="margin-top:0.5rem;width:100%;" lang-key="submit">Submit</button>
       </div>
       <div class="modal-actions" style="margin-top:1rem;">
-        <button id="btn-question-cancel" class="btn btn-secondary">Cancel</button>
+        <button id="btn-question-cancel" class="btn btn-secondary" lang-key="cancel">Cancel</button>
       </div>
     </div>
   </div>
 
   <div id="prompt-modal" class="modal hidden">
     <div class="modal-content" style="max-width:450px;">
-      <h2 id="prompt-title">Input required</h2>
+      <h2 id="prompt-title" lang-key="input_required">Input required</h2>
       <p id="prompt-text" style="color:var(--text2);margin-bottom:1rem;line-height:1.5;"></p>
       <input id="prompt-input" type="text" placeholder="..."
         style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
         onkeydown="if(event.key==='Enter')document.getElementById('btn-prompt-ok').click()">
       <div class="modal-actions" style="margin-top:1rem;">
-        <button id="btn-prompt-cancel" class="btn btn-secondary">Cancel</button>
-        <button id="btn-prompt-ok" class="btn btn-primary">OK</button>
+        <button id="btn-prompt-cancel" class="btn btn-secondary" lang-key="cancel">Cancel</button>
+        <button id="btn-prompt-ok" class="btn btn-primary" lang-key="ok">OK</button>
       </div>
     </div>
   </div>
 
   <div id="florde-confirm-modal" class="modal hidden">
     <div class="modal-content" style="max-width:500px;">
-      <h2>.florde Project State</h2>
+      <h2 lang-key="florde_project_state">.florde Project State</h2>
       <p id="florde-confirm-text" style="color:var(--text2);margin-bottom:1.5rem;line-height:1.5;"></p>
       <div id="florde-confirm-buttons" class="modal-actions" style="gap:0.5rem;"></div>
     </div>
@@ -159,8 +160,8 @@
       <div class="titlebar-right">
         <div style="display:flex;align-items:center;gap:4px;">
           <button id="btn-settings" title="Settings">&#9881;</button>
-          <button id="btn-save-all">Save All</button>
-          <button id="btn-back-menu">Menu</button>
+          <button id="btn-save-all"><span lang-key="save_all">Save All</span></button>
+          <button id="btn-back-menu"><span lang-key="menu">Menu</span></button>
         </div>
       </div>
     </div>
@@ -173,21 +174,21 @@
       <!-- Sidebar -->
       <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
-          <span>Files</span>
+          <span lang-key="files">Files</span>
           <button id="btn-refresh-tree" title="Refresh file tree">&#8635;</button>
         </div>
         <div id="file-tree" class="file-tree"></div>
         <div id="file-tree-context-menu" class="context-menu hidden">
-          <div class="context-menu-item" data-action="rename">Rename</div>
-          <div class="context-menu-item" data-action="delete">Delete</div>
+          <div class="context-menu-item" data-action="rename" lang-key="rename">Rename</div>
+          <div class="context-menu-item" data-action="delete" lang-key="delete">Delete</div>
           <div class="context-menu-separator"></div>
-          <div class="context-menu-item" data-action="copy-path">Copy Path</div>
+          <div class="context-menu-item" data-action="copy-path" lang-key="copy_path">Copy Path</div>
         </div>
 
         <!-- Search Results in Sidebar -->
         <div id="sidebar-search" class="sidebar-section hidden">
           <div class="sidebar-section-header">
-            <span>Search Results</span>
+            <span lang-key="search_results">Search Results</span>
             <button id="btn-sidebar-search-close" title="Close" class="sidebar-btn">&#10006;</button>
           </div>
           <div id="sidebar-search-results" class="git-changes-list"></div>
@@ -196,7 +197,7 @@
         <!-- Git Panel -->
         <div id="git-panel" class="sidebar-section">
           <div class="git-panel-header">
-            <span>Source Control</span>
+            <span lang-key="source_control">Source Control</span>
             <button id="btn-git-panel-refresh" title="Refresh" class="sidebar-btn">&#8635;</button>
           </div>
           <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;font-size:0.75rem;">
@@ -218,11 +219,11 @@
             <canvas id="git-graph-canvas" style="width:100%;height:400px;"></canvas>
           </div>
           <div class="git-panel-actions">
-            <button id="btn-git-panel-commit" class="btn btn-sm btn-primary">Commit</button>
-            <button id="btn-git-panel-branches" class="btn btn-sm btn-secondary">Branches</button>
-            <button id="btn-git-panel-history" class="btn btn-sm btn-secondary">History</button>
-            <button id="btn-git-panel-graph" class="btn btn-sm btn-secondary">Graph</button>
-            <button id="btn-git-panel-sync" class="btn btn-sm btn-secondary">Sync</button>
+            <button id="btn-git-panel-commit" class="btn btn-sm btn-primary" lang-key="commit">Commit</button>
+            <button id="btn-git-panel-branches" class="btn btn-sm btn-secondary" lang-key="branches">Branches</button>
+            <button id="btn-git-panel-history" class="btn btn-sm btn-secondary" lang-key="history">History</button>
+            <button id="btn-git-panel-graph" class="btn btn-sm btn-secondary" lang-key="graph">Graph</button>
+            <button id="btn-git-panel-sync" class="btn btn-sm btn-secondary" lang-key="sync">Sync</button>
           </div>
         </div>
       </div>
@@ -244,8 +245,9 @@
 
           <div class="chat-panel">
             <div class="panel-header">
-              <span>Chat</span>
-              <button id="btn-send-chat" title="Send current editor to chat">&#8593; Chat</button>
+              <span lang-key="chat">Chat</span>
+              <button id="btn-send-chat" title="Send current editor to chat" lang-key="chat_send">↑ Chat</button>
+              <button id="btn-ai-router" title="AI Router — Configure provider/model routes" style="font-size:0.7rem;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:4px;cursor:pointer;">Router</button>
               <select id="provider-select">
                 <option value="openai">OpenAI 🔑</option>
                 <option value="deepseek">DeepSeek 🔑</option>
@@ -262,7 +264,7 @@
               </select>
               <span id="provider-free-badge" class="model-free-badge"></span>
               <span id="model-info-badge" title="Click for model details" style="cursor:pointer;font-size:0.75rem;color:var(--text3);padding:0 0.4rem;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;"></span>
-              <button id="btn-export-chat" title="Export Chat">Export</button>
+              <button id="btn-export-chat" title="Export Chat" lang-key="export">Export</button>
             </div>
             <div id="chat-tab-bar"></div>
             <div id="chat-messages" class="chat-messages"></div>
@@ -271,11 +273,11 @@
               <div id="chat-input-container" style="position:relative;">
                 <div class="chat-input-row">
                   <textarea id="chat-input" placeholder="Type a message or ask the AI..." rows="3"></textarea>
-                  <button id="btn-send">Send</button>
+                  <button id="btn-send" lang-key="send">Send</button>
                 </div>
               </div>
               <div class="chat-input-footer">
-                <button id="btn-agentic-mode" class="agentic-btn agentic-build" title="Build mode: AI executes directly">Build</button>
+                <button id="btn-agentic-mode" class="agentic-btn agentic-build" title="Build mode: AI executes directly" lang-key="build">Build</button>
                 <button id="btn-attach-image" title="Attach image" class="btn-icon">&#128247;</button>
                 <input type="file" id="chat-image-input" accept="image/*" multiple hidden>
                 <span id="token-count" class="token-count">0 tokens</span>
@@ -288,12 +290,12 @@
         <!-- Diff Viewer -->
         <div id="diff-viewer" class="hidden">
           <div id="tab-group-bar">
-            <span class="tab-group-label">Groups:</span>
+            <span class="tab-group-label" lang-key="groups">Groups:</span>
             <div id="tab-groups-container" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
             <button id="btn-add-tab-group" title="New Group">+</button>
           </div>
           <div id="diff-viewer-header">
-            <span id="diff-viewer-badge">&#128274; Read-Only View</span>
+            <span id="diff-viewer-badge" lang-key="read_only_view">🔒 Read-Only View</span>
             <div id="diff-viewer-tabs"></div>
             <button id="btn-close-diff" title="Close Diff Viewer">&#10006;</button>
           </div>
@@ -304,10 +306,10 @@
         <!-- Docker Panel -->
         <div id="docker-panel" class="hidden">
           <div id="docker-tab-bar">
-            <div class="docker-tab active" data-docker-panel="containers">Containers</div>
-            <div class="docker-tab" data-docker-panel="images">Images</div>
-            <div class="docker-tab" data-docker-panel="compose">Compose</div>
-            <div class="docker-tab" data-docker-panel="logs">Logs</div>
+            <div class="docker-tab active" data-docker-panel="containers" lang-key="containers">Containers</div>
+            <div class="docker-tab" data-docker-panel="images" lang-key="images">Images</div>
+            <div class="docker-tab" data-docker-panel="compose" lang-key="compose">Compose</div>
+            <div class="docker-tab" data-docker-panel="logs" lang-key="logs">Logs</div>
             <div style="flex:1"></div>
             <span id="docker-status" class="docker-status" title="Docker status">&#9679;</span>
             <button id="btn-docker-refresh" class="docker-clear" title="Refresh">&#x21bb;</button>
@@ -329,7 +331,7 @@
             <button id="btn-terminal-split-v" title="Split Vertical">&#9474;</button>
             <span id="terminal-active-label" style="font-size:0.75rem;color:var(--text3);margin-left:0.5rem;"></span>
             <div style="flex:1"></div>
-            <div id="terminal-output-tab" class="terminal-tab" data-panel="log">Log</div>
+            <div id="terminal-output-tab" class="terminal-tab" data-panel="log" lang-key="log">Log</div>
             <button id="btn-terminal-clear" class="terminal-clear" title="Clear log">Clear</button>
             <button id="btn-terminal-minimize" class="terminal-clear" title="Minimize terminal">&#8212;</button>
           </div>
@@ -351,11 +353,11 @@
   <!-- Search Modal -->
   <div id="search-modal" class="modal hidden">
     <div class="modal-content" style="max-width:700px;min-width:500px;">
-      <h2>Search in Files</h2>
+      <h2 lang-key="search_in_files">Search in Files</h2>
       <div class="settings-form">
         <div style="display:flex;gap:8px;">
           <input type="text" id="search-input" placeholder="Search..." autofocus style="flex:1;" />
-          <button id="btn-search-replace-toggle" class="btn btn-secondary btn-sm">Replace</button>
+          <button id="btn-search-replace-toggle" class="btn btn-secondary btn-sm" lang-key="replace">Replace</button>
         </div>
       </div>
       <div id="search-results" class="search-results">
@@ -370,10 +372,10 @@
   <!-- Diff Modal -->
   <div id="diff-modal" class="modal hidden">
     <div class="modal-content" style="max-width:900px;min-width:600px;max-height:80vh;display:flex;flex-direction:column;">
-      <h2>AI Changes</h2>
+      <h2 lang-key="ai_changes">AI Changes</h2>
       <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;">
-        <button id="btn-diff-accept" class="btn btn-primary">Accept All</button>
-        <button id="btn-diff-reject" class="btn btn-secondary">Reject</button>
+        <button id="btn-diff-accept" class="btn btn-primary" lang-key="accept_all">Accept All</button>
+        <button id="btn-diff-reject" class="btn btn-secondary" lang-key="reject">Reject</button>
       </div>
       <div id="diff-container" style="flex:1;min-height:300px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;"></div>
     </div>
@@ -382,18 +384,18 @@
   <!-- Plan Modal -->
   <div id="plan-modal" class="modal hidden">
     <div class="modal-content" style="max-width:800px;min-width:500px;max-height:80vh;display:flex;flex-direction:column;">
-      <h2>AI Execution Plan</h2>
-      <p style="font-size:0.85rem;color:var(--text2);margin-bottom:0.5rem;">Review the plan below. Approve to execute step by step, or cancel to refine.</p>
+      <h2 lang-key="ai_execution_plan">AI Execution Plan</h2>
+      <p style="font-size:0.85rem;color:var(--text2);margin-bottom:0.5rem;" lang-key="plan_review">Review the plan below. Approve to execute step by step, or cancel to refine.</p>
       <textarea id="plan-content" style="flex:1;padding:0.5rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:0.85rem;line-height:1.6;color:var(--text);resize:vertical;font-family:inherit;" readonly></textarea>
       <div style="margin-top:0.3rem;display:flex;gap:0.3rem;align-items:center;">
         <label style="font-size:0.75rem;color:var(--text3);display:flex;align-items:center;gap:0.3rem;cursor:pointer;">
-          <input type="checkbox" id="plan-edit-toggle" /> Edit plan
+          <input type="checkbox" id="plan-edit-toggle" /> <span lang-key="edit_plan">Edit plan</span>
         </label>
         <span id="plan-step-progress" style="font-size:0.75rem;color:var(--text3);margin-left:auto;"></span>
       </div>
       <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:flex-end;">
-        <button id="btn-plan-cancel" class="btn btn-secondary">Cancel</button>
-        <button id="btn-plan-execute" class="btn btn-primary">Execute Plan</button>
+        <button id="btn-plan-cancel" class="btn btn-secondary" lang-key="cancel">Cancel</button>
+        <button id="btn-plan-execute" class="btn btn-primary" lang-key="execute_plan">Execute Plan</button>
       </div>
     </div>
   </div>
@@ -402,71 +404,99 @@
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 24px 0;">
-        <h2 style="margin:0;">Settings</h2>
+        <h2 style="margin:0;" lang-key="settings">Settings</h2>
         <button id="btn-close-settings-x" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;" onclick="hideModal('settings-modal')">&times;</button>
       </div>
       <div class="settings-tabs">
-        <button class="settings-tab active" data-tab="general">General</button>
-        <button class="settings-tab" data-tab="keybindings">Keybinds</button>
-        <button class="settings-tab" data-tab="providers">AI Providers</button>
-        <button class="settings-tab" data-tab="apps">Connected Apps</button>
-        <button class="settings-tab" data-tab="appearance">Appearance</button>
-        <button class="settings-tab" data-tab="security">Security</button>
-        <button class="settings-tab" data-tab="api-keys">API Keys</button>
-        <button class="settings-tab" data-tab="mcp">MCP Servers</button>
-        <button class="settings-tab" data-tab="sandbox">Sandbox</button>
+        <button class="settings-tab active" data-tab="general" lang-key="tab_general">General</button>
+        <button class="settings-tab" data-tab="keybindings" lang-key="tab_keybinds">Keybinds</button>
+        <button class="settings-tab" data-tab="providers" lang-key="tab_ai_providers">AI Providers</button>
+        <button class="settings-tab" data-tab="apps" lang-key="tab_connected_apps">Connected Apps</button>
+        <button class="settings-tab" data-tab="appearance" lang-key="tab_appearance">Appearance</button>
+        <button class="settings-tab" data-tab="security" lang-key="tab_security">Security</button>
+        <button class="settings-tab" data-tab="api-keys" lang-key="tab_api_keys">API Keys</button>
+        <button class="settings-tab" data-tab="mcp" lang-key="tab_mcp_servers">MCP Servers</button>
+        <button class="settings-tab" data-tab="sandbox" lang-key="tab_sandbox">Sandbox</button>
+        <button class="settings-tab" data-tab="experimental" lang-key="tab_experimental">Experimental</button>
       </div>
 
       <!-- General Tab -->
       <div class="settings-tab-content active" data-tab="general">
         <div class="settings-grid-2">
           <div class="settings-card">
-            <h3>Language &amp; Region</h3>
+            <h3 lang-key="language_region">Language & Region</h3>
             <div class="settings-form" style="gap:0.6rem;margin:0;">
-              <label for="settings-language">Display Language</label>
+              <label for="settings-language" lang-key="display_language">Display Language</label>
               <select id="settings-language">
                 <option value="en">English</option>
                 <option value="de">Deutsch</option>
+                <option value="pt">Português</option>
+                <option value="da">Dansk</option>
+                <option value="es">Español</option>
+                <option value="ru">Русский</option>
+                <option value="uk">Українська</option>
+                <option value="fr">Français</option>
+                <option value="la">Latina</option>
+                <option value="sv">Svenska</option>
+                <option value="it">Italiano</option>
+                <option value="nl">Nederlands</option>
+                <option value="pl">Polski</option>
+                <option value="tr">Türkçe</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="zh">中文</option>
+                <option value="ar">العربية</option>
+                <option value="hi">हिन्दी</option>
+                <option value="cs">Čeština</option>
+                <option value="el">Ελληνικά</option>
+                <option value="fi">Suomi</option>
+                <option value="no">Norsk</option>
+                <option value="ro">Română</option>
+                <option value="hu">Magyar</option>
+                <option value="th">ไทย</option>
+                <option value="vi">Tiếng Việt</option>
+                <option value="id">Bahasa Indonesia</option>
+                <option value="ms">Bahasa Melayu</option>
               </select>
             </div>
           </div>
           <div class="settings-card">
-            <h3>Timeout</h3>
+            <h3 lang-key="timeout">Timeout</h3>
             <div class="settings-form" style="gap:0.6rem;margin:0;">
-              <label for="settings-timeout">Request timeout (minutes)</label>
+              <label for="settings-timeout" lang-key="request_timeout">Request timeout (minutes)</label>
               <input type="number" id="settings-timeout" value="30" min="1" max="360" />
             </div>
           </div>
         </div>
         <div class="settings-card" style="margin-bottom:16px;">
-          <h3>Behavior</h3>
+          <h3 lang-key="behavior">Behavior</h3>
           <div class="settings-row">
-            <div><label>See Thoughts</label><br><small>Show AI reasoning process</small></div>
+            <div><label lang-key="see_thoughts">See Thoughts</label><br><small lang-key="see_thoughts_desc">Show AI reasoning process</small></div>
             <div class="settings-toggle on" data-setting="see-thoughts" onclick="this.classList.toggle('on')"></div>
           </div>
           <div class="settings-row">
-            <div><label>Instant Mode</label><br><small>Faster response times</small></div>
+            <div><label lang-key="instant_mode">Instant Mode</label><br><small lang-key="instant_mode_desc">Faster response times</small></div>
             <div class="settings-toggle" data-setting="instant-mode" onclick="this.classList.toggle('on')"></div>
           </div>
           <div class="settings-row">
-            <div><label>Detailed Activity</label><br><small>Extended activity logging</small></div>
+            <div><label lang-key="detailed_activity">Detailed Activity</label><br><small lang-key="detailed_activity_desc">Extended activity logging</small></div>
             <div class="settings-toggle on" data-setting="detailed-activity" onclick="this.classList.toggle('on')"></div>
           </div>
           <div class="settings-row">
-            <div><label>Auto-start</label><br><small>Launch on system startup</small></div>
+            <div><label lang-key="auto_start">Auto-start</label><br><small lang-key="auto_start_desc">Launch on system startup</small></div>
             <div class="settings-toggle" data-setting="auto-start" onclick="this.classList.toggle('on')"></div>
           </div>
           <div class="settings-row">
-            <div><label>Offline Mode</label><br><small>Work without internet</small></div>
+            <div><label lang-key="offline_mode">Offline Mode</label><br><small lang-key="offline_mode_desc">Work without internet</small></div>
             <div class="settings-toggle" data-setting="offline-mode" onclick="this.classList.toggle('on')"></div>
           </div>
           <div class="settings-row">
-            <div><label>Auto Accept</label><br><small>Automatically approve actions</small></div>
+            <div><label lang-key="auto_accept">Auto Accept</label><br><small lang-key="auto_accept_desc">Automatically approve ALL actions — overrides Security permissions below</small></div>
             <div class="settings-toggle" data-setting="auto-accept" onclick="this.classList.toggle('on')"></div>
           </div>
         </div>
         <div class="settings-card" style="margin-bottom:16px;">
-          <h3>Custom Instructions</h3>
+          <h3 lang-key="custom_instructions">Custom Instructions</h3>
           <textarea id="custom-instructions" rows="3" placeholder="Add custom instructions for the AI..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px;border-radius:6px;font-size:0.85rem;resize:vertical;font-family:inherit;min-height:70px;"></textarea>
         </div>
         <div id="auto-exceptions-area" class="settings-card hidden" style="margin-bottom:16px;">
@@ -489,7 +519,7 @@
       <!-- Keybinds Tab -->
       <div class="settings-tab-content" data-tab="keybindings">
         <div id="keybindings-list" style="max-height:50vh;overflow-y:auto;"></div>
-        <button id="btn-reset-keybindings" class="btn btn-secondary" style="margin-top:1rem;">Reset to Defaults</button>
+        <button id="btn-reset-keybindings" class="btn btn-secondary" style="margin-top:1rem;" lang-key="reset_to_defaults">Reset to Defaults</button>
       </div>
 
       <!-- Providers Tab -->
@@ -762,14 +792,14 @@
       <!-- Security Tab -->
       <div class="settings-tab-content" data-tab="security">
         <div class="settings-form">
-          <label>API Key Storage</label>
-          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;">Keys stored in OS keychain (Windows Credential Manager)</p>
-          <button id="btn-manage-keys" class="btn btn-sm btn-secondary">Manage Stored Keys</button>
+          <label lang-key="api_key_storage">API Key Storage</label>
+          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;" lang-key="api_key_storage_desc">Keys stored in OS keychain (Windows Credential Manager)</p>
+          <button id="btn-manage-keys" class="btn btn-sm btn-secondary" lang-key="manage_stored_keys">Manage Stored Keys</button>
 
           <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;">
 
-          <label>AI Tool Permissions</label>
-          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;">Standard: Ask — AI fragt vor jeder Aktion. Erlaubt AI Dateien zu lesen, zu schreiben, Befehle auszuführen und Fragen zu stellen.</p>
+          <label lang-key="ai_tool_permissions">AI Tool Permissions</label>
+          <p style="font-size:0.8rem;color:var(--text2);margin:-0.5rem 0 0.8rem;" lang-key="ai_tool_permissions_desc">Per-tool permissions: Allow = auto-approve, Ask = prompt each time, Block = never. Only applies when Auto Accept is OFF.</p>
           <div id="permission-list"></div>
         </div>
       </div>
@@ -777,7 +807,7 @@
       <!-- API Keys Tab -->
       <div class="settings-tab-content" data-tab="api-keys">
         <div class="settings-form">
-          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;" lang-key="api_keys_desc">
             API-Keys für Code Intelligence Dienste. Keys werden lokal gespeichert.
           </p>
           <div id="api-keys-list"></div>
@@ -787,7 +817,7 @@
       <!-- Apps Tab -->
       <div class="settings-tab-content" data-tab="apps">
         <div class="settings-form">
-          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+          <p style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;" lang-key="apps_desc">
             Connect external services to give the AI access to your accounts. API keys are stored securely in the OS keychain.
           </p>
           <div id="apps-grid" class="apps-grid"></div>
@@ -795,14 +825,14 @@
           <div id="app-connect-modal" class="app-connect-modal hidden">
             <div class="app-connect-overlay" id="app-connect-overlay"></div>
             <div class="app-connect-dialog">
-              <h3 id="app-connect-title">Connect App</h3>
+              <h3 id="app-connect-title" lang-key="connect_app">Connect App</h3>
               <p id="app-connect-desc" style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;"></p>
-              <label>API Key / Token</label>
+              <label lang-key="api_key_token">API Key / Token</label>
               <input type="password" id="app-connect-key" placeholder="Paste your API key here..." autofocus />
               <p style="font-size:0.78rem;color:var(--text3);margin-top:0.3rem;" id="app-connect-help"></p>
               <div class="modal-actions" style="margin-top:1rem;">
-                <button id="btn-app-connect-save" class="btn btn-primary">Connect</button>
-                <button id="btn-app-connect-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="btn-app-connect-save" class="btn btn-primary" lang-key="connect">Connect</button>
+                <button id="btn-app-connect-cancel" class="btn btn-secondary" lang-key="cancel">Cancel</button>
               </div>
             </div>
           </div>
@@ -812,7 +842,7 @@
       <!-- Appearance Tab -->
       <div class="settings-tab-content" data-tab="appearance">
         <div class="settings-form">
-          <label for="settings-theme">Theme</label>
+          <label for="settings-theme" lang-key="theme">Theme</label>
           <select id="settings-theme">
             <option value="dark">Dark (Default)</option>
             <option value="light">Light</option>
@@ -820,62 +850,62 @@
             <option value="solarized-dark">Solarized Dark</option>
             <option value="solarized-light">Solarized Light</option>
           </select>
-          <label>Layout</label>
+          <label lang-key="layout">Layout</label>
           <div class="layout-options">
             <label class="layout-option" data-layout="sidebar-left">
               <input type="radio" name="layout" value="sidebar-left" checked>
               <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="12" height="30" fill="currentColor" opacity="0.3" rx="2"/><rect x="14" y="0" width="26" height="30" fill="currentColor" opacity="0.15" rx="2"/></svg></span>
-              <span>Sidebar Left</span>
+              <span lang-key="sidebar_left">Sidebar Left</span>
             </label>
             <label class="layout-option" data-layout="sidebar-right">
               <input type="radio" name="layout" value="sidebar-right">
               <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="26" height="30" fill="currentColor" opacity="0.15" rx="2"/><rect x="28" y="0" width="12" height="30" fill="currentColor" opacity="0.3" rx="2"/></svg></span>
-              <span>Sidebar Right</span>
+              <span lang-key="sidebar_right">Sidebar Right</span>
             </label>
             <label class="layout-option" data-layout="top-bar">
               <input type="radio" name="layout" value="top-bar">
               <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="40" height="8" fill="currentColor" opacity="0.3" rx="2"/><rect x="0" y="10" width="40" height="20" fill="currentColor" opacity="0.15" rx="2"/></svg></span>
-              <span>Top Bar</span>
+              <span lang-key="top_bar">Top Bar</span>
             </label>
             <label class="layout-option" data-layout="floating">
               <input type="radio" name="layout" value="floating">
               <span class="layout-icon"><svg viewBox="0 0 40 30"><rect x="0" y="0" width="40" height="30" fill="currentColor" opacity="0.15" rx="2"/><rect x="0" y="0" width="40" height="30" fill="currentColor" opacity="0.05" rx="2" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2"/><rect x="26" y="2" width="12" height="12" fill="currentColor" opacity="0.35" rx="2"/></svg></span>
-              <span>Floating</span>
+              <span lang-key="floating">Floating</span>
             </label>
           </div>
-          <label>Chat Font Size: <span id="chat-font-size-label">14px</span></label>
+          <label lang-key="chat_font_size">Chat Font Size: <span id="chat-font-size-label">14px</span></label>
           <input type="range" id="chat-font-size" min="10" max="24" value="14">
-          <label>Editor Font Size: <span id="editor-font-size-label">14px</span></label>
+          <label lang-key="editor_font_size">Editor Font Size: <span id="editor-font-size-label">14px</span></label>
           <input type="range" id="editor-font-size" min="10" max="24" value="14">
           <hr style="border:none;border-top:1px solid var(--border);margin:0.8rem 0;">
-          <label>Layout Design Mode</label>
+          <label lang-key="layout_design_mode">Layout Design Mode</label>
           <div id="layout-design-mode-toggle">
             <div class="settings-toggle" id="layout-design-toggle" onclick="this.classList.toggle('on'); if(typeof LayoutManager!=='undefined')LayoutManager.lock(!this.classList.contains('on'))"></div>
-            <span style="font-size:0.8rem;color:var(--text3);">When active, panels can be moved, resized, and rearranged</span>
+            <span style="font-size:0.8rem;color:var(--text3);" lang-key="layout_design_desc">When active, panels can be moved, resized, and rearranged</span>
           </div>
         </div>
       </div>
 
       <!-- MCP Servers Tab -->
       <div class="settings-tab-content" data-tab="mcp">
-        <h3 style="margin-bottom:0.5rem;">MCP Server</h3>
-        <p style="font-size:0.85rem;color:var(--text3);margin-bottom:1rem;">
+        <h3 style="margin-bottom:0.5rem;" lang-key="mcp_server">MCP Server</h3>
+        <p style="font-size:0.85rem;color:var(--text3);margin-bottom:1rem;" lang-key="mcp_desc">
           MCP Server stellen der KI zusätzliche Tools bereit (Datenbanken, APIs, Dateisysteme).<br>
           Unterstützte Transporte: STDIO (lokale Prozesse), SSE und WebSocket.
         </p>
         <!-- Run Server -->
         <div style="background:var(--bg3);padding:0.6rem;border-radius:8px;margin-bottom:1rem;">
-          <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.4rem;">MCP Server starten</div>
+          <div style="font-weight:600;font-size:0.85rem;margin-bottom:0.4rem;" lang-key="mcp_start_server">MCP Server starten</div>
           <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
             <input id="mcp-run-name" placeholder="Server Name" style="flex:1;min-width:100px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
             <input id="mcp-run-command" placeholder="Befehl (z.B. docker run ...)" style="flex:2;min-width:150px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
             <input id="mcp-run-port" placeholder="Port (optional)" style="width:80px;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.4rem;border-radius:4px;font-size:0.8rem;">
-            <button id="btn-start-mcp-server" class="btn btn-primary btn-sm" style="white-space:nowrap;">▶ Starten</button>
+            <button id="btn-start-mcp-server" class="btn btn-primary btn-sm" style="white-space:nowrap;" lang-key="mcp_starten">▶ Starten</button>
           </div>
         </div>
         <!-- Configured Servers -->
         <div id="mcp-server-list"></div>
-        <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;">+ Server hinzufügen</button>
+        <button id="btn-add-mcp-server" class="btn btn-secondary" style="margin-top:0.5rem;" lang-key="mcp_add_server">+ Server hinzufügen</button>
       </div>
 
       <!-- Sandbox Settings Tab -->
@@ -883,11 +913,36 @@
         <div id="sandbox-settings-content"></div>
       </div>
 
+      <!-- Experimental Settings Tab -->
+      <div class="settings-tab-content" data-tab="experimental">
+        <!-- Task Router (Experimental) -->
+        <div class="task-router-section" id="task-router-section">
+          <div class="task-router-header">
+            <h3>Task Router (Experimental)</h3>
+            <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;cursor:pointer;">
+              <input type="checkbox" id="task-router-enabled" style="cursor:pointer;">
+              <span>Enabled</span>
+            </label>
+          </div>
+          <p style="font-size:0.75rem;color:var(--text3);margin:0 0 0.5rem 0;">
+            Route different tasks (coding, chat, planning...) to different models. \u2705 = supported, \u26A0 = uncertain, \u274C = not supported (still usable).
+          </p>
+          <div class="task-router-mode">
+            <label>Mode:</label>
+            <select id="task-router-mode">
+              <option value="manual">Manual</option>
+              <option value="auto">Automatic</option>
+            </select>
+          </div>
+          <div id="task-router-cards"></div>
+        </div>
+      </div>
+
       <div id="settings-validation" class="settings-validation hidden"></div>
 
       <div class="modal-actions">
-        <button id="btn-save-settings" class="btn btn-primary">Save</button>
-        <button id="btn-close-settings" class="btn btn-secondary">Close</button>
+        <button id="btn-save-settings" class="btn btn-primary" lang-key="save">Save</button>
+        <button id="btn-close-settings" class="btn btn-secondary" lang-key="close">Close</button>
       </div>
     </div>
   </div>
@@ -896,24 +951,24 @@
   <div id="plugin-modal" class="modal hidden">
     <div class="modal-content" style="max-width:700px;min-width:500px;max-height:85vh;">
       <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;">
-        <h2 style="margin-bottom:0;flex:1;">Plugin Marketplace</h2>
-        <button id="btn-plugin-docs" class="btn btn-sm btn-secondary" style="margin-right:0.5rem;">API Docs</button>
-        <button id="btn-upload-plugin" class="btn btn-sm btn-primary" title="Install Local Plugin">+ Upload</button>
+        <h2 style="margin-bottom:0;flex:1;" lang-key="plugin_marketplace">Plugin Marketplace</h2>
+        <button id="btn-plugin-docs" class="btn btn-sm btn-secondary" style="margin-right:0.5rem;" lang-key="api_docs">API Docs</button>
+        <button id="btn-upload-plugin" class="btn btn-sm btn-primary" title="Install Local Plugin" lang-key="upload">+ Upload</button>
         <span style="font-size:0.8rem;color:var(--text3);">&#9889;</span>
       </div>
       <div style="display:flex;gap:1rem;margin-bottom:1rem;">
         <input type="text" id="plugin-search" placeholder="Search plugins..." style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:8px;font-size:0.9rem;" />
       </div>
       <div style="border-bottom:1px solid var(--border);margin-bottom:1rem;padding-bottom:0.5rem;">
-        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;">Installed Plugins</span>
+        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;" lang-key="installed_plugins">Installed Plugins</span>
       </div>
       <div id="marketplace-list" class="plugin-list"></div>
       <div style="border-bottom:1px solid var(--border);margin:1rem 0;padding-bottom:0.5rem;">
-        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;">Available from Marketplace</span>
+        <span style="font-weight:600;color:var(--text2);font-size:0.85rem;" lang-key="available_from_marketplace">Available from Marketplace</span>
       </div>
       <div id="available-plugins" class="plugin-list"></div>
       <div class="modal-actions" style="margin-top:1rem;">
-        <button id="btn-close-plugins" class="btn btn-secondary">Close</button>
+        <button id="btn-close-plugins" class="btn btn-secondary" lang-key="close">Close</button>
       </div>
     </div>
   </div>
@@ -922,7 +977,7 @@
   <div id="plugin-docs-modal" class="modal hidden">
     <div class="modal-content plugin-docs-content">
       <div class="modal-header">
-        <h2 style="margin-bottom:0;">Plugin API Documentation</h2>
+        <h2 style="margin-bottom:0;" lang-key="plugin_api_docs">Plugin API Documentation</h2>
         <button id="btn-close-plugin-docs" class="btn btn-sm btn-secondary" style="margin-left:auto;">&times;</button>
       </div>
       <div class="docs-body">
@@ -945,22 +1000,22 @@
   <div id="audit-modal" class="modal hidden">
     <div class="modal-content" style="max-width:750px;min-width:550px;max-height:85vh;display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;gap:1rem;padding:0 0 0.5rem;">
-        <h2 style="margin:0;">Daten-Audit-Log</h2>
+        <h2 style="margin:0;" lang-key="audit_log">Daten-Audit-Log</h2>
         <div id="audit-overlay-tabs" style="display:flex;gap:2px;margin-left:auto;">
-          <button class="audit-overlay-tab active" data-tab="messages">Requests</button>
-          <button class="audit-overlay-tab" data-tab="actions">AI Audit</button>
+          <button class="audit-overlay-tab active" data-tab="messages" lang-key="requests">Requests</button>
+          <button class="audit-overlay-tab" data-tab="actions" lang-key="ai_audit">AI Audit</button>
         </div>
       </div>
       <!-- Messages Tab -->
       <div id="audit-messages-tab" class="audit-overlay-content">
-        <p style="color:var(--text2);margin-bottom:1rem;font-size:0.85rem;">&#128200; Was wurde an die Cloud gesendet vs. lokal verarbeitet</p>
+        <p style="color:var(--text2);margin-bottom:1rem;font-size:0.85rem;" lang-key="audit_cloud_desc">📈 Was wurde an die Cloud gesendet vs. lokal verarbeitet</p>
         <div style="display:flex;gap:1rem;margin-bottom:1rem;">
           <div id="audit-summary" style="flex:1;display:flex;gap:1rem;"></div>
         </div>
         <div style="border-bottom:1px solid var(--border);margin-bottom:0.5rem;padding-bottom:0.3rem;display:flex;gap:0.5rem;">
-          <button class="audit-filter active" data-filter="all">Alle</button>
-          <button class="audit-filter" data-filter="cloud">Cloud</button>
-          <button class="audit-filter" data-filter="local">Lokal</button>
+          <button class="audit-filter active" data-filter="all" lang-key="all">Alle</button>
+          <button class="audit-filter" data-filter="cloud" lang-key="cloud">Cloud</button>
+          <button class="audit-filter" data-filter="local" lang-key="local">Lokal</button>
         </div>
         <div id="audit-list" class="audit-list" style="max-height:40vh;overflow-y:auto;"></div>
       </div>
@@ -972,10 +1027,10 @@
         </div>
         <div id="audit-ki-filter-row" style="display:flex;gap:0.3rem;align-items:center;margin-bottom:0.3rem;">
           <select id="audit-ki-filter-type" class="audit-filter-select">
-            <option value="all">All Types</option>
+            <option value="all" lang-key="all_types">All Types</option>
           </select>
           <select id="audit-ki-filter-status" class="audit-filter-select">
-            <option value="all">All Status</option>
+            <option value="all" lang-key="all_status">All Status</option>
           </select>
           <select id="audit-ki-filter-date" class="audit-filter-select">
             <option value="all">All Time</option>
@@ -988,8 +1043,8 @@
         <div id="audit-actions-list" style="flex:1;overflow-y:auto;max-height:45vh;"></div>
       </div>
       <div class="modal-actions" style="margin-top:1rem;">
-        <button id="btn-audit-clear" class="btn btn-secondary" style="margin-right:auto;">Clear Log</button>
-        <button id="btn-close-audit" class="btn btn-secondary">Close</button>
+          <button id="btn-audit-clear" class="btn btn-secondary" style="margin-right:auto;" lang-key="clear_log">Clear Log</button>
+          <button id="btn-close-audit" class="btn btn-secondary" lang-key="close">Close</button>
       </div>
     </div>
   </div>
@@ -1002,17 +1057,17 @@
   <!-- Git Commit Modal -->
   <div id="git-modal" class="modal hidden">
     <div class="modal-content" style="max-width:550px;">
-      <h2>Git Commit</h2>
+      <h2 lang-key="git_commit">Git Commit</h2>
       <div class="settings-form">
-        <label>Commit Name</label>
+        <label lang-key="commit_name">Commit Name</label>
         <input type="text" id="git-commit-name" placeholder="Brief summary of changes" />
-        <label>Description (optional)</label>
+        <label lang-key="description_optional">Description (optional)</label>
         <textarea id="git-commit-desc" placeholder="Detailed description..." rows="4" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:0.5rem;border-radius:6px;resize:vertical;"></textarea>
         <div id="git-diff-preview" style="background:rgba(0,0,0,0.2);border-radius:6px;padding:0.5rem;font-family:monospace;font-size:0.78rem;max-height:200px;overflow-y:auto;white-space:pre-wrap;color:var(--text2);"></div>
       </div>
       <div class="modal-actions">
-        <button id="btn-git-commit" class="btn btn-primary">Commit</button>
-        <button id="btn-close-git" class="btn btn-secondary">Cancel</button>
+        <button id="btn-git-commit" class="btn btn-primary" lang-key="commit">Commit</button>
+        <button id="btn-close-git" class="btn btn-secondary" lang-key="cancel">Cancel</button>
       </div>
     </div>
   </div>
@@ -1020,10 +1075,10 @@
   <!-- Keyboard Shortcuts Modal -->
   <div id="help-modal" class="modal hidden">
     <div class="modal-content" style="max-width:500px;">
-      <h2>Keyboard Shortcuts</h2>
+      <h2 lang-key="keyboard_shortcuts">Keyboard Shortcuts</h2>
       <div class="settings-form" id="help-shortcuts-list"></div>
       <div class="modal-actions">
-        <button id="btn-close-help" class="btn btn-secondary">Close</button>
+        <button id="btn-close-help" class="btn btn-secondary" lang-key="close">Close</button>
       </div>
     </div>
   </div>
@@ -1031,19 +1086,19 @@
   <!-- Management Panel (Notes, To-Do, Decisions, RAG, Skills, Ollama, CI, Execution) -->
   <div id="management-panel" class="hidden">
     <div id="management-header">
-      <span>&#128202; Management</span>
+      <span lang-key="management">📋 Management</span>
       <button id="btn-management-close" style="background:none;border:none;color:var(--text3);cursor:pointer;">&times;</button>
     </div>
     <div id="management-subtabs">
-      <button class="mgmt-tab active" data-tab="todo">&#9745; To-Do</button>
-      <button class="mgmt-tab" data-tab="notes">&#128221; Notes</button>
-      <button class="mgmt-tab" data-tab="decisions">&#128220; Decisions</button>
-      <button class="mgmt-tab" data-tab="rag">&#129504; RAG</button>
-      <button class="mgmt-tab" data-tab="skills">&#128736; Skills</button>
-      <button class="mgmt-tab" data-tab="ollama">&#129302; Ollama</button>
-      <button class="mgmt-tab" data-tab="ci">&#128200; CI</button>
-      <button class="mgmt-tab" data-tab="exec">&#9678; Exec</button>
-      <button class="mgmt-tab" data-tab="florde">&#128194; .florde</button>
+      <button class="mgmt-tab active" data-tab="todo" lang-key="tab_todo">☑ To-Do</button>
+      <button class="mgmt-tab" data-tab="notes" lang-key="tab_notes">📝 Notes</button>
+      <button class="mgmt-tab" data-tab="decisions" lang-key="tab_decisions">📄 Decisions</button>
+      <button class="mgmt-tab" data-tab="rag" lang-key="tab_rag">🧠 RAG</button>
+      <button class="mgmt-tab" data-tab="skills" lang-key="tab_skills">🔧 Skills</button>
+      <button class="mgmt-tab" data-tab="ollama" lang-key="tab_ollama">🤖 Ollama</button>
+      <button class="mgmt-tab" data-tab="ci" lang-key="tab_ci">📈 CI</button>
+      <button class="mgmt-tab" data-tab="exec" lang-key="tab_exec">◎ Exec</button>
+      <button class="mgmt-tab" data-tab="florde" lang-key="tab_florde">📂 .florde</button>
     </div>
 
     <!-- To-Do Content -->
@@ -1058,14 +1113,14 @@
           <option value="active">Active</option>
           <option value="done">Done</option>
         </select>
-        <button id="btn-todo-clear-done">Clear Done</button>
+        <button id="btn-todo-clear-done" lang-key="clear_done">Clear Done</button>
       </div>
     </div>
 
     <!-- Notes Content -->
     <div class="mgmt-content hidden" id="mgmt-notes">
       <div id="notes-sidebar">
-        <button id="btn-notes-new" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;">+ New Note</button>
+        <button id="btn-notes-new" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;padding:0.25rem 0.5rem;" lang-key="new_note">+ New Note</button>
         <div id="notes-list"></div>
       </div>
       <div id="notes-editor-area">
@@ -1077,7 +1132,7 @@
     <!-- Decisions Content -->
     <div class="mgmt-content hidden" id="mgmt-decisions">
       <div id="decision-toolbar">
-        <button id="btn-decision-new" class="btn btn-primary" style="font-size:0.75rem;padding:0.25rem 0.6rem;">+ New Decision</button>
+        <button id="btn-decision-new" class="btn btn-primary" style="font-size:0.75rem;padding:0.25rem 0.6rem;" lang-key="new_decision">+ New Decision</button>
       </div>
       <div id="decision-list"></div>
     </div>
@@ -1086,9 +1141,9 @@
     <div class="mgmt-content hidden" id="mgmt-rag">
       <div id="rag-status-row">
         <span id="rag-status">Idle</span>
-        <button id="btn-rag-reindex">Re-index</button>
+        <button id="btn-rag-reindex" lang-key="reindex">Re-index</button>
         <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
-          <input type="checkbox" id="rag-auto" checked /> Auto
+          <input type="checkbox" id="rag-auto" checked /> <span lang-key="auto">Auto</span>
         </label>
       </div>
       <div id="rag-stats">
@@ -1111,8 +1166,8 @@
     <!-- Skills Content -->
     <div class="mgmt-content hidden" id="mgmt-skills">
       <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);">
-        <button id="btn-skill-create" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;">+ Create</button>
-        <button id="btn-skill-import" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.85rem;">Import</button>
+        <button id="btn-skill-create" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;" lang-key="create">+ Create</button>
+        <button id="btn-skill-import" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.85rem;" lang-key="import">Import</button>
       </div>
       <div id="skills-list"></div>
     </div>
@@ -1120,8 +1175,8 @@
     <!-- Ollama Content -->
     <div class="mgmt-content hidden" id="mgmt-ollama">
       <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);align-items:center;">
-        <span style="font-size:0.8rem;font-weight:600;">&#129302; Ollama Model Hub</span>
-        <button id="btn-ollama-hub-download" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;margin-left:auto;">+ Download</button>
+        <span style="font-size:0.8rem;font-weight:600;" lang-key="ollama_model_hub">🤖 Ollama Model Hub</span>
+        <button id="btn-ollama-hub-download" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.85rem;margin-left:auto;" lang-key="download">+ Download</button>
       </div>
       <div style="display:flex;gap:0.3rem;padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);">
         <input type="text" id="ollama-hub-search" placeholder="Search models..." style="flex:1;" />
@@ -1148,18 +1203,18 @@
     <!-- .florde Content -->
     <div class="mgmt-content hidden" id="mgmt-florde">
       <div style="padding:0.5rem;">
-        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;">&#128194; .florde Project State</div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;" lang-key="florde_project_state">📂 .florde Project State</div>
         <div id="florde-status" style="font-size:0.75rem;margin-bottom:0.5rem;color:var(--text3);word-break:break-all;">Checking...</div>
         <div style="display:flex;gap:0.3rem;flex-wrap:wrap;margin-bottom:0.5rem;">
           <button id="btn-florde-init" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;">Init .florde</button>
           <button id="btn-florde-migrate" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;">Migrate Data</button>
           <button id="btn-florde-remove" class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;color:#ef4444;">Remove .florde</button>
         </div>
-        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128196; Memory Files</div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;" lang-key="memory_files">📁 Memory Files</div>
         <div id="florde-memory-list" style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem;"></div>
-        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128203; Temp Files</div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;" lang-key="temp_files">📋 Temp Files</div>
         <div id="florde-temp-list" style="font-size:0.75rem;color:var(--text3);margin-bottom:0.5rem;"></div>
-        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;">&#128203; Version Control (.gitignore)</div>
+        <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;margin-top:0.5rem;" lang-key="version_control">📋 Version Control (.gitignore)</div>
         <div id="florde-gitignore" style="font-size:0.75rem;color:var(--text3);"></div>
       </div>
     </div>
@@ -1167,8 +1222,8 @@
     <!-- Execution Content -->
     <div class="mgmt-content hidden" id="mgmt-exec">
       <div style="display:flex;gap:0.3rem;padding:0.4rem 0.5rem;border-bottom:1px solid var(--border);align-items:center;">
-        <span style="font-size:0.8rem;font-weight:600;">&#9678; Execution History</span>
-        <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;margin-left:auto;">Clear</button>
+        <span style="font-size:0.8rem;font-weight:600;" lang-key="execution_history">◎ Execution History</span>
+        <button id="btn-exec-clear" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.75rem;margin-left:auto;" lang-key="clear">Clear</button>
       </div>
       <div id="execution-list"></div>
     </div>
@@ -1178,13 +1233,28 @@
   <div id="subagents-modal" class="modal hidden">
     <div class="modal-content" style="max-width: 700px; max-height: 80vh; display: flex; flex-direction: column;">
       <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:0.5rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem;">
-        <h2 style="margin:0;font-size:1.1rem;">Subagent-Status</h2>
+        <h2 style="margin:0;font-size:1.1rem;" lang-key="subagent_status">Subagent-Status</h2>
         <div style="display:flex;gap:0.3rem;">
-          <button id="btn-subagents-abort-all" class="btn btn-small" style="background:var(--danger);">Alle abbrechen</button>
-          <button id="btn-subagents-close" class="btn btn-small">Schließen</button>
+          <button id="btn-subagents-abort-all" class="btn btn-small" style="background:var(--danger);" lang-key="cancel_all">Alle abbrechen</button>
+          <button id="btn-subagents-close" class="btn btn-small" lang-key="close">Schließen</button>
         </div>
       </div>
       <div id="subagents-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.5rem;"></div>
+    </div>
+  </div>
+
+  <!-- AI Router Modal -->
+  <div id="ai-router-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:0.5rem;border-bottom:1px solid var(--border);margin-bottom:0.5rem;">
+        <h2 style="margin:0;font-size:1.1rem;">AI Router</h2>
+        <div style="display:flex;gap:0.3rem;">
+          <button id="btn-ai-router-add" class="btn btn-primary btn-sm">+ Add Route</button>
+          <button id="btn-ai-router-close" class="btn btn-secondary btn-sm">&times;</button>
+        </div>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text3);margin-bottom:0.5rem;">Configure provider/model routes. Each route = one provider + model combination. Select which route to use in the chat toolbar.</p>
+      <div id="ai-router-routes" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0.4rem;"></div>
     </div>
   </div>
 

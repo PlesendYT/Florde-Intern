@@ -284,18 +284,23 @@ ipcMain.handle('search-in-files', async (event, name, query) => {
 ipcMain.handle('export-zip', async (event, name) => {
   const root = getProjectRoot(name);
   if (!root || !fs.existsSync(root)) return false;
-  const meta = getProjectMeta(name);
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `${name}.zip`,
     filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
   });
   if (result.canceled || !result.filePath) return false;
   try {
-    const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
-    const psScript = `param([string]$src,[string]$dst)\nCompress-Archive -Path "$src\\*" -DestinationPath "$dst" -Force`;
-    fs.writeFileSync(tmpScript, psScript, 'utf-8');
-    execSync(`powershell -NoProfile -File "${tmpScript}" "${root}" "${result.filePath}"`, { timeout: 30000 });
-    fs.rmSync(tmpScript, { force: true });
+    if (process.platform === 'win32') {
+      const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
+      const psScript = `param([string]$src,[string]$dst)\nCompress-Archive -Path "$src\\*" -DestinationPath "$dst" -Force`;
+      fs.writeFileSync(tmpScript, psScript, 'utf-8');
+      execSync(`powershell -NoProfile -File "${tmpScript}" "${root}" "${result.filePath}"`, { timeout: 30000 });
+      fs.rmSync(tmpScript, { force: true });
+    } else if (process.platform === 'darwin') {
+      execSync(`ditto -c -k --sequesterRsrc --keepParent "${result.filePath}" "${root}"`, { timeout: 30000 });
+    } else {
+      execSync(`cd "${root}" && zip -r "${result.filePath}" .`, { timeout: 30000 });
+    }
     return true;
   } catch (e) {
     console.error('ZIP export failed:', e.message);
@@ -887,6 +892,49 @@ ipcMain.handle('terminal:kill', (event, { id }) => {
   if (terminalProcesses[id]) {
     terminalProcesses[id].kill();
     delete terminalProcesses[id];
+  }
+});
+
+// ==================== TRANSLATION CACHE ====================
+
+function getTranslationCachePath() {
+  return path.join(app.getPath('userData'), 'translations.json');
+}
+
+ipcMain.handle('translation:get-cache', () => {
+  try {
+    return JSON.parse(fs.readFileSync(getTranslationCachePath(), 'utf-8'));
+  } catch { return {}; }
+});
+
+ipcMain.handle('translation:save-cache', (event, cache) => {
+  try {
+    fs.writeFileSync(getTranslationCachePath(), JSON.stringify(cache, null, 2), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('translation:translate', async (event, text, sourceLang, targetLang) => {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const html = await new Promise((resolve, reject) => {
+      const req = net.request(url);
+      req.on('response', (res) => {
+        let data = '';
+        res.on('data', (chunk) => data += chunk);
+        res.on('end', () => resolve(data));
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    const parsed = JSON.parse(html);
+    const translated = parsed[0].map(s => s[0]).join('');
+    return { success: true, text: translated };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 

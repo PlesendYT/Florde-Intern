@@ -189,4 +189,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('terminal:exit', handler);
     }
   },
+
+  translation: {
+    getCache: () => ipcRenderer.invoke('translation:get-cache'),
+    saveCache: (cache) => ipcRenderer.invoke('translation:save-cache', cache),
+    translate: (text, sl, tl) => ipcRenderer.invoke('translation:translate', text, sl, tl),
+  },
 });

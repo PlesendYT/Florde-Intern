@@ -117,6 +117,7 @@ body {
 #start-menu {
   display: flex; height: 100vh; background: var(--bg);
   -webkit-app-region: drag;
+  padding-top: env(titlebar-area-height, 0px);
 }
 #start-menu button, #start-menu input, #start-menu select, #start-menu .project-item, #start-menu .project-list { -webkit-app-region: no-drag; }
 .start-sidebar {
@@ -518,7 +519,7 @@ body {
 /* ==================== TOOLBAR SCROLL ==================== */
 .titlebar {
   display: flex; align-items: center; gap: 4px;
-  height: 32px; padding: 0 12px;
+  height: 36px; padding: 0 12px;
   background: var(--bg2); border-bottom: 1px solid var(--border);
   -webkit-app-region: drag; flex-shrink: 0; overflow: hidden;
 }
@@ -1955,3 +1956,170 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ===== Editor/Chat Mode ===== */
+.mode-toggle-btn {
+  background: transparent; border: 1px solid transparent; color: var(--text3);
+  font-size: 0.8rem; cursor: pointer; padding: 2px 8px; border-radius: 4px;
+  font-family: monospace;
+}
+.mode-toggle-btn:hover { color: var(--text); background: var(--bg3); }
+.mode-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+
+/* Chat mode: only chat fills the window */
+body.app-mode-chat .chat-panel { flex: 1 !important; width: auto !important; min-width: 300px; }
+body.app-mode-chat .editor-panel { display: none !important; }
+
+/* Editor mode: editor fills, chat as fixed sidebar */
+body.app-mode-editor .editor-panel { display: flex !important; flex: 1 1 auto !important; }
+body.app-mode-editor .chat-panel { flex: 0 0 320px !important; width: 320px !important; min-width: 320px; }
+
+/* ===== Editor Action Menu ===== */
+.editor-action-menu {
+  position: fixed; z-index: 10002; display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4); padding: 4px; gap: 2px;
+}
+.eam-btn {
+  background: transparent; border: none; color: var(--text); text-align: left;
+  padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+}
+.eam-btn:hover { background: var(--bg3); }
+
+/* ===== Inline Diff Decorations ===== */
+.inline-diff-added { background: rgba(34,197,94,0.18); }
+.inline-diff-added-gutter { border-left: 3px solid #22c55e; }
+.inline-diff-removed { background: rgba(239,68,68,0.18); }
+.inline-diff-removed-gutter { border-left: 3px solid #ef4444; }
+.inline-diff-glyph { background: #22c55e; border-radius: 50%; }
+
+/* ===== Hunk Toolbar ===== */
+#hunk-toolbar {
+  position: fixed; z-index: 10003; display: none; gap: 4px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.ht-btn {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
+  font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+}
+.ht-btn:hover { background: var(--accent); color: #fff; }
+.ht-edit { border-style: dashed; }
+
+/* ===== Smart Search ===== */
+#smart-search-overlay {
+  position: fixed; inset: 0; z-index: 10050; display: flex; align-items: flex-start;
+  justify-content: center; background: rgba(0,0,0,0.45); padding-top: 12vh;
+}
+.smart-search {
+  width: 640px; max-width: 90vw; max-height: 60vh; display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5); overflow: hidden;
+}
+#smart-search-input {
+  width: 100%; padding: 14px 16px; font-size: 1rem; color: var(--text1);
+  background: var(--bg3); border: none; outline: none; border-bottom: 1px solid var(--border);
+}
+#smart-search-results { overflow-y: auto; padding: 8px 0; }
+.ss-cat {
+  padding: 6px 16px; font-size: 0.7rem; font-weight: 600; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ss-item { padding: 8px 16px; cursor: pointer; border-left: 2px solid transparent; }
+.ss-item:hover { background: var(--bg3); border-left-color: var(--accent); }
+.ss-sub { font-size: 0.7rem; color: var(--text3); margin-top: 2px; }
+.ss-kind { color: var(--accent2); }
+.ss-empty { padding: 24px; text-align: center; color: var(--text3); }
+
+/* Task Router */
+.task-router-section {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+.task-router-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+.task-router-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+.task-router-mode {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.6rem;
+}
+.task-router-mode label {
+  font-size: 0.75rem;
+  color: var(--text2);
+}
+.task-router-mode select {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+}
+.task-card {
+  display: grid;
+  grid-template-columns: 100px 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.3rem;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.task-card-name {
+  font-weight: 600;
+  color: var(--text1);
+  text-transform: capitalize;
+}
+.task-card-select {
+  font-size: 0.75rem;
+  padding: 2px 4px;
+}
+.task-card-status {
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.task-card-status.active {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+.task-card-status.disabled {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+.task-indicator {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+.task-fallback-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg2);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.8rem 1.2rem;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  font-size: 0.85rem;
+  color: var(--text1);
+}
+.task-fallback-toast .btn { font-size: 0.75rem; }

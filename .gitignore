@@ -9,7 +9,6 @@ App_Installer/*.exe
 Website/App_Download/*.exe
 *.exe
 App/build-output/
-App/installer.nsh
 
 # Environment files
 .env

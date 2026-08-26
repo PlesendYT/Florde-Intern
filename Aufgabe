@@ -1,0 +1,1990 @@
+# Florde Loop Detection
+
+## 1. Übersicht
+
+**Florde Loop Detection** ist ein Überwachungssystem für Florde Agents, das erkennt, wenn ein Agent während einer Aufgabe keinen sinnvollen Fortschritt mehr macht.
+
+Das Ziel ist **nicht**, einfach nach einer bestimmten Anzahl von Aktionen oder Iterationen abzubrechen.
+
+Florde soll stattdessen analysieren, ob sich das Verhalten des Agents wiederholt und ob die ausgeführten Aktionen tatsächlich zu einem Fortschritt in Richtung des ursprünglichen Ziels führen.
+
+Ein Loop kann dabei sehr unterschiedlich aussehen:
+
+- exakt dieselbe Aktion wird wiederholt
+
+- unterschiedliche Änderungen führen immer wieder zum gleichen Fehler
+
+- Änderungen werden anschließend wieder rückgängig gemacht
+
+- der Agent verliert nach Context Compaction seinen Zustand
+
+- der Agent arbeitet zwar weiter, entfernt sich aber immer stärker vom eigentlichen Ziel
+
+
+Die zentrale Frage lautet deshalb:
+
+> **„Macht der Agent noch messbaren Fortschritt in Richtung seines Ziels?“**
+
+---
+
+# 2. Grundprinzip
+
+Florde soll nicht nur einzelne Aktionen betrachten.
+
+Stattdessen wird eine **Action History** des Agents aufgebaut.
+
+Beispiel:
+
+```text
+Agent Task:
+Fix authentication bug
+
+Action 1
+→ read auth.ts
+
+Action 2
+→ modify auth.ts
+
+Action 3
+→ npm test
+
+Result
+→ 3 tests failed
+
+Action 4
+→ modify auth.ts
+
+Action 5
+→ npm test
+
+Result
+→ 3 tests failed
+
+Action 6
+→ modify auth.ts
+
+Action 7
+→ npm test
+
+Result
+→ 3 tests failed
+```
+
+Für sich betrachtet sind diese Aktionen legitim.
+
+Zusammen betrachtet erkennt Florde jedoch:
+
+```text
+Änderung
+↓
+Test
+↓
+3 Fehler
+↓
+Änderung
+↓
+Test
+↓
+3 Fehler
+↓
+Änderung
+↓
+Test
+↓
+3 Fehler
+```
+
+Es gibt Aktivität, aber keinen messbaren Fortschritt.
+
+Florde sollte deshalb einen möglichen Loop erkennen.
+
+---
+
+# 3. Wichtig: Kein primitiver Wiederholungszähler
+
+Florde darf nicht einfach sagen:
+
+```text
+3 Tool Calls
+→ Loop
+```
+
+oder:
+
+```text
+5 Iterationen
+→ Agent stoppen
+```
+
+Das wäre falsch.
+
+Ein Agent kann beispielsweise zehnmal hintereinander Tests ausführen, weil er verschiedene Tests überprüfen muss.
+
+Ebenso kann ein Agent dieselbe Datei mehrfach bearbeiten, ohne tatsächlich in einem Loop zu sein.
+
+Entscheidend ist daher nicht:
+
+> „Wurde etwas wiederholt?“
+
+sondern:
+
+> **„Hat sich der Zustand des Problems oder des Projekts sinnvoll verändert?“**
+
+---
+
+# 4. Was ist messbarer Fortschritt?
+
+Florde benötigt eine Reihe von Signalen, anhand derer Fortschritt erkannt werden kann.
+
+Mögliche Fortschrittssignale:
+
+### Code
+
+- neue oder geänderte Dateien
+
+- relevante Codeänderungen
+
+- Fehler werden behoben
+
+- neue Tests werden erfolgreich
+
+- Anzahl fehlgeschlagener Tests sinkt
+
+- Compilerfehler sinken
+
+- Linterfehler sinken
+
+- Build funktioniert wieder
+
+
+### Tests
+
+Beispiel:
+
+```text
+12 failed
+↓
+8 failed
+↓
+4 failed
+↓
+1 failed
+↓
+0 failed
+```
+
+Das ist eindeutig Fortschritt.
+
+Dagegen:
+
+```text
+3 failed
+↓
+3 failed
+↓
+3 failed
+↓
+3 failed
+```
+
+ist ein starkes Loop-Signal.
+
+### Tool-Ergebnisse
+
+Auch Tool-Ergebnisse können verglichen werden.
+
+Beispiel:
+
+```text
+npm test
+→ Error X
+
+npm test
+→ Error X
+
+npm test
+→ Error X
+```
+
+Wenn die Ergebnisse praktisch identisch bleiben, steigt die Loop-Wahrscheinlichkeit.
+
+---
+
+# 5. Die verschiedenen Loop-Typen
+
+Florde sollte mindestens fünf unterschiedliche Loop-Typen erkennen.
+
+---
+
+## 5.1 Exact Loop
+
+Der Agent wiederholt exakt dieselbe Sequenz.
+
+Beispiel:
+
+```text
+A
+↓
+B
+↓
+A
+↓
+B
+↓
+A
+↓
+B
+```
+
+Oder:
+
+```text
+read file
+→ edit file
+→ test
+→ read file
+→ edit file
+→ test
+```
+
+Wenn dabei kein neuer Zustand entsteht, handelt es sich wahrscheinlich um einen Loop.
+
+### Erkennung
+
+Florde kann beispielsweise die letzten N Aktionen vergleichen.
+
+Eine mögliche Signatur:
+
+```text
+action type
++ target
++ relevant arguments
++ result
+```
+
+Beispiel:
+
+```text
+run_command
+target: npm test
+result_hash: abc123
+```
+
+Wenn dieselbe Signatur wiederholt auftaucht, steigt die Loop-Wahrscheinlichkeit.
+
+---
+
+# 6. Error Loop
+
+Der Error Loop ist wichtiger als ein einfacher Exact Loop.
+
+Hier führt der Agent **unterschiedliche Änderungen** durch, aber das zugrunde liegende Problem bleibt identisch.
+
+Beispiel:
+
+```text
+Fix A
+↓
+npm test
+↓
+Error X
+
+Fix B
+↓
+npm test
+↓
+Error X
+
+Fix C
+↓
+npm test
+↓
+Error X
+```
+
+Die Änderungen sind unterschiedlich.
+
+Trotzdem hat sich das Ergebnis nicht verbessert.
+
+Florde sollte daher nicht nur die Aktionen vergleichen, sondern auch die **Fehlerentwicklung**.
+
+---
+
+## Beispiel
+
+```text
+Initial:
+3 tests failed
+
+Attempt 1:
+auth.ts geändert
+→ 3 tests failed
+
+Attempt 2:
+middleware.ts geändert
+→ 3 tests failed
+
+Attempt 3:
+api.ts geändert
+→ 3 tests failed
+```
+
+Florde erkennt:
+
+```text
+Different changes
++
+Same failure
++
+No measurable improvement
+=
+High Loop Probability
+```
+
+---
+
+# 7. Revert Loop
+
+Bei einem Revert Loop bewegt sich der Agent praktisch im Kreis.
+
+Beispiel:
+
+```text
+Change A
+↓
+Change B
+↓
+Change C
+↓
+Revert C
+↓
+Revert B
+↓
+Change B
+↓
+Revert B
+```
+
+Oder:
+
+```text
+State A
+↓
+State B
+↓
+State C
+↓
+State B
+↓
+State C
+↓
+State B
+```
+
+Der Agent kehrt wiederholt zu bereits vorhandenen Zuständen zurück.
+
+Das kann insbesondere bei Git-basierten Änderungen erkannt werden.
+
+Mögliche Signale:
+
+- Dateiinhalt ähnelt stark einem früheren Zustand
+
+- Änderungen werden rückgängig gemacht
+
+- dieselben Stellen werden wiederholt geändert
+
+- Git-Diff bewegt sich zwischen ähnlichen Zuständen
+
+
+---
+
+# 8. Context Loop
+
+Ein Context Loop kann nach Context Compaction auftreten.
+
+Beispiel:
+
+```text
+Agent:
+analysiert Problem
+
+↓
+
+ändert auth.ts
+
+↓
+
+Context Compaction
+
+↓
+
+Agent analysiert Problem erneut
+
+↓
+
+Agent ändert auth.ts erneut
+
+↓
+
+Context Compaction
+
+↓
+
+Agent analysiert dasselbe Problem erneut
+```
+
+Der Agent verliert dabei Teile seines bisherigen Zustands.
+
+Florde sollte deshalb Context Compaction als Ereignis in der Agent History speichern.
+
+Beispielsweise:
+
+```text
+Context Event:
+COMPACTION
+
+Previous state:
+Task: Fix authentication bug
+
+Recent actions:
+auth.ts modified
+npm test
+3 failures
+```
+
+Nach der Compaction kann Florde erkennen, wenn der Agent wieder exakt in einen bereits bearbeiteten Zustand zurückkehrt.
+
+---
+
+# 9. Rabbit Hole
+
+Der Rabbit Hole ist die schwierigste Form.
+
+Der Agent wiederholt nicht unbedingt dieselben Aktionen.
+
+Stattdessen entfernt er sich immer weiter vom eigentlichen Ziel.
+
+Beispiel:
+
+```text
+Task:
+Fix login button
+
+Agent:
+→ untersucht React
+→ untersucht CSS
+→ installiert neue Library
+→ ändert Webpack
+→ refactored Routing
+→ ändert package.json
+→ untersucht Docker
+→ ändert Build-System
+→ untersucht Backend
+→ ...
+```
+
+Technisch passiert ständig etwas.
+
+Der Agent produziert möglicherweise sogar hunderte Änderungen.
+
+Aber:
+
+> **Der Login Button funktioniert immer noch nicht.**
+
+Das ist kein klassischer Loop, sondern ein **Progress Failure**.
+
+---
+
+# 10. Zielorientierte Fortschrittsmessung
+
+Damit Rabbit Holes erkannt werden können, benötigt Florde ein Modell des ursprünglichen Tasks.
+
+Beispiel:
+
+```text
+Task:
+Fix login button
+```
+
+Florde sollte daraus relevante Ziele bzw. Kriterien ableiten können:
+
+```text
+Goal:
+Login button funktioniert
+
+Expected evidence:
+- Login Button kann geklickt werden
+- Login Request wird gesendet
+- Login funktioniert
+- relevante Tests bestehen
+```
+
+Dann kann Florde Aktionen bewerten.
+
+Beispiel:
+
+```text
+Ändere login.ts
+→ hohe Relevanz
+
+Ändere login.css
+→ möglicherweise relevant
+
+Ändere Docker Compose
+→ geringe Relevanz
+
+Installiere komplett neue UI Library
+→ sehr geringe Relevanz
+```
+
+Eine einzelne irrelevante Aktion ist natürlich noch kein Problem.
+
+Wenn jedoch über längere Zeit fast ausschließlich Aktionen mit geringer Relevanz stattfinden, kann Florde einen möglichen Rabbit Hole melden.
+
+---
+
+# 11. Loop Score
+
+Florde sollte nicht nur `true` oder `false` verwenden.
+
+Stattdessen sollte ein **Loop Score** verwendet werden.
+
+Beispiel:
+
+```text
+0.00 - 0.29
+Normal
+
+0.30 - 0.49
+Possible Loop
+
+0.50 - 0.74
+Confirmed Loop
+
+0.75 - 1.00
+Critical Loop
+```
+
+Der Score kann aus mehreren Faktoren entstehen.
+
+Beispiel:
+
+```text
+same actions             +0.20
+same error                +0.25
+no test improvement       +0.20
+repeated file changes     +0.10
+revert behavior           +0.15
+context repetition        +0.15
+goal distance increasing  +0.20
+```
+
+Die tatsächlichen Gewichte sollten konfigurierbar sein und später durch Tests verbessert werden.
+
+---
+
+# 12. Wichtig: Nicht jeder Loop ist gleich schlimm
+
+Florde sollte drei Zustände unterscheiden.
+
+## 🟡 Possible Loop
+
+Florde ist sich noch nicht sicher.
+
+Beispiel:
+
+```text
+Possible Loop
+
+Florde suspects that the agent may be stuck.
+
+No action will be taken yet.
+```
+
+Der Agent läuft weiter.
+
+Es erfolgt zunächst nur eine interne Markierung bzw. optional eine unaufdringliche Anzeige.
+
+---
+
+## 🟠 Confirmed Loop
+
+Mehrere Signale bestätigen den Verdacht.
+
+Beispiel:
+
+```text
+Loop detected
+
+The agent has made no measurable progress
+during the last 8 actions.
+
+Repeated failure:
+npm test
+→ 3 tests failed
+```
+
+Jetzt wird der Benutzer informiert.
+
+Der Agent wird **nicht automatisch sofort beendet**.
+
+Stattdessen werden Recovery-Optionen angeboten.
+
+---
+
+## 🔴 Critical Loop
+
+Der Agent wurde bereits mehrfach aus einem Loop herausgeführt, ist aber erneut in einen Loop geraten.
+
+Beispiel:
+
+```text
+Critical Loop
+
+The agent failed to recover from the detected loop
+after 3 recovery attempts.
+```
+
+Jetzt wird der Agent gestoppt.
+
+---
+
+# 13. Verhalten bei einem erkannten Loop
+
+Ein erkannter Loop bedeutet **nicht automatisch Stop**.
+
+Das Verhalten soll sein:
+
+```text
+Loop erkannt
+     ↓
+Nutzer informieren
+     ↓
+Recovery anbieten
+     ↓
+┌──────────────┬──────────────┬──────────────┐
+│ Pause        │ Retry        │ Weiterlaufen │
+└──────────────┴──────────────┴──────────────┘
+```
+
+Eine mögliche UI:
+
+```text
+⚠ Loop detected
+
+Florde detected that the agent has made
+little or no measurable progress.
+
+Reason:
+The same test failure occurred 4 times.
+
+Time:
+11m 42s
+
+Estimated token usage:
+184k
+
+Recovery attempts:
+0 / 3
+
+[Pause Agent]
+[Retry]
+[Continue]
+```
+
+---
+
+# 14. Retry muss eine neue Strategie verwenden
+
+Das ist ein besonders wichtiger Punkt.
+
+Florde darf nicht einfach:
+
+```text
+Retry 1
+→ exakt dasselbe
+
+Retry 2
+→ exakt dasselbe
+
+Retry 3
+→ exakt dasselbe
+```
+
+ausführen.
+
+Sonst würde das Loop-System praktisch nur zusätzliche Zeit verbrauchen.
+
+Bei einem Retry sollte Florde versuchen, eine **andere Strategie** zu verwenden.
+
+Beispielsweise:
+
+```text
+Current strategy:
+Modify auth.ts → run tests
+
+Alternative strategy:
+Inspect failing test
+
+Alternative strategy:
+Trace request flow
+
+Alternative strategy:
+Inspect related middleware
+
+Alternative strategy:
+Ask another sub-agent for analysis
+```
+
+Ein Retry zählt nur dann als echter Recovery-Versuch, wenn eine neue Strategie verwendet wurde.
+
+---
+
+# 15. Automatisches Recovery
+
+Florde kann optional automatisch einen Recovery-Versuch durchführen.
+
+Beispiel:
+
+```text
+Loop detected
+↓
+Wait 2 minutes
+↓
+Retry with new strategy
+↓
+Agent continues
+```
+
+Die Wartezeit soll einstellbar sein.
+
+### Standardwert
+
+```text
+2 Minuten
+```
+
+Konfiguration:
+
+```text
+Loop Recovery Delay:
+[ 2 minutes ]
+
+Recovery Attempts:
+[ 3 ]
+```
+
+Mögliche Werte:
+
+```text
+30 seconds
+1 minute
+2 minutes
+5 minutes
+10 minutes
+Custom
+```
+
+Alternativ:
+
+```text
+Never automatically retry
+```
+
+---
+
+# 16. Recovery-Zähler
+
+Florde sollte die Anzahl der fehlgeschlagenen Recovery-Versuche speichern.
+
+Beispiel:
+
+```text
+Recovery attempt:
+1 / 3
+```
+
+Wenn der Agent nach dem ersten Versuch wieder Fortschritt macht:
+
+```text
+Recovery successful
+```
+
+Der Zähler kann wieder auf:
+
+```text
+0 / 3
+```
+
+gesetzt werden.
+
+Wenn erneut ein Loop entsteht:
+
+```text
+Recovery attempt:
+1 / 3
+```
+
+Das verhindert, dass ein einzelner früherer Loop den Agent dauerhaft belastet.
+
+---
+
+# 17. Drei fehlgeschlagene Recovery-Versuche
+
+Wenn der Agent dreimal versucht wurde zu recovern und jedes Mal wieder in denselben oder einen vergleichbaren Loop fällt:
+
+```text
+Recovery 1
+→ failed
+
+Recovery 2
+→ failed
+
+Recovery 3
+→ failed
+```
+
+dann:
+
+```text
+🔴 Critical Loop
+
+The agent could not recover after 3 attempts.
+
+The agent has been stopped to prevent
+further unnecessary tool usage and token consumption.
+```
+
+Der Agent wird gestoppt.
+
+Der Nutzer kann anschließend die Session untersuchen und manuell entscheiden, wie es weitergeht.
+
+---
+
+# 18. Was zählt als erfolgreicher Recovery-Versuch?
+
+Ein Recovery-Versuch ist erfolgreich, wenn danach messbarer Fortschritt festgestellt wird.
+
+Beispiel:
+
+```text
+Before recovery:
+3 tests failed
+
+Recovery:
+Change middleware strategy
+
+After recovery:
+1 test failed
+```
+
+→ Recovery erfolgreich.
+
+Oder:
+
+```text
+Before:
+Build failed
+
+After:
+Build successful
+```
+
+→ Recovery erfolgreich.
+
+Oder:
+
+```text
+Before:
+same error for 5 attempts
+
+After:
+different error
+```
+
+Das kann ebenfalls ein positives Signal sein, weil sich der Zustand verändert hat.
+
+Ein anderer Fehler bedeutet allerdings nicht automatisch, dass das Problem gelöst wurde.
+
+Florde sollte deshalb mehrere Signale kombinieren.
+
+---
+
+# 19. Keine falschen Positives
+
+Loop Detection darf nicht zu aggressiv sein.
+
+Beispiel:
+
+```text
+Agent:
+npm test
+→ 3 failures
+
+Agent:
+fix auth.ts
+
+Agent:
+npm test
+→ 3 failures
+
+Agent:
+fix middleware.ts
+
+Agent:
+npm test
+→ 3 failures
+```
+
+Hier könnte Florde bereits einen möglichen Loop erkennen.
+
+Das bedeutet aber nicht zwangsläufig, dass der Agent feststeckt.
+
+Vielleicht benötigt die Aufgabe tatsächlich mehrere Änderungen.
+
+Deshalb:
+
+```text
+Possible Loop
+```
+
+statt sofort:
+
+```text
+Critical Loop
+```
+
+Die Schwelle für automatische Eingriffe muss deutlich höher liegen.
+
+---
+
+# 20. Tool-Agnostisch
+
+Loop Detection sollte nicht ausschließlich für Coding funktionieren.
+
+Das System sollte auf der Agent Action History arbeiten.
+
+Beispielsweise:
+
+```text
+Tool
+Command
+File edit
+File read
+Browser action
+Search
+MCP call
+Sub-agent call
+Build
+Test
+Git operation
+```
+
+Dadurch kann dasselbe System später auch andere Florde-Funktionen überwachen.
+
+---
+
+# 21. Sub-Agents
+
+Bei Multi-Agent-Systemen muss Loop Detection zwischen Agents unterscheiden.
+
+Beispiel:
+
+```text
+Main Agent
+├── Agent A
+├── Agent B
+└── Agent C
+```
+
+Agent A kann beispielsweise in einem Loop sein, während Agent B normal arbeitet.
+
+Dann sollte Florde **nicht den gesamten Task stoppen**.
+
+Stattdessen:
+
+```text
+Agent A:
+🔴 Loop detected
+
+Agent B:
+🟢 Working
+
+Agent C:
+🟢 Working
+```
+
+Der Benutzer kann anschließend nur Agent A pausieren.
+
+---
+
+# 22. Agent-übergreifende Loops
+
+Es kann allerdings auch passieren, dass mehrere Agents denselben Fehler unabhängig voneinander bearbeiten.
+
+Beispiel:
+
+```text
+Agent A:
+fix auth.ts
+→ test fails
+
+Agent B:
+fix middleware.ts
+→ same test fails
+
+Agent C:
+change api.ts
+→ same test fails
+```
+
+Der Main Agent könnte daraus einen globalen Loop erzeugen.
+
+Florde sollte deshalb zwei Ebenen besitzen:
+
+```text
+Per-Agent Loop Detection
+Global Task Loop Detection
+```
+
+---
+
+# 23. Token- und Zeitverbrauch anzeigen
+
+Wenn ein Loop erkannt wird, sollte Florde dem Benutzer zeigen, warum ein Eingreifen sinnvoll ist.
+
+Beispiel:
+
+```text
+⚠ Loop detected
+
+No measurable progress for:
+8 actions
+
+Time spent:
+11m 42s
+
+Estimated tokens:
+184k
+
+Repeated error:
+3 failing tests
+
+Recovery attempts:
+0 / 3
+```
+
+Das macht die Entscheidung für den Nutzer nachvollziehbar.
+
+---
+
+# 24. Loop History
+
+Florde sollte erkannte Loops in der Agent Session speichern.
+
+Beispiel:
+
+```text
+Loop History
+
+13:42
+Possible Loop
+Error Loop
+
+13:44
+Confirmed Loop
+Recovery started
+
+13:46
+Recovery successful
+
+14:01
+Possible Loop
+Rabbit Hole
+
+14:03
+Confirmed Loop
+Recovery started
+```
+
+Das ist besonders bei langen Agent-Sessions wichtig.
+
+---
+
+# 25. UI
+
+Die UI sollte nicht überladen werden.
+
+Im normalen Zustand:
+
+```text
+Agent
+🟢 Working
+```
+
+Bei einem möglichen Loop:
+
+```text
+Agent
+🟡 Possible loop
+```
+
+Bei einem bestätigten Loop:
+
+```text
+Agent
+🟠 Loop detected
+```
+
+Bei einem kritischen Loop:
+
+```text
+Agent
+🔴 Critical loop
+```
+
+Beim Öffnen der Agent-Details:
+
+```text
+Loop Detection
+
+Status:
+Confirmed Loop
+
+Type:
+Error Loop
+
+Confidence:
+87%
+
+No measurable progress:
+8 actions
+
+Time:
+11m 42s
+
+Recovery:
+0 / 3
+
+[Pause]
+[Retry]
+[Continue]
+```
+
+---
+
+# 26. Einstellungen
+
+Loop Detection sollte vollständig konfigurierbar sein.
+
+Beispiel:
+
+```text
+Settings
+→ Agents
+→ Loop Detection
+```
+
+Optionen:
+
+```text
+[✓] Enable Loop Detection
+
+Detection sensitivity:
+[ Balanced ▼ ]
+
+Possible Loop:
+[✓] Show warning
+
+Confirmed Loop:
+[✓] Ask before recovery
+
+Automatic recovery:
+[✓]
+
+Recovery delay:
+[ 2 minutes ]
+
+Maximum recovery attempts:
+[ 3 ]
+
+Critical Loop:
+[✓] Stop agent after failed recovery attempts
+```
+
+Zusätzlich:
+
+```text
+[ ] Disable Rabbit Hole Detection
+[ ] Disable Context Loop Detection
+[ ] Disable Revert Loop Detection
+```
+
+---
+
+# 27. Sensitivity
+
+Florde sollte verschiedene Empfindlichkeitsstufen anbieten.
+
+## Conservative
+
+Wenige Warnungen.
+
+Geeignet für:
+
+```text
+lange autonome Agent-Sessions
+```
+
+## Balanced
+
+Standard.
+
+Guter Kompromiss zwischen False Positives und Detection.
+
+## Aggressive
+
+Loops werden früh erkannt.
+
+Geeignet für:
+
+```text
+kosten-/tokenempfindliche Sessions
+```
+
+---
+
+# 28. Technische Architektur
+
+Loop Detection sollte möglichst unabhängig vom eigentlichen Agent-Modell implementiert werden.
+
+Beispiel:
+
+```text
+Agent
+  ↓
+Tool Execution
+  ↓
+Action Event
+  ↓
+Action History
+  ↓
+Loop Detection Engine
+  ↓
+Loop Analysis
+  ↓
+Loop State
+  ↓
+Recovery Manager
+  ↓
+UI
+```
+
+Der Agent selbst muss also nicht zwingend wissen, dass Loop Detection existiert.
+
+---
+
+# 29. Action Events
+
+Jede relevante Agent-Aktion kann als Event gespeichert werden.
+
+Beispiel:
+
+```json
+{
+  "timestamp": "...",
+  "agentId": "...",
+  "type": "tool_call",
+  "tool": "shell",
+  "command": "npm test",
+  "result": "...",
+  "resultHash": "...",
+  "filesChanged": [],
+  "success": false
+}
+```
+
+Bei einer Dateiänderung:
+
+```json
+{
+  "type": "file_edit",
+  "file": "src/auth.ts",
+  "beforeHash": "...",
+  "afterHash": "...",
+  "linesChanged": 12
+}
+```
+
+Dadurch kann die Detection Engine später unabhängig vom konkreten Tool arbeiten.
+
+---
+
+# 30. Zustandsvergleich
+
+Loop Detection sollte nicht nur einzelne Events vergleichen.
+
+Es sollte auch Zustände vergleichen.
+
+Beispiel:
+
+```text
+State A
+↓
+State B
+↓
+State C
+↓
+State B
+↓
+State C
+```
+
+Wenn der Agent wiederholt zu bereits bekannten Zuständen zurückkehrt, steigt die Wahrscheinlichkeit eines Revert Loops.
+
+Ein State kann beispielsweise enthalten:
+
+```text
+Git diff
+relevant file hashes
+test results
+build status
+known errors
+task progress
+```
+
+---
+
+# 31. Error Fingerprinting
+
+Fehler sollten normalisiert werden.
+
+Denn:
+
+```text
+Error at line 42
+Error at line 43
+Error at line 44
+```
+
+kann derselbe zugrunde liegende Fehler sein.
+
+Florde sollte deshalb aus Fehlern einen Fingerprint erzeugen.
+
+Beispiel:
+
+```text
+Raw Error:
+TypeError: Cannot read properties of undefined
+at auth.ts:42
+
+Fingerprint:
+TypeError::CannotReadUndefined::auth.ts
+```
+
+Damit können ähnliche Fehler erkannt werden, auch wenn sich Zeilennummern ändern.
+
+---
+
+# 32. Fortschrittsmetriken
+
+Mögliche Metriken:
+
+```text
+testsPassed
+testsFailed
+buildSuccess
+lintErrors
+typeErrors
+filesChanged
+relevantFilesChanged
+gitDiffSize
+errorFingerprint
+taskMilestones
+toolFailureRate
+```
+
+Diese Werte können vor und nach Aktionen verglichen werden.
+
+Beispiel:
+
+```text
+Before:
+testsFailed = 3
+
+After:
+testsFailed = 2
+```
+
+→ Fortschritt.
+
+---
+
+# 33. Rabbit-Hole-Erkennung
+
+Rabbit Hole Detection sollte vorsichtiger sein als klassische Loop Detection.
+
+Mögliche Faktoren:
+
+```text
+Task relevance
++
+recent file relevance
++
+time without milestone
++
+number of unrelated files changed
++
+number of unrelated tools used
+```
+
+Beispiel:
+
+```text
+Task:
+Fix login button
+
+Relevant:
+src/components/Login.tsx
+
+Agent activity:
+src/components/Login.tsx
+src/auth/login.ts
+src/styles/login.css
+```
+
+→ normal.
+
+Dagegen:
+
+```text
+Agent activity:
+webpack.config.js
+docker-compose.yml
+package.json
+database/schema.sql
+vite.config.ts
+CI workflow
+```
+
+ohne Fortschritt beim Login:
+
+→ Rabbit Hole Wahrscheinlichkeit steigt.
+
+---
+
+# 34. Recovery-Strategien
+
+Florde sollte mehrere Recovery-Strategien unterstützen.
+
+### Strategy 1 — Re-evaluate
+
+Agent soll das ursprüngliche Ziel erneut analysieren.
+
+```text
+Re-evaluate the task and determine
+why the previous approach failed.
+```
+
+### Strategy 2 — Inspect Failure
+
+Agent soll ausschließlich den aktuellen Fehler untersuchen.
+
+### Strategy 3 — Review Changes
+
+Agent soll die eigenen letzten Änderungen überprüfen.
+
+### Strategy 4 — Alternative Approach
+
+Agent soll eine grundsätzlich andere Strategie wählen.
+
+### Strategy 5 — Sub-Agent
+
+Ein anderer Agent kann den aktuellen Zustand analysieren.
+
+Beispiel:
+
+```text
+Main Agent:
+stuck
+
+↓
+
+Review Agent:
+analyzes current state
+
+↓
+
+Main Agent:
+continues with new strategy
+```
+
+---
+
+# 35. Nutzerkontrolle
+
+Der Benutzer soll jederzeit Kontrolle behalten.
+
+Bei einem Loop:
+
+```text
+[Pause Agent]
+[Retry]
+[Continue]
+```
+
+### Pause
+
+Agent wird pausiert.
+
+Keine weiteren Aktionen.
+
+### Retry
+
+Recovery wird gestartet.
+
+### Continue
+
+Warnung wird ignoriert und Agent läuft weiter.
+
+Wichtig:
+
+`Continue` sollte den Loop Detection Status nicht deaktivieren.
+
+Wenn der Agent weiterhin keinen Fortschritt macht, kann erneut gewarnt werden.
+
+---
+
+# 36. Automatischer Modus
+
+Für autonome Sessions kann der Benutzer einstellen:
+
+```text
+Automatic Loop Recovery:
+ON
+```
+
+Dann:
+
+```text
+Loop detected
+↓
+Notify user
+↓
+wait 2 minutes
+↓
+Recovery attempt
+↓
+check progress
+```
+
+Wenn erfolgreich:
+
+```text
+🟢 Agent recovered
+```
+
+Wenn nicht:
+
+```text
+Recovery 1 failed
+↓
+wait 2 minutes
+↓
+Recovery 2
+```
+
+Nach dem dritten Fehlschlag:
+
+```text
+🔴 Agent stopped
+```
+
+---
+
+# 37. Sicherheit
+
+Loop Detection sollte niemals selbstständig gefährliche Aktionen ausführen.
+
+Ein Recovery-Versuch darf nicht automatisch zusätzliche Permissions erhalten.
+
+Wenn der Agent beispielsweise vorher keinen Zugriff auf eine Ressource hatte, darf Loop Recovery diesen Zugriff nicht einfach aktivieren.
+
+Die Permission-Grenzen des Agents bleiben unverändert.
+
+---
+
+# 38. Performance
+
+Loop Detection darf selbst nicht zu einem neuen Performanceproblem werden.
+
+Deshalb sollte nicht jede komplette Agent-History bei jeder Aktion erneut analysiert werden.
+
+Stattdessen:
+
+```text
+Recent Action Window
++
+Cached fingerprints
++
+Incremental metrics
+```
+
+Beispielsweise:
+
+```text
+Last 20–50 actions
+```
+
+für lokale Muster.
+
+Längere Session-Historien können separat zusammengefasst werden.
+
+---
+
+# 39. MVP
+
+Die erste Implementierung sollte bewusst kleiner sein.
+
+### Phase 1
+
+Implementieren:
+
+- Action History
+
+- Action Fingerprints
+
+- Error Fingerprints
+
+- Exact Loop Detection
+
+- Error Loop Detection
+
+- Progress Tracking
+
+- Possible / Confirmed / Critical Status
+
+- UI-Warnung
+
+- Pause
+
+- Continue
+
+- Retry
+
+- Recovery Counter
+
+- maximal 3 Recovery-Versuche
+
+- konfigurierbare Recovery Delay
+
+- Standard: 2 Minuten
+
+
+Damit ist bereits ein sinnvoller erster Release möglich.
+
+---
+
+# 40. Phase 2
+
+Danach:
+
+- Revert Loop Detection
+
+- Context Loop Detection
+
+- Git State Tracking
+
+- bessere Error-Normalisierung
+
+- Recovery-Strategien
+
+- automatische Recovery
+
+- Loop History
+
+- Multi-Agent Loop Detection
+
+
+---
+
+# 41. Phase 3
+
+Fortgeschrittene Funktionen:
+
+- Rabbit Hole Detection
+
+- Task-Relevanzanalyse
+
+- adaptive Loop Scores
+
+- intelligente Recovery-Auswahl
+
+- Sub-Agent als Reviewer
+
+- langfristige Agent-State-Analyse
+
+- bessere Erkennung über Context Compaction hinweg
+
+
+---
+
+# 42. Beispiel eines vollständigen Ablaufs
+
+```text
+User:
+
+Fix the authentication system.
+```
+
+Agent startet.
+
+```text
+Action 1
+→ inspect auth.ts
+
+Action 2
+→ modify auth.ts
+
+Action 3
+→ npm test
+
+Result:
+3 tests failed
+```
+
+Agent versucht erneut:
+
+```text
+Action 4
+→ modify middleware.ts
+
+Action 5
+→ npm test
+
+Result:
+3 tests failed
+```
+
+Dann:
+
+```text
+Action 6
+→ modify api.ts
+
+Action 7
+→ npm test
+
+Result:
+3 tests failed
+```
+
+Florde berechnet:
+
+```text
+Error similarity:
+0.94
+
+Progress:
+0.00
+
+Repeated failure:
+yes
+
+Strategy diversity:
+medium
+
+Loop Score:
+0.71
+```
+
+Status:
+
+```text
+🟠 Confirmed Loop
+```
+
+UI:
+
+```text
+⚠ Loop detected
+
+The agent has attempted to resolve the
+same failure 3 times without measurable progress.
+
+Error:
+3 tests failed
+
+Time:
+8m 31s
+
+Recovery:
+0 / 3
+
+[Pause Agent]
+[Retry]
+[Continue]
+```
+
+Der Benutzer aktiviert:
+
+```text
+Retry
+```
+
+Florde startet eine neue Strategie:
+
+```text
+Recovery Strategy:
+Inspect failing test before modifying code
+```
+
+Der Agent untersucht den Test.
+
+Danach:
+
+```text
+tests failed:
+3 → 1
+```
+
+Florde erkennt:
+
+```text
+Progress detected
+```
+
+Recovery:
+
+```text
+🟢 Recovery successful
+```
+
+Der Counter wird zurückgesetzt:
+
+```text
+Recovery:
+0 / 3
+```
+
+Der Agent arbeitet weiter.
+
+---
+
+# 43. Fehlgeschlagene Recovery
+
+Anderes Szenario:
+
+```text
+Loop detected
+↓
+Recovery 1
+↓
+same failure
+↓
+Recovery 2
+↓
+same failure
+↓
+Recovery 3
+↓
+same failure
+```
+
+Florde:
+
+```text
+🔴 Critical Loop
+
+The agent could not recover after 3 attempts.
+
+Agent stopped.
+```
+
+Dadurch verhindert Florde unnötigen:
+
+- Tokenverbrauch
+
+- Toolverbrauch
+
+- CPU-Verbrauch
+
+- Zeitverbrauch
+
+- Änderungen am Projekt
+
+
+---
+
+# 44. Ziel des Features
+
+Loop Detection soll nicht einfach ein weiteres Limit-System sein.
+
+Es soll eine **intelligente Sicherheits- und Effizienzschicht für autonome Agents** werden.
+
+Der entscheidende Unterschied:
+
+```text
+Klassisches System:
+
+N Aktionen
+→ Stop
+```
+
+Florde:
+
+```text
+Agent arbeitet
+↓
+Fortschritt analysieren
+↓
+Verhalten analysieren
+↓
+Loop-Wahrscheinlichkeit berechnen
+↓
+Possible Loop
+↓
+Confirmed Loop
+↓
+Nutzer informieren
+↓
+Recovery anbieten
+↓
+neue Strategie
+↓
+Fortschritt prüfen
+↓
+bei Erfolg weiter
+↓
+bei 3 Fehlschlägen stoppen
+```
+
+Damit bleibt der Agent **autonom**, aber nicht unkontrolliert.
+
+---
+
+# 45. Erfolgskriterium
+
+Die Implementierung gilt als erfolgreich, wenn Florde mindestens folgende Situationen zuverlässig unterscheiden kann:
+
+|Situation|Ergebnis|
+|---|---|
+|Agent arbeitet normal|Kein Loop|
+|Gleiche Aktion einmal wiederholt|Kein sofortiger Loop|
+|Wiederholte gleiche Aktion ohne Fortschritt|Possible/Confirmed Loop|
+|Unterschiedliche Fixes → gleicher Fehler|Error Loop|
+|Änderungen werden wiederholt rückgängig gemacht|Revert Loop|
+|Context Compaction → Wiederholung|Context Loop|
+|Viele irrelevante Aktionen ohne Ziel-Fortschritt|Rabbit Hole|
+|Recovery bringt Fortschritt|Recovery erfolgreich|
+|3 Recovery-Versuche ohne Fortschritt|Agent stoppen|
+
+---
+
+# 46. Kernprinzip
+
+> **Florde soll Agents nicht stoppen, weil sie lange arbeiten.**
+>
+> **Florde soll Agents stoppen, wenn sie nach mehreren kontrollierten Recovery-Versuchen nachweislich nicht mehr sinnvoll vorankommen.**
+
+Das ist der Kern von **Florde Loop Detection**.

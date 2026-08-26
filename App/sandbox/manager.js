@@ -2,6 +2,8 @@ const { NoneBackend } = require('./backends/none');
 const { FirejailBackend } = require('./backends/firejail');
 const { DockerBackend } = require('./backends/docker');
 const { PodmanBackend } = require('./backends/podman');
+const { VMWareBackend } = require('./backends/vmware');
+const { QEMUBackend } = require('./backends/qemu');
 const { SystemDetector } = require('./system-detector');
 
 class SandboxManager {
@@ -16,6 +18,8 @@ class SandboxManager {
     this._register('firejail', new FirejailBackend(workspaceDir));
     this._register('docker', new DockerBackend(workspaceDir));
     this._register('podman', new PodmanBackend(workspaceDir));
+    this._register('vmware', new VMWareBackend(workspaceDir));
+    this._register('qemu', new QEMUBackend(workspaceDir));
   }
 
   _register(type, backend) {
@@ -73,6 +77,8 @@ class SandboxManager {
   async deleteFile(filePath) { return this.active.deleteFile(filePath); }
 
   // VM operations (throw on non-VM backends)
+  async startVM() { return this.active.startVM(); }
+  async stopVM() { return this.active.stopVM(); }
   async screenshot() { return this.active.screenshot(); }
   async sendMouse(x, y, button) { return this.active.sendMouse(x, y, button); }
   async sendKey(key) { return this.active.sendKey(key); }

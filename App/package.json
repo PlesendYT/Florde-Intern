@@ -18,7 +18,8 @@
     "dockview-core": "^7.0.4",
     "fuse.js": "^7.4.2",
     "monaco-editor": "^0.45.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "rfb2": "^0.2.2"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
@@ -50,8 +51,8 @@
       "perMachine": true,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
       "runAfterFinish": true,
       "license": "LICENSE.txt",
       "installerIcon": "../config/icon/icon.ico",
@@ -100,50 +101,6 @@
       "synopsis": "AI-powered code generation",
       "description": "Florde is an AI coding assistant that generates code from natural language.",
       "artifactName": "Florde-${version}-${arch}.${ext}"
-    },
-    "fileAssociations": [
-      {
-        "ext": "py",
-        "name": "Python",
-        "description": "Python Source File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "js",
-        "name": "JavaScript",
-        "description": "JavaScript File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "ts",
-        "name": "TypeScript",
-        "description": "TypeScript File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "md",
-        "name": "Markdown",
-        "description": "Markdown File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "html",
-        "name": "HTML",
-        "description": "HTML File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "css",
-        "name": "CSS",
-        "description": "CSS File",
-        "icon": "../config/icon/icon.ico"
-      },
-      {
-        "ext": "json",
-        "name": "JSON",
-        "description": "JSON File",
-        "icon": "../config/icon/icon.ico"
-      }
-    ]
+    }
   }
 }

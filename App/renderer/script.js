@@ -211,9 +211,9 @@ function getActiveTools() {
 
 function buildToolReminder() {
   const tools = getActiveTools();
-  if (!tools || tools.length === 0) return 'Keine Tools verfügbar.';
+  if (!tools || tools.length === 0) return 'No tools available.';
   const names = tools.map(t => t.function?.name).filter(Boolean);
-  return 'Tools: ' + names.join(', ') + '\nRegel: NUR Tool-Call ODER NUR Text. Keine Selbstfragen. >>| Gedanken in solche Blöcke |<<';
+  return 'Tools: ' + names.join(', ') + '\nRule: ONLY Tool Call OR ONLY Text. No self-questions. >>| thoughts in these blocks |<<';
 }
 
 window.__updateTools = function() {
@@ -221,8 +221,7 @@ window.__updateTools = function() {
     if (document.getElementById('marketplace-list')) renderPluginMarketplace();
   }
   // Force tool refresh on next AI request by clearing any cached tool state
-  const providerId = document.getElementById('provider-select')?.value;
-  const prov = providerId ? providers[providerId] : null;
+  const { providerId, provider: prov } = resolveProvider();
   if (prov) {
     prov.supportsTools = undefined;
     checkToolSupport(prov, providerId).then(s => { prov.supportsTools = s; });
@@ -398,20 +397,46 @@ class OpenCodeProvider extends OpenAIProvider {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify(body),
     }, timeoutMs);
-    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode Zen API error: ${r.status} ${detail.error?.message || r.statusText}`); }
     return r;
   }
   async sendWithTools(messages, tools) {
     const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }));
     const text = await r.text();
     try { const data = JSON.parse(text); return data.choices?.[0]?.message || { content: '', role: 'assistant' }; }
-    catch { throw new Error('OpenCode API: invalid JSON response'); }
+    catch { throw new Error('OpenCode Zen API: invalid JSON response'); }
   }
   async sendPlain(messages) {
     const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, stream: false }));
     const text = await r.text();
     try { const data = JSON.parse(text); return data.choices?.[0]?.message?.content || ''; }
-    catch { throw new Error('OpenCode API: invalid JSON response'); }
+    catch { throw new Error('OpenCode Zen API: invalid JSON response'); }
+  }
+}
+
+class OpenCodeGoProvider extends OpenAIProvider {
+  constructor(apiKey, model = 'deepseek-v4-flash') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://opencode.ai/zen/go/v1/chat/completions'; }
+  _timeoutMs() { return (parseInt(document.getElementById('settings-timeout')?.value) || 30) * 60 * 1000; }
+  async _post(url, body, timeoutMs) {
+    if (timeoutMs === undefined) timeoutMs = this._timeoutMs();
+    const r = await fetchWithTimeout(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode Go API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    return r;
+  }
+  async sendWithTools(messages, tools) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message || { content: '', role: 'assistant' }; }
+    catch { throw new Error('OpenCode Go API: invalid JSON response'); }
+  }
+  async sendPlain(messages) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message?.content || ''; }
+    catch { throw new Error('OpenCode Go API: invalid JSON response'); }
   }
 }
 
@@ -510,7 +535,9 @@ class OllamaProvider {
     } catch (err) {
       if (err.message.includes('404')) {
         this._useChat = false;
-      } else if (!err.message.includes('400')) throw err;
+      } else {
+        throw err;
+      }
     }
     const content = await this._chatOrGenerate(this._withOpts({ model: this.model, messages, stream: false }));
     return { content, role: 'assistant' };
@@ -900,7 +927,7 @@ let providers = {};
 let capabilityCache = (() => { try { return JSON.parse(localStorage.getItem('florde-capability-cache') || '{}'); } catch { return {}; } })();
 // Clear stale cache so tool support is properly detected
 for (const key of Object.keys(capabilityCache)) {
-  if (key.startsWith('ollama:') || key.startsWith('opencode:')) {
+  if (key.startsWith('ollama:') || key.startsWith('opencodezen:') || key.startsWith('opencodego:')) {
     delete capabilityCache[key];
   }
 }
@@ -1001,7 +1028,7 @@ const WorkspaceManager = {
     } catch (e) {
       console.error('openProject failed:', e);
       showAppView();
-      logToTerminal('Fehler beim Öffnen des Projekts: ' + (e.message || e), 'error');
+      logToTerminal('Error opening project: ' + (e.message || e), 'error');
     }
   },
 
@@ -1186,48 +1213,48 @@ function _permToolInfo(toolName, args) {
   info.reason = reason;
   switch (toolName) {
     case 'read_file':
-      info.icon = '📖'; info.action = 'Lesen'; info.path = args.path || '';
-      info.risk = 'low'; info.riskLabel = 'Niedrig'; info.riskExplanation = 'Die KI möchte eine Datei lesen. Keine Änderungen am Projekt.';
+      info.icon = '📖'; info.action = 'Read'; info.path = args.path || '';
+      info.risk = 'low'; info.riskLabel = 'Low'; info.riskExplanation = 'The AI wants to read a file. No changes to the project.';
       break;
     case 'write_file':
-      info.icon = '✏️'; info.action = 'Schreiben'; info.path = args.path || '';
+      info.icon = '✏️'; info.action = 'Write'; info.path = args.path || '';
       if (args.content) info.linesAdded = args.content.split('\n').length;
       info.hasLines = true;
-      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Datei schreiben. Dies kann bestehenden Code überschreiben.';
+      info.risk = 'medium'; info.riskLabel = 'Medium'; info.riskExplanation = 'The AI wants to write a file. This may overwrite existing code.';
       break;
     case 'edit_file':
-      info.icon = '🔧'; info.action = 'Bearbeiten'; info.path = args.path || '';
+      info.icon = '🔧'; info.action = 'Edit'; info.path = args.path || '';
       if (args.oldString) info.linesRemoved = args.oldString.split('\n').length;
       if (args.newString) info.linesAdded = args.newString.split('\n').length;
       info.hasLines = true;
-      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte bestehenden Code durch neuen ersetzen.';
+      info.risk = 'medium'; info.riskLabel = 'Medium'; info.riskExplanation = 'The AI wants to replace existing code with new code.';
       break;
     case 'delete_file':
-      info.icon = '🗑️'; info.action = 'Löschen'; info.path = args.path || '';
-      info.risk = 'high'; info.riskLabel = 'Hoch'; info.riskExplanation = 'Die KI möchte eine Datei unwiderruflich löschen.';
+      info.icon = '🗑️'; info.action = 'Delete'; info.path = args.path || '';
+      info.risk = 'high'; info.riskLabel = 'High'; info.riskExplanation = 'The AI wants to irreversibly delete a file.';
       break;
     case 'rename_file':
-      info.icon = '📝'; info.action = 'Umbenennen'; info.path = (args.path || '') + ' → ' + (args.new_path || '');
-      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Datei umbenennen. Verweise könnten brechen.';
+      info.icon = '📝'; info.action = 'Rename'; info.path = (args.path || '') + ' → ' + (args.new_path || '');
+      info.risk = 'medium'; info.riskLabel = 'Medium'; info.riskExplanation = 'The AI wants to rename a file. References may break.';
       break;
     case 'exec_command': {
-      info.icon = '⚡'; info.action = 'Ausführen'; info.path = args.command || '';
+      info.icon = '⚡'; info.action = 'Execute'; info.path = args.command || '';
       const shellRisk = assessShellRisk(args.command || '');
-      if (shellRisk === 'critical') { info.risk = 'critical'; info.riskLabel = 'Kritisch'; }
-      else if (shellRisk === 'high') { info.risk = 'high'; info.riskLabel = 'Hoch'; }
-      else if (shellRisk === 'medium') { info.risk = 'medium'; info.riskLabel = 'Mittel'; }
-      else if (shellRisk === 'low') { info.risk = 'low'; info.riskLabel = 'Niedrig'; }
-      else { info.risk = 'safe'; info.riskLabel = 'Sicher'; }
-      info.riskExplanation = 'Risikobewertung basierend auf Shell-Befehl: ' + info.riskLabel;
+      if (shellRisk === 'critical') { info.risk = 'critical'; info.riskLabel = 'Critical'; }
+      else if (shellRisk === 'high') { info.risk = 'high'; info.riskLabel = 'High'; }
+      else if (shellRisk === 'medium') { info.risk = 'medium'; info.riskLabel = 'Medium'; }
+      else if (shellRisk === 'low') { info.risk = 'low'; info.riskLabel = 'Low'; }
+      else { info.risk = 'safe'; info.riskLabel = 'Safe'; }
+      info.riskExplanation = 'Risk assessment based on shell command: ' + info.riskLabel;
       break;
     }
     case 'ask_question':
-      info.icon = '❓'; info.action = 'Fragen'; info.path = args.question || '';
-      info.risk = 'low'; info.riskLabel = 'Niedrig'; info.riskExplanation = 'Die KI möchte eine Frage stellen. Keine Dateiänderung.';
+      info.icon = '❓'; info.action = 'Ask'; info.path = args.question || '';
+      info.risk = 'low'; info.riskLabel = 'Low'; info.riskExplanation = 'The AI wants to ask a question. No file change.';
       break;
     default:
       info.icon = '🔧'; info.action = toolName; info.path = Object.values(args).filter(v => typeof v === 'string').join(', ').slice(0, 80);
-      info.risk = 'medium'; info.riskLabel = 'Mittel'; info.riskExplanation = 'Die KI möchte eine Aktion ausführen.';
+      info.risk = 'medium'; info.riskLabel = 'Medium'; info.riskExplanation = 'The AI wants to perform an action.';
   }
   return info;
 }
@@ -1245,24 +1272,24 @@ function showPermissionPrompt(toolName, args, callback) {
   let linesHtml = '';
   if (info.hasLines) {
     const parts = [];
-    if (info.linesAdded > 0) parts.push('<span class="perm-prompt-lines added">+' + info.linesAdded + ' Zeilen</span>');
-    if (info.linesRemoved > 0) parts.push('<span class="perm-prompt-lines removed">-' + info.linesRemoved + ' Zeilen</span>');
-    if (parts.length) linesHtml = '<div class="perm-prompt-detail"><strong>📊 Änderungen:</strong> ' + parts.join(', ') + '</div>';
+    if (info.linesAdded > 0) parts.push('<span class="perm-prompt-lines added">+' + info.linesAdded + ' lines</span>');
+    if (info.linesRemoved > 0) parts.push('<span class="perm-prompt-lines removed">-' + info.linesRemoved + ' lines</span>');
+    if (parts.length) linesHtml = '<div class="perm-prompt-detail"><strong>📊 Changes:</strong> ' + parts.join(', ') + '</div>';
   }
 
   overlay.innerHTML = '<div class="permission-prompt">' +
-    '<h3>\u{1F512} AI-Zugriffsanfrage</h3>' +
+    '<h3>\u{1F512} AI Access Request</h3>' +
     '<div class="perm-prompt-icon">' + info.icon + '</div>' +
     '<div class="perm-prompt-action">' + escapeHtml(info.action) + '</div>' +
-    (info.path ? '<div class="perm-prompt-detail"><strong>📄 Datei:</strong> ' + escapeHtml(info.path) + '</div>' : '') +
+    (info.path ? '<div class="perm-prompt-detail"><strong>📄 File:</strong> ' + escapeHtml(info.path) + '</div>' : '') +
     linesHtml +
-    (info.reason ? '<div class="perm-prompt-reason"><strong>💬 Grund:</strong> ' + escapeHtml(info.reason) + '</div>' : '') +
-    '<div class="perm-prompt-risk"><strong>⚠️ Risiko:</strong> <span class="perm-risk-badge ' + info.risk + '">' + info.riskLabel + '</span></div>' +
+    (info.reason ? '<div class="perm-prompt-reason"><strong>💬 Reason:</strong> ' + escapeHtml(info.reason) + '</div>' : '') +
+    '<div class="perm-prompt-risk"><strong>⚠️ Risk:</strong> <span class="perm-risk-badge ' + info.risk + '">' + info.riskLabel + '</span></div>' +
     '<div class="perm-prompt-explain">' + escapeHtml(info.riskExplanation) + '</div>' +
     '<div id="perm-detail-area"></div>' +
     '<div class="perm-prompt-extra-btns">' +
-      '<button id="btn-perm-edit">✏️ Ändern</button>' +
-      '<button id="btn-perm-explain">🔍 Detailierter erklären</button>' +
+      '<button id="btn-perm-edit">✏️ Edit</button>' +
+      '<button id="btn-perm-explain">🔍 Explain in Detail</button>' +
     '</div>' +
     '<hr class="perm-prompt-divider">' +
     '<div class="permission-actions">' +
@@ -1304,10 +1331,10 @@ function showPermissionPrompt(toolName, args, callback) {
 function _permEditFlow(overlay, toolName, args, callback) {
   const detailArea = overlay.querySelector('#perm-detail-area');
   detailArea.innerHTML =
-    '<textarea id="perm-edit-textarea" class="perm-prompt-textarea" placeholder="Was soll anders sein? (z.B. \'Mach Buy Now statt Buy\')"></textarea>' +
+    '<textarea id="perm-edit-textarea" class="perm-prompt-textarea" placeholder="What should be different? (e.g. \'Make Buy Now instead of Buy\')"></textarea>' +
     '<div class="perm-prompt-textarea-row">' +
-      '<button id="btn-perm-edit-submit" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Senden</button>' +
-      '<button id="btn-perm-edit-cancel" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Abbrechen</button>' +
+      '<button id="btn-perm-edit-submit" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Send</button>' +
+      '<button id="btn-perm-edit-cancel" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:0.35rem 0.8rem;cursor:pointer;font-size:0.8rem;">Cancel</button>' +
       '<span id="perm-edit-status" style="font-size:0.75rem;color:var(--text3);margin-left:auto;"></span>' +
     '</div>';
 
@@ -1317,29 +1344,28 @@ function _permEditFlow(overlay, toolName, args, callback) {
     const submitBtn = document.getElementById('btn-perm-edit-submit');
     if (!input.value.trim()) return;
     submitBtn.disabled = true;
-    status.textContent = '⏳ Wird an KI gesendet...';
+    status.textContent = '⏳ Sending to AI...';
     try {
-      const providerId = document.getElementById('provider-select')?.value;
-      const prov = providerId ? providers[providerId] : null;
-      if (!prov || !prov.sendPlain) { status.textContent = '❌ Kein aktiver Provider.'; submitBtn.disabled = false; return; }
+      const { provider: prov } = resolveProvider();
+      if (!prov || !prov.sendPlain) { status.textContent = '\u274C No active provider.'; submitBtn.disabled = false; return; }
       const recentMsgs = (typeof chatHistory !== 'undefined' ? chatHistory : []).filter(m => m.role !== 'system').slice(-3);
-      const promptText = 'Du hast einen Tool-Call vorbereitet. Der Benutzer möchte eine Änderung:\n\n' +
+      const promptText = 'You have prepared a tool call. The user wants a change:\n\n' +
         'Tool: ' + toolName + '\n' +
-        'Aktuelle Argumente: ' + JSON.stringify(args, null, 2) + '\n\n' +
-        'Benutzerwunsch: ' + input.value.trim() + '\n\n' +
-        'Antworte NUR mit einem gültigen JSON-Objekt, das die neuen Argumente für denselben Tool-Call enthält. ' +
-        'Behalte alle Felder bei, die der Benutzer nicht explizit ändern wollte.';
+        'Current arguments: ' + JSON.stringify(args, null, 2) + '\n\n' +
+        'User request: ' + input.value.trim() + '\n\n' +
+        'Reply ONLY with a valid JSON object containing the new arguments for the same tool call. ' +
+        'Keep all fields that the user did not explicitly want to change.';
       const allMsgs = recentMsgs.concat([{ role: 'user', content: promptText }]);
       const resp = await prov.sendPlain(allMsgs, { signal: AbortSignal.timeout(30000) });
       const text = typeof resp === 'string' ? resp : (resp?.content || resp?.message?.content || JSON.stringify(resp));
       const jsonStart = text.indexOf('{');
       const jsonEnd = text.lastIndexOf('}');
-      if (jsonStart === -1 || jsonEnd === -1) throw new Error('Kein JSON in Antwort');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON in response');
       const newArgs = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-      status.textContent = '✅ Aktualisiert!';
+      status.textContent = '✅ Updated!';
       setTimeout(() => { overlay.remove(); showPermissionPrompt(toolName, newArgs, callback); }, 500);
     } catch (e) {
-      status.textContent = '❌ Fehler: ' + (e.message || e);
+      status.textContent = '❌ Error: ' + (e.message || e);
       submitBtn.disabled = false;
     }
   };
@@ -1354,28 +1380,27 @@ function _permExplainFlow(overlay, toolName, args) {
     detailArea.innerHTML = '';
     return;
   }
-  detailArea.innerHTML = '<div class="perm-prompt-detail-section loading">⏳ Lade detaillierte Erklärung...</div>';
+  detailArea.innerHTML = '<div class="perm-prompt-detail-section loading">⏳ Loading detailed explanation...</div>';
   document.getElementById('btn-perm-explain').disabled = true;
 
   (async () => {
     try {
-      const providerId = document.getElementById('provider-select')?.value;
-      const prov = providerId ? providers[providerId] : null;
+      const { provider: prov } = resolveProvider();
       if (!prov || !prov.sendPlain) {
-        detailArea.innerHTML = '<div class="perm-prompt-detail-section">❌ Kein aktiver Provider verfügbar.</div>';
+        detailArea.innerHTML = '<div class="perm-prompt-detail-section">\u274C No active provider available.</div>';
         document.getElementById('btn-perm-explain').disabled = false;
         return;
       }
       const recentMsgs = (typeof chatHistory !== 'undefined' ? chatHistory : []).filter(m => m.role !== 'system').slice(-3);
-      const promptText = 'Erkläre detailliert, was du mit folgendem Tool-Call erreichen willst. Beschreibe den Zweck, die Auswirkungen und warum dieser Schritt notwendig ist.\n\n' +
+      const promptText = 'Explain in detail what you want to achieve with the following tool call. Describe the purpose, effects, and why this step is necessary.\n\n' +
         'Tool: ' + toolName + '\n' +
-        'Argumente: ' + JSON.stringify(args, null, 2);
+        'Arguments: ' + JSON.stringify(args, null, 2);
       const allMsgs = recentMsgs.concat([{ role: 'user', content: promptText }]);
       const resp = await prov.sendPlain(allMsgs, { signal: AbortSignal.timeout(30000) });
       const text = typeof resp === 'string' ? resp : (resp?.content || resp?.message?.content || JSON.stringify(resp));
       detailArea.innerHTML = '<div class="perm-prompt-detail-section">' + escapeHtml(text) + '</div>';
     } catch (e) {
-      detailArea.innerHTML = '<div class="perm-prompt-detail-section">❌ Fehler: ' + escapeHtml(e.message || e) + '</div>';
+      detailArea.innerHTML = '<div class="perm-prompt-detail-section">❌ Error: ' + escapeHtml(e.message || e) + '</div>';
     }
     document.getElementById('btn-perm-explain').disabled = false;
   })();
@@ -1389,9 +1414,9 @@ function showSandboxDeniedUI(toolName, args, callback) {
   overlay.className = 'permission-prompt-overlay';
   const path = args.path || args.command || args.query || 'unknown';
   overlay.innerHTML = '<div class="permission-prompt" style="border-color:#ef4444;">' +
-    '<h3>\u{1F512} Sandbox-Zugriff verweigert</h3>' +
+    '<h3>\u{1F512} Sandbox Access Denied</h3>' +
     '<div class="perm-prompt-icon">🚫</div>' +
-    '<div class="perm-prompt-action">Zugriff auf: ' + escapeHtml(path) + '</div>' +
+    '<div class="perm-prompt-action">Access to: ' + escapeHtml(path) + '</div>' +
     '<pre>' + escapeHtml(JSON.stringify(args, null, 2)) + '</pre>' +
     '<hr class="perm-prompt-divider">' +
     '<div class="permission-actions">' +
@@ -1518,7 +1543,7 @@ async function autoFillApiKey(providerName) {
 }
 
 async function autoFillAllKeys() {
-  const providers = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','openrouter','custom'];
+  const providers = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','openrouter','custom'];
   for (const p of providers) await autoFillApiKey(p);
 }
 
@@ -1594,11 +1619,31 @@ async function showKeychainManager() {
   document.getElementById('btn-close-keychain')?.addEventListener('click', () => hideModal(modal.id));
 }
 
+// ==================== PROVIDER RESOLUTION ====================
+function resolveProvider() {
+  const val = document.getElementById('provider-select')?.value;
+  if (!val) return { providerId: null, provider: null, isRoute: false };
+  if (val.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === val.slice(6));
+    if (!route) return { providerId: null, provider: null, isRoute: true };
+    return { providerId: route.provider, provider: AIRouter.getProviderForRoute(route), isRoute: true, route };
+  }
+  return { providerId: val, provider: providers[val] || null, isRoute: false };
+}
+
 // ==================== SYSTEM PROMPT ====================
 
 function buildSystemPrompt(hasTools) {
-  const provider = document.getElementById('provider-select').value;
-  const prov = providers[provider];
+  const providerValue = document.getElementById('provider-select').value;
+  let providerId, prov;
+  if (providerValue.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === providerValue.slice(6));
+    providerId = route?.provider || 'openai';
+    prov = AIRouter.getProviderForRoute(route);
+  } else {
+    providerId = providerValue;
+    prov = providers[providerId];
+  }
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
   const pluginToolDescriptions = pluginTools
     .filter(t => t.function && t.function.name)
@@ -1626,7 +1671,7 @@ function buildSystemPrompt(hasTools) {
 
 Project: ${currentProject}
 Type: ${currentProjectType}
-Privacy: ${provider === 'ollama' || provider === 'lmstudio' || provider === 'localai' ? '100% Local - no data leaves this PC' : 'Cloud provider - data is encrypted in transit'}
+Privacy: ${providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai' ? '100% Local - no data leaves this PC' : 'Cloud provider - data is encrypted in transit'}
 ${currentProjectType === 'local' ? 'Notes: This is a local project. Shell commands run in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. Shell commands run in the isolated sandbox directory.'}
 
 Zero-Cloud-Storage: All user data, code, and chat history stays in the local database/JSON files.
@@ -1665,23 +1710,23 @@ RULES:
 
   return basePrompt + `
 
-WICHTIG — Du MUSST Tools benutzen um Code zu schreiben. Zeige Code NIEMALS nur im Chat.
+WICHTIG — You MUST use tools to write code. NEVER show code only in the chat.
 
-Tool-Formate (eines reicht):
+Tool formats (any one is fine):
   [write_file: {"path": "src/main.js", "content": "..."}]
   { "tool": "write_file", "arguments": { "path": "...", "content": "..." } }
   write_file: {"path": "...", "content": "..."}
 
-Regeln:
-- Benutze write_file für Code-Änderungen — zeige Code nie im Chat
-- Starte immer mit list_files um die Struktur zu sehen
-- Lies Dateien mit read_file vor Änderungen
-- Nutze exec_command zum Testen/Ausführen
-- >>| Denke hier nach, der Benutzer sieht das als grauen Text |<<
-- Stelle dir keine Selbstfragen — handle direkt
-- NUR Tool-Calls oder NUR Text, nie beides gemischt
+Rules:
+- Use write_file for code changes — never show code in chat
+- Always start with list_files to see the structure
+- Read files with read_file before making changes
+- Use exec_command to test/execute
+- >>| Think here, the user sees this as gray text |<<
+- Don't ask yourself questions — act directly
+- ONLY tool calls or ONLY text, never both mixed
 
-Verfügbare Tools:
+Available Tools:
 ${toolList}${pluginSection}
 
 RULES:
@@ -1796,28 +1841,843 @@ function parseTextToolCalls(text) {
 
 // ==================== MODEL META ====================
 const MODEL_META = {
-  'gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false },
-  'gpt-4o-mini': { context: 128000, costIn: 0.15, costOut: 0.6, free: false },
-  'gpt-5.5': { context: 256000, costIn: 5, costOut: 25, free: false },
-  'claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false },
-  'claude-3.5-haiku': { context: 200000, costIn: 0.8, costOut: 4, free: false },
-  'gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true },
-  'gemini-2.5-pro': { context: 1048576, costIn: 1.25, costOut: 10, free: false },
-  'deepseek-chat': { context: 64000, costIn: 0.14, costOut: 0.28, free: false },
-  'deepseek-reasoner': { context: 64000, costIn: 0.55, costOut: 2.19, free: false },
-  'mistral-large-latest': { context: 131000, costIn: 2, costOut: 6, free: false },
-  'codestral-latest': { context: 256000, costIn: 1, costOut: 3, free: false },
-  'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false },
-  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: false },
-  'deepseek-v4-flash-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'deepseek-v4-pro': { context: 128000, costIn: 2, costOut: 8, free: false },
-  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'kimi-k2.7-code': { context: 131072, costIn: 0, costOut: 0, free: true },
-  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'north-mini-code-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'qwen2.5-coder': { context: 131072, costIn: 0, costOut: 0, free: true, local: true },
-  'local-model': { context: 131072, costIn: 0, costOut: 0, free: true, local: true },
+  'gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-4o-mini': { context: 128000, costIn: 0.15, costOut: 0.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.5': { context: 256000, costIn: 5, costOut: 25, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-mini': { context: 128000, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5': { context: 256000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5-mini': { context: 128000, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-4.1': { context: 1047576, costIn: 2, costOut: 8, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-4.1-mini': { context: 1047576, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'o3-pro': { context: 200000, costIn: 10, costOut: 40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'o3': { context: 200000, costIn: 2, costOut: 8, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'o4-mini': { context: 200000, costIn: 1.1, costOut: 4.4, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'o3-mini': { context: 200000, costIn: 1.1, costOut: 4.4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-opus-4-8': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-opus-4-7': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-opus-4-6': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-sonnet-5': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-3.5-haiku': { context: 200000, costIn: 0.8, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.1-pro-preview': { context: 1048576, costIn: 1.25, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.1-flash-lite': { context: 1048576, costIn: 0, costOut: 0, free: true },
+  'gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-2.5-pro': { context: 1048576, costIn: 1.25, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-chat': { context: 64000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
+  'deepseek-coder': { context: 64000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
+  'deepseek-reasoner': { context: 64000, costIn: 0.55, costOut: 2.19, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
+  'mistral-large-latest': { context: 131000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mistral-medium-latest': { context: 131000, costIn: 0.4, costOut: 2, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mistral-small-latest': { context: 131000, costIn: 0.1, costOut: 0.3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'ministral-3b-latest': { context: 128000, costIn: 0.04, costOut: 0.04, free: false },
+  'devstral-2.0': { context: 256000, costIn: 0.3, costOut: 0.9, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'devstral-1.0': { context: 256000, costIn: 0.3, costOut: 0.9, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'codestral-latest': { context: 256000, costIn: 1, costOut: 3, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'codestral-mamba-latest': { context: 256000, costIn: 0.5, costOut: 1.5, free: false },
+  'mistral-tiny-latest': { context: 128000, costIn: 0.1, costOut: 0.3, free: false },
+  'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-4.20': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-build-0.1': { context: 131072, costIn: 3, costOut: 9, free: false },
+  // === OpenCode Zen Models ===
+  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-pro': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'grok-4.6': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-4.5': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-build-0.1': { context: 131072, costIn: 1, costOut: 2, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-sol': { context: 272000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-terra': { context: 272000, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-luna': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.5': { context: 272000, costIn: 5, costOut: 30, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.5-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4': { context: 272000, costIn: 2.50, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-mini': { context: 272000, costIn: 0.75, costOut: 4.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-nano': { context: 272000, costIn: 0.20, costOut: 1.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.3-codex': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.3-codex-spark': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5': { context: 272000, costIn: 1.07, costOut: 8.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5-nano': { context: 272000, costIn: 0.05, costOut: 0.40, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-fable-5': { context: 200000, costIn: 10, costOut: 50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-opus-5': { context: 200000, costIn: 5, costOut: 25, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-sonnet-5': { context: 200000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-haiku-4-5': { context: 200000, costIn: 1, costOut: 5, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.7-flash': { context: 1048576, costIn: 1.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.1-pro': { context: 1048576, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3-flash': { context: 1048576, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.5-flash-lite': { context: 1048576, costIn: 0.30, costOut: 2.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2': { context: 131072, costIn: 1.25, costOut: 4.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k3': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.7-code': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.6': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-max': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-plus': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m3': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.2': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'hy3-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'x-preview-f-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'nemotron-3.5-lightning-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2-contributor-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  // === OpenCode Go Models ===
+  'grok-4.5-go': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.3': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.2-go': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.1': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-luna-go': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k3-go': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.7-code-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.6-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'longcat-2.0': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-pro-go': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash-go': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash-vision-exp': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5': { context: 128000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5-pro': { context: 128000, costIn: 0.435, costOut: 0.87, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m3-go': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m2.7': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2-contributor': { context: 128000, costIn: 0.10, costOut: 0.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.8-max': { context: 131072, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-max-go': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-plus-go': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.6-plus': { context: 131072, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'hy3': { context: 128000, costIn: 0.14, costOut: 0.58, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'ox-alpha-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'anthropic/claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'openai/gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'google/gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'meta-llama/llama-3.1-70b': { context: 128000, costIn: 0.52, costOut: 0.75, free: false },
+  'mistralai/mistral-large': { context: 131000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen2.5-coder': { context: 131072, costIn: 0, costOut: 0, free: true, local: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
+  'local-model': { context: 131072, costIn: 0, costOut: 0, free: true, local: true, tasks: { coding: false, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: false } },
+  'custom-model': { context: 128000, costIn: 0, costOut: 0, free: false, tasks: { coding: false, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: false } },
 };
+
+const MODEL_TASK_DEFAULTS = {
+  coding: false, chatting: true, planning: false, brainstorming: true,
+  vision: false, image_generation: false, tool_calling: false,
+  experimental_tool_calling: false
+};
+
+const MODEL_CATALOG = {
+  openai: ['gpt-5.5','gpt-5','gpt-5-mini','gpt-5.4-mini','gpt-4o','gpt-4o-mini','gpt-4.1','gpt-4.1-mini','o3-pro','o3','o4-mini','o3-mini'],
+  deepseek: ['deepseek-chat','deepseek-coder','deepseek-reasoner','deepseek-v4-flash-free','deepseek-v4-pro'],
+  mistral: ['mistral-large-latest','mistral-medium-latest','mistral-small-latest','ministral-3b-latest','devstral-2.0','devstral-1.0','codestral-latest','codestral-mamba-latest','mistral-tiny-latest'],
+  anthropic: ['claude-opus-4-8','claude-opus-4-7','claude-opus-4-6','claude-sonnet-5','claude-sonnet-4-6','claude-3.5-haiku'],
+  gemini: ['gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-pro'],
+  grok: ['grok-4.3','grok-4.20','grok-build-0.1'],
+  opencodezen: ['big-pickle','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-pro','gpt-5.4-mini','gpt-5.4-nano','gpt-5.3-codex','gpt-5','gpt-5-nano','claude-fable-5','claude-opus-5','claude-sonnet-5','claude-haiku-4-5','gemini-3.7-flash','gemini-3.1-pro','gemini-3-flash','gemini-3.5-flash-lite','muse-spark-1.2','grok-4.6','grok-4.5','grok-build-0.1','kimi-k3','kimi-k2.7-code','kimi-k2.6','qwen3.7-max','qwen3.7-plus','minimax-m3','glm-5.2','deepseek-v4-pro','deepseek-v4-flash','nemotron-3-ultra-free','mimo-v2.5-free','hy3-free','x-preview-f-free','nemotron-3.5-lightning-free','muse-spark-1.2-contributor-free'],
+  opencodego: ['deepseek-v4-flash','deepseek-v4-pro','deepseek-v4-flash-vision-exp','grok-4.5','glm-5.3','glm-5.2','glm-5.1','gpt-5.6-luna','kimi-k3','kimi-k2.7-code','kimi-k2.6','longcat-2.0','mimo-v2.5','mimo-v2.5-pro','minimax-m3','minimax-m2.7','muse-spark-1.2-contributor','qwen3.8-max','qwen3.7-max','qwen3.7-plus','qwen3.6-plus','hy3','ox-alpha-free'],
+  openrouter: ['anthropic/claude-sonnet-4-6','openai/gpt-4o','google/gemini-2.5-flash','meta-llama/llama-3.1-70b','mistralai/mistral-large'],
+  custom: ['custom-model'],
+  ollama: [],
+  lmstudio: ['local-model'],
+  localai: ['local-model']
+};
+
+const TaskClassifier = {
+  _rules: [
+    {
+      task: 'coding',
+      patterns: [
+        /\b(write|create|implement|fix|debug|refactor|edit|update|change|modify|add|remove|delete)\b.*\b(code|function|class|method|component|file|module|script|bug|error|test)\b/i,
+        /\b(code|coding|program|develop|build|compile|deploy|syntax)\b/i,
+        /\b(python|javascript|typescript|rust|go|java|c\+\+|ruby|php|swift|kotlin|html|css|sql|bash|shell)\b/i,
+        /```[\s\S]*?```/,
+        /\b(read_file|write_file|edit_file|list_files|search_files|exec_command)\b/
+      ],
+      weight: 1.0
+    },
+    {
+      task: 'planning',
+      patterns: [
+        /\b(plan|planung|architect|design|structure|organize|outline|roadmap|strategy|approach)\b/i,
+        /\b(how should|what's the best way|what approach|steps? to|workflow)\b/i,
+        /\b(break down|decompose|divide|sequence|order|priority|milestone)\b/i
+      ],
+      weight: 1.0
+    },
+    {
+      task: 'brainstorming',
+      patterns: [
+        /\b(brainstorm|ideate|ideas?|suggest|creative|innovative|alternatives?|options?|possibilities)\b/i,
+        /\b(what if|could we|maybe we|let's think|imagine|explore)\b/i,
+        /\b(pros?\s*(and|&)\s*cons?|trade-?offs?|compare|versus|vs\.?)\b/i
+      ],
+      weight: 0.9
+    },
+    {
+      task: 'vision',
+      patterns: [
+        /\b(look at|analyze this image|screenshot|what do you see|describe this picture|ocr|read this text from)\b/i,
+        /\.(png|jpg|jpeg|gif|webp|bmp|svg)\b/i,
+        /\b(see|visible|display|show in|depicted|illustrated)\b.*\b(image|picture|photo|screenshot|diagram)\b/i
+      ],
+      weight: 1.0
+    },
+    {
+      task: 'image_generation',
+      patterns: [
+        /\b(generate|create|draw|make|produce|design)\b.*\b(image|picture|photo|illustration|icon|logo|banner|artwork|graphic)\b/i,
+        /\b(dall-?e|midjourney|stable diffusion|image gen|text.to.image)\b/i,
+        /\b(design|sketch|mockup|wireframe|ui design)\b/i
+      ],
+      weight: 1.0
+    },
+    {
+      task: 'tool_calling',
+      patterns: [
+        /\b(run|execute|execute|install|build|start|stop|restart|deploy)\b.*\b(command|script|server|docker|npm|pip|cargo|brew)\b/i,
+        /\b(make_list|make_create|make_update|make_delete|github_|slack_|jira_|notion_)\b/,
+        /\b(connect|integrate|api|webhook|service)\b/i
+      ],
+      weight: 0.8
+    },
+    {
+      task: 'chatting',
+      patterns: [
+        /.*/
+      ],
+      weight: 0.3
+    }
+  ],
+
+  classify(text) {
+    if (!text || typeof text !== 'string') return { primary: 'chatting', confidence: 0.3, secondary: null };
+
+    const scores = {};
+    for (const rule of this._rules) {
+      let matchCount = 0;
+      for (const pat of rule.patterns) {
+        if (pat.test(text)) matchCount++;
+      }
+      if (matchCount > 0) {
+        scores[rule.task] = (scores[rule.task] || 0) + matchCount * rule.weight;
+      }
+    }
+
+    if (window._attachedImages && window._attachedImages.length > 0) {
+      scores['vision'] = (scores['vision'] || 0) + 5;
+    }
+
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    if (sorted.length === 0) return { primary: 'chatting', confidence: 0.3, secondary: null };
+
+    const total = sorted.reduce((s, e) => s + e[1], 0);
+    const primary = sorted[0][0];
+    const confidence = Math.min(sorted[0][1] / total, 1.0);
+    const secondary = sorted.length > 1 && sorted[1][1] / total > 0.2 ? sorted[1][0] : null;
+
+    return { primary, confidence, secondary };
+  }
+};
+
+// ==================== TASK ROUTER ====================
+
+const TaskRouter = {
+  _enabled: false,
+  _mode: 'manual',
+  _taskModels: {},
+  _taskProviders: {},
+  _fallbackQueue: {},
+  _disabledTasks: {},
+
+  init() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+      this._enabled = saved.taskRouterEnabled === true;
+      this._mode = saved.taskRouterMode || 'manual';
+      this._taskModels = saved.taskRouterModels || {};
+      this._taskProviders = saved.taskRouterProviders || {};
+      this._fallbackQueue = saved.taskRouterFallbacks || {};
+      this._disabledTasks = saved.taskRouterDisabled || {};
+    } catch {}
+    this._setupDefaults();
+    this._setupEvents();
+    this._updateChatToolbar();
+  },
+
+  _save() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+      saved.taskRouterEnabled = this._enabled;
+      saved.taskRouterMode = this._mode;
+      saved.taskRouterModels = this._taskModels;
+      saved.taskRouterProviders = this._taskProviders;
+      saved.taskRouterFallbacks = this._fallbackQueue;
+      saved.taskRouterDisabled = this._disabledTasks;
+      localStorage.setItem('florde-settings', JSON.stringify(saved));
+    } catch {}
+  },
+
+  _setupDefaults() {
+    const tasks = ['coding', 'chatting', 'planning', 'brainstorming', 'vision', 'image_generation', 'tool_calling'];
+    for (const t of tasks) {
+      if (!this._taskModels[t]) {
+        this._taskModels[t] = '';
+        this._taskProviders[t] = '';
+      }
+    }
+  },
+
+  _setupEvents() {
+    document.getElementById('task-router-enabled')?.addEventListener('change', (e) => {
+      this._enabled = e.target.checked;
+      this._save();
+      this._updateChatToolbar();
+      this.renderSettings();
+    });
+    document.getElementById('task-router-mode')?.addEventListener('change', (e) => {
+      this._mode = e.target.value;
+      this._save();
+      this.renderSettings();
+      if (this._mode === 'auto') this.autoAssign();
+    });
+    const settingsBtn = document.getElementById('btn-settings');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        setTimeout(() => this.renderSettings(), 100);
+      });
+    }
+  },
+
+  async renderSettings() {
+    const container = document.getElementById('task-router-cards');
+    if (!container) return;
+
+    const modeSelect = document.getElementById('task-router-mode');
+    if (modeSelect) modeSelect.value = this._mode;
+
+    const enabledToggle = document.getElementById('task-router-enabled');
+    if (enabledToggle) enabledToggle.checked = this._enabled;
+
+    const tasks = [
+      { id: 'coding', label: 'Coding', icon: '\uD83D\uDCBB' },
+      { id: 'chatting', label: 'Chatting', icon: '\uD83D\uDCAC' },
+      { id: 'planning', label: 'Planning', icon: '\uD83D\uDCCB' },
+      { id: 'brainstorming', label: 'Brainstorming', icon: '\uD83D\uDCA1' },
+      { id: 'vision', label: 'Vision', icon: '\uD83D\uDC41' },
+      { id: 'image_generation', label: 'Image Gen', icon: '\uD83C\uDFA8' },
+      { id: 'tool_calling', label: 'Tool Calling', icon: '\uD83D\uDD27' }
+    ];
+
+    const allModels = [];
+    const seen = new Set();
+    const connectedProviders = this._getConnectedProviders();
+
+    for (const pid of connectedProviders) {
+      const catalog = MODEL_CATALOG[pid] || [];
+      for (const model of catalog) {
+        const key = pid + ':' + model;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const meta = MODEL_META[model] || {};
+        const taskCaps = meta.tasks || MODEL_TASK_DEFAULTS;
+        allModels.push({ providerId: pid, model, taskCaps, free: !!meta.free, local: !!meta.local });
+      }
+    }
+
+    let ollamaModels = [];
+    try {
+      if (typeof window.electronAPI?.ollamaList === 'function') {
+        ollamaModels = await window.electronAPI.ollamaList();
+      }
+    } catch {}
+    for (const m of ollamaModels) {
+      const name = typeof m === 'string' ? m : m.name || m.model || '';
+      if (!name) continue;
+      const key = 'ollama:' + name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const meta = MODEL_META[name] || {};
+      const taskCaps = meta.tasks || { ...MODEL_TASK_DEFAULTS, experimental_tool_calling: true };
+      allModels.push({ providerId: 'ollama', model: name, taskCaps, free: true, local: true });
+    }
+
+    allModels.sort((a, b) => {
+      if (a.providerId !== b.providerId) return a.providerId.localeCompare(b.providerId);
+      return a.model.localeCompare(b.model);
+    });
+
+    let html = '';
+    for (const task of tasks) {
+      const currentModel = this._taskModels[task.id] || '';
+      const currentProvider = this._taskProviders[task.id] || '';
+      const isDisabled = !!this._disabledTasks[task.id];
+
+      let optionsHtml = '<option value="">-- Select --</option>';
+      let lastProvider = '';
+      for (const m of allModels) {
+        if (m.providerId !== lastProvider) {
+          if (lastProvider) optionsHtml += '<option disabled>\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500</option>';
+          optionsHtml += '<option disabled>\u2002' + m.providerId.toUpperCase() + '</option>';
+          lastProvider = m.providerId;
+        }
+        const cap = m.taskCaps[task.id];
+        const badge = cap === true ? '\u2705' : cap === false ? '\u274C' : '\u26A0\uFE0F';
+        const selected = (m.model === currentModel && m.providerId === currentProvider) ? ' selected' : '';
+        optionsHtml += '<option value="' + m.providerId + '::' + m.model + '"' + selected + '>' + badge + ' ' + m.model + '</option>';
+      }
+
+      const statusClass = isDisabled ? 'disabled' : (currentModel ? 'active' : '');
+      const statusHtml = isDisabled
+        ? '<span class="task-card-status disabled">Disabled <button class="btn-link" data-reenable="' + task.id + '" title="Re-enable" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.7rem;">&#x21bb;</button></span>'
+        : '<span class="task-card-status ' + (currentModel ? 'active' : '') + '">' + (currentModel ? 'Active' : 'None') + '</span>';
+
+      html += '<div class="task-card">' +
+        '<span class="task-card-name">' + task.icon + ' ' + task.label + '</span>' +
+        '<select class="task-card-select" data-task="' + task.id + '" ' + (this._mode === 'auto' || !this._enabled ? 'disabled' : '') + '>' +
+        optionsHtml +
+        '</select>' +
+        statusHtml +
+        '</div>';
+    }
+
+    const disabledNotice = this._enabled ? '' : '<div style="font-size:0.75rem;color:var(--text3);padding:0.4rem;text-align:center;">Router is disabled. Enable it above to use task routing.</div>';
+    container.innerHTML = html + disabledNotice;
+
+    container.querySelectorAll('.task-card-select').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        const task = e.target.dataset.task;
+        const val = e.target.value;
+        if (val) {
+          const [providerId, model] = val.split('::');
+          this.setTaskModel(task, providerId, model);
+        } else {
+          this._taskModels[task] = '';
+          this._taskProviders[task] = '';
+          this._save();
+          this.renderSettings();
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-reenable]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.reEnableTask(btn.dataset.reenable);
+      });
+    });
+  },
+
+  _updateChatToolbar() {
+    const providerSelect = document.getElementById('provider-select');
+    const aiRouterBtn = document.getElementById('btn-ai-router');
+    const freeBadge = document.getElementById('provider-free-badge');
+    const modelBadge = document.getElementById('model-info-badge');
+    if (this._enabled) {
+      if (providerSelect) providerSelect.style.display = 'none';
+      if (aiRouterBtn) aiRouterBtn.style.display = 'none';
+      if (freeBadge) freeBadge.style.display = 'none';
+      if (modelBadge) modelBadge.style.display = 'none';
+    } else {
+      if (providerSelect) providerSelect.style.display = '';
+      if (aiRouterBtn) aiRouterBtn.style.display = '';
+      if (freeBadge) freeBadge.style.display = '';
+      if (modelBadge) modelBadge.style.display = '';
+    }
+  },
+
+  _getConnectedProviders() {
+    const connected = [];
+    const allIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
+    for (const pid of allIds) {
+      const enabledCb = document.querySelector('.provider-enabled[data-provider="' + pid + '"]');
+      if (enabledCb && !enabledCb.checked) continue;
+      const keyInput = document.getElementById('key-' + pid);
+      const urlInput = document.getElementById('url-' + pid);
+      const hasKey = keyInput && keyInput.value.trim() !== '';
+      const hasUrl = urlInput && urlInput.value.trim() !== '';
+      if (hasKey || hasUrl || providers[pid]) {
+        connected.push(pid);
+      }
+    }
+    return connected;
+  },
+
+  getModelForTask(taskType, attachedImages) {
+    if (this._disabledTasks[taskType]) return null;
+
+    if (attachedImages && attachedImages.length > 0) taskType = 'vision';
+
+    if (this._mode === 'auto') {
+      return this._autoSelect(taskType);
+    }
+
+    const modelName = this._taskModels[taskType];
+    const providerId = this._taskProviders[taskType];
+    if (!modelName || !providerId) return null;
+
+    const prov = this._createProvider(providerId, modelName);
+    if (!prov) return null;
+
+    return { provider: prov, providerId, model: modelName, taskType };
+  },
+
+  _autoSelect(taskType) {
+    const candidates = this._getCapableModels(taskType);
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => {
+      const metaA = MODEL_META[a.model] || {};
+      const metaB = MODEL_META[b.model] || {};
+      if (metaA.free && !metaB.free) return -1;
+      if (!metaA.free && metaB.free) return 1;
+      return (metaA.costIn || 0) - (metaB.costIn || 0);
+    });
+
+    for (const candidate of candidates) {
+      const prov = this._createProvider(candidate.providerId, candidate.model);
+      if (prov) {
+        return { provider: prov, providerId: candidate.providerId, model: candidate.model, taskType };
+      }
+    }
+    return null;
+  },
+
+  _getCapableModels(taskType) {
+    const candidates = [];
+    const seen = new Set();
+
+    if (typeof AIRouter !== 'undefined') {
+      for (const route of AIRouter._routes) {
+        if (!route.enabled) continue;
+        const tasks = MODEL_META[route.model]?.tasks || MODEL_TASK_DEFAULTS;
+        if (tasks[taskType]) {
+          const key = route.provider + ':' + route.model;
+          if (!seen.has(key)) {
+            seen.add(key);
+            candidates.push({ providerId: route.provider, model: route.model, source: 'route' });
+          }
+        }
+      }
+    }
+
+    const allProviderIds = ['openai', 'deepseek', 'mistral', 'anthropic', 'gemini', 'grok', 'opencodezen', 'opencodego', 'openrouter', 'custom', 'ollama', 'lmstudio', 'localai'];
+    for (const pid of allProviderIds) {
+      if (providers[pid] && providers[pid].model) {
+        const tasks = MODEL_META[providers[pid].model]?.tasks || MODEL_TASK_DEFAULTS;
+        if (tasks[taskType]) {
+          const key = pid + ':' + providers[pid].model;
+          if (!seen.has(key)) {
+            seen.add(key);
+            candidates.push({ providerId: pid, model: providers[pid].model, source: 'provider' });
+          }
+        }
+      }
+    }
+
+    return candidates;
+  },
+
+  _createProvider(providerId, model) {
+    if (typeof AIRouter !== 'undefined') {
+      const route = AIRouter._routes.find(r => r.provider === providerId && r.model === model && r.enabled);
+      if (route) return AIRouter.getProviderForRoute(route);
+    }
+    if (providers[providerId]) return providers[providerId];
+    return null;
+  },
+
+  getFallbackModel(taskType, excludeModel) {
+    const candidates = this._getCapableModels(taskType).filter(c => c.model !== excludeModel);
+    if (candidates.length === 0) return null;
+
+    const free = candidates.filter(c => MODEL_META[c.model]?.free);
+    const pick = free.length > 0 ? free[0] : candidates[0];
+
+    const prov = this._createProvider(pick.providerId, pick.model);
+    if (!prov) return null;
+    return { provider: prov, providerId: pick.providerId, model: pick.model, taskType };
+  },
+
+  handleFailure(taskType, failedModel, error) {
+    const isRateLimit = /429|rate.?limit/i.test(error?.message || '');
+    const isCapability = /not.?support|cannot|doesn't/i.test(error?.message || '');
+
+    if (isRateLimit) {
+      const fallback = this.getFallbackModel(taskType, failedModel);
+      if (fallback) {
+        return {
+          action: 'fallback',
+          model: fallback.model,
+          providerId: fallback.providerId,
+          message: `Rate limited on ${failedModel}. Switching to ${fallback.model}.`
+        };
+      }
+      return {
+        action: 'disable',
+        message: `Rate limited on ${failedModel} and no fallback available. ${taskType} is temporarily disabled.`
+      };
+    }
+
+    if (isCapability) {
+      const fallback = this.getFallbackModel(taskType, failedModel);
+      if (fallback) {
+        return {
+          action: 'fallback',
+          model: fallback.model,
+          providerId: fallback.providerId,
+          message: `${failedModel} doesn't support ${taskType}. Switching to ${fallback.model}.`
+        };
+      }
+      return {
+        action: 'disable',
+        message: `${failedModel} doesn't support ${taskType} and no alternative available.`
+      };
+    }
+
+    return { action: 'error', message: error?.message || 'Unknown error' };
+  },
+
+  setTaskModel(taskType, providerId, model) {
+    this._taskModels[taskType] = model;
+    this._taskProviders[taskType] = providerId;
+    this._save();
+    this.renderSettings();
+  },
+
+  enableTask(taskType) {
+    delete this._disabledTasks[taskType];
+    this._save();
+    this.renderSettings();
+  },
+
+  autoAssign() {
+    const tasks = ['coding', 'chatting', 'planning', 'brainstorming', 'vision', 'image_generation', 'tool_calling'];
+    for (const task of tasks) {
+      const best = this._autoSelect(task);
+      if (best) {
+        this._taskModels[task] = best.model;
+        this._taskProviders[task] = best.providerId;
+      }
+    }
+    this._save();
+    this.renderSettings();
+  },
+
+  renderTaskIndicator(classification) {
+    if (!this._enabled) {
+      const old = document.getElementById('task-indicator');
+      if (old) old.style.display = 'none';
+      return;
+    }
+    let indicator = document.getElementById('task-indicator');
+    if (!indicator) {
+      indicator = document.createElement('span');
+      indicator.id = 'task-indicator';
+      indicator.className = 'task-indicator';
+      const toolbar = document.querySelector('.chat-panel .panel-header');
+      if (toolbar) toolbar.appendChild(indicator);
+    }
+    if (classification) {
+      const labels = { coding: 'Coding', chatting: 'Chat', planning: 'Planning', brainstorming: 'Ideas', vision: 'Vision', image_generation: 'Image Gen', tool_calling: 'Tools' };
+      indicator.textContent = labels[classification.primary] || classification.primary;
+      indicator.title = 'Router: ' + classification.primary + ' (' + Math.round(classification.confidence * 100) + '%)';
+      indicator.style.display = '';
+    } else {
+      indicator.style.display = 'none';
+    }
+  },
+
+  showFallbackToast(message, onSwitch, onDisable) {
+    document.querySelectorAll('.task-fallback-toast').forEach(t => t.remove());
+
+    const toast = document.createElement('div');
+    toast.className = 'task-fallback-toast';
+    toast.innerHTML = `<span>${message}</span>
+      <div style="display:flex;gap:0.4rem;">
+        ${onSwitch ? '<button class="btn btn-primary btn-sm" id="fallback-switch">Switch</button>' : ''}
+        ${onDisable ? '<button class="btn btn-secondary btn-sm" id="fallback-disable">Disable</button>' : ''}
+        <button class="btn btn-secondary btn-sm" id="fallback-dismiss">Dismiss</button>
+      </div>`;
+    document.body.appendChild(toast);
+
+    toast.querySelector('#fallback-switch')?.addEventListener('click', () => { toast.remove(); onSwitch?.(); });
+    toast.querySelector('#fallback-disable')?.addEventListener('click', () => { toast.remove(); onDisable?.(); });
+    toast.querySelector('#fallback-dismiss')?.addEventListener('click', () => toast.remove());
+
+    setTimeout(() => toast.remove(), 15000);
+  },
+
+  reEnableTask(taskType) {
+    delete this._disabledTasks[taskType];
+    this._save();
+    this.renderSettings();
+  },
+
+  resetAll() {
+    this._taskModels = {};
+    this._taskProviders = {};
+    this._disabledTasks = {};
+    this._mode = 'manual';
+    this._enabled = false;
+    this._save();
+    this._updateChatToolbar();
+    this.renderSettings();
+    const modeSelect = document.getElementById('task-router-mode');
+    if (modeSelect) modeSelect.value = 'manual';
+    const enabledToggle = document.getElementById('task-router-enabled');
+    if (enabledToggle) enabledToggle.checked = false;
+  }
+};
+
+// ==================== LOOP DETECTION UI ====================
+
+function updateLoopIndicator(status, analysis) {
+  let indicator = document.getElementById('loop-indicator');
+  if (!indicator) {
+    indicator = document.createElement('span');
+    indicator.id = 'loop-indicator';
+    indicator.style.cssText = 'font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:0.4rem;cursor:pointer;';
+    const toolbar = document.querySelector('.chat-panel .panel-header');
+    if (toolbar) toolbar.appendChild(indicator);
+  }
+  const labels = { possible: '\u26a0\ufe0f Possible loop', confirmed: '\ud83d\udfe0 Loop detected', critical: '\ud83d\udd34 Critical loop' };
+  const colors = { possible: '#eab308', confirmed: '#f97316', critical: '#ef4444' };
+  indicator.textContent = labels[status] || '';
+  indicator.style.background = colors[status] || 'transparent';
+  indicator.style.color = '#fff';
+  indicator.style.display = status === 'normal' ? 'none' : '';
+  if (analysis) {
+    indicator.title = `Score: ${(analysis.score * 100).toFixed(0)}% | Type: ${analysis.type || 'unknown'}`;
+  }
+}
+
+async function handleLoopDetection(analysis) {
+  if (analysis.status === 'possible') {
+    updateLoopIndicator('possible', analysis);
+    chatHistory.push({ role: 'system', content: `[Loop] Possible ${analysis.type || 'loop'} \u2014 Score: ${(analysis.score * 100).toFixed(0)}%` });
+    return false;
+  }
+
+  if (analysis.status === 'critical') {
+    updateLoopIndicator('critical', analysis);
+    const recoveryStatus = recoveryManager.getStatus();
+    if (recoveryStatus.attempts >= recoveryStatus.maxAttempts) {
+      chatHistory.push({ role: 'system', content: `[Loop] Critical Loop \u2014 Agent stopped after ${recoveryStatus.maxAttempts} failed recovery attempts. Score: ${(analysis.score * 100).toFixed(0)}%` });
+      appendSubagentStatus('main', '\ud83d\udd34 Critical Loop: Agent stopped after ' + recoveryStatus.maxAttempts + ' failed recovery attempts.');
+      return true;
+    }
+  }
+
+  updateLoopIndicator(analysis.status, analysis);
+
+  return new Promise((resolve) => {
+    const existing = document.getElementById('loop-warning-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'loop-warning-modal';
+    modal.className = 'modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+    const recoveryStatus = recoveryManager.getStatus();
+    const typeLabels = { exact_loop: 'Exact Loop', error_loop: 'Error Loop', revert_loop: 'Revert Loop', context_loop: 'Context Loop' };
+    const typeLabel = typeLabels[analysis.type] || 'Loop';
+
+    modal.innerHTML = `
+      <div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.8rem;color:var(--danger);">\u26a0\ufe0f Loop detected</div>
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+          Florde detected that the agent has made little or no measurable progress.
+        </div>
+        <div style="font-size:0.8rem;color:var(--text);margin-bottom:0.5rem;">
+          <strong>Type:</strong> ${typeLabel}<br>
+          <strong>Score:</strong> ${(analysis.score * 100).toFixed(0)}%<br>
+          <strong>Recovery:</strong> ${recoveryStatus.attempts} / ${recoveryStatus.maxAttempts}<br>
+          <strong>Agent:</strong> main<br>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+          <button id="loop-pause-btn" class="btn btn-secondary" style="flex:1;">Pause Agent</button>
+          <button id="loop-retry-btn" class="btn btn-primary" style="flex:1;">Retry</button>
+          <button id="loop-continue-btn" class="btn btn-secondary" style="flex:1;">Continue</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#loop-pause-btn').addEventListener('click', () => {
+      modal.remove();
+      resolve(true);
+    });
+
+    modal.querySelector('#loop-retry-btn').addEventListener('click', () => {
+      modal.remove();
+      // Persist loop event to chat history
+      const loopTimestamp = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      const typeLabels = { exact_loop: 'Exact Loop', error_loop: 'Error Loop', revert_loop: 'Revert Loop', context_loop: 'Context Loop' };
+      chatHistory.push({ role: 'system', content: `[Loop] ${loopTimestamp} ${analysis.status} \u2014 ${typeLabels[analysis.type] || analysis.type} \u2014 Score: ${(analysis.score * 100).toFixed(0)}%` });
+
+      const recovery = recoveryManager.attemptRecovery(analysis, loopDetector);
+      if (recovery.critical) {
+        appendSubagentStatus('main', '\ud83d\udd34 Critical Loop: Max recovery attempts reached.');
+        resolve(true);
+      } else {
+        appendSubagentStatus('main', '\ud83d\udfe1 Recovery attempt ' + recovery.attempt + '/' + recovery.maxAttempts + ': ' + recovery.prompt.slice(0, 80) + '...');
+        // Mark recovery as potentially successful in history (will be confirmed by progress check)
+        const lastRecovery = recoveryManager._recoveryHistory[recoveryManager._recoveryHistory.length - 1];
+        if (lastRecovery) {
+          // Schedule a progress check after a few tool rounds
+          setTimeout(() => {
+            const currentMetrics = { ...loopDetector._metrics };
+            const lastError = currentMetrics.errorFingerprint;
+            if (lastError !== analysis.details?.signals?.sameError) {
+              lastRecovery.successful = true;
+              recoveryManager._save();
+              recoveryManager.resetCounter();
+              updateLoopIndicator('normal', null);
+            }
+          }, 30000); // Check after 30 seconds
+        }
+        resolve(false);
+      }
+    });
+
+    modal.querySelector('#loop-continue-btn').addEventListener('click', () => {
+      modal.remove();
+      resolve(false);
+    });
+  });
+}
+
+// Loop Detection settings events
+document.getElementById('loop-detection-enabled')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), enabled: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+});
+document.getElementById('loop-detection-sensitivity')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), sensitivity: e.target.value };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof loopDetector !== 'undefined') loopDetector._sensitivity = e.target.value;
+});
+document.getElementById('loop-detection-auto-recovery')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), autoRecovery: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ autoRecovery: e.target.checked });
+});
+document.getElementById('loop-detection-recovery-delay')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), recoveryDelay: parseInt(e.target.value) };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ recoveryDelay: parseInt(e.target.value) });
+});
+document.getElementById('loop-detection-max-attempts')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), maxAttempts: parseInt(e.target.value) };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ maxAttempts: parseInt(e.target.value) });
+});
+document.getElementById('loop-detection-stop-critical')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), stopOnCritical: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+});
 
 // ==================== SETTINGS ====================
 
@@ -1830,12 +2690,12 @@ async function loadSettings() {
     const cb = document.querySelector('.provider-enabled[data-provider="' + id + '"]');
     if (cb) cb.checked = s[id + 'Enabled'] === true;
   }
-    const allProviderIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+    const allProviderIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of allProviderIds) setToggle(id);
 
   delete providers.openai; delete providers.deepseek; delete providers.mistral;
   delete providers.anthropic; delete providers.gemini; delete providers.grok;
-  delete providers.opencode; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
+  delete providers.opencodezen; delete providers.opencodego; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
   delete providers.openrouter; delete providers.custom;
 
   const providerCtors = {
@@ -1845,7 +2705,8 @@ async function loadSettings() {
     anthropic: [AnthropicProvider, 'key', 'model', 'claude-sonnet-4-6'],
     gemini: [GeminiProvider, 'key', 'model', 'gemini-2.5-flash'],
     grok: [GrokProvider, 'key', 'model', 'grok-4.3'],
-    opencode: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+    opencodezen: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+    opencodego: [OpenCodeGoProvider, 'key', 'model', 'deepseek-v4-flash'],
     openrouter: [OpenRouterProvider, 'key', 'model', 'openai/gpt-4o'],
     custom: [CustomProvider, 'key', 'model', 'custom-model'],
     ollama: [OllamaProvider, 'url', 'model', 'qwen2.5-coder'],
@@ -1876,7 +2737,8 @@ async function loadSettings() {
   if (s.anthropicModel) document.getElementById('model-anthropic').value = s.anthropicModel;
   if (s.geminiModel) document.getElementById('model-gemini').value = s.geminiModel;
   if (s.grokModel) document.getElementById('model-grok').value = s.grokModel;
-  if (s.opencodeModel) document.getElementById('model-opencode').value = s.opencodeModel;
+  if (s.opencodezenModel) document.getElementById('model-opencodezen').value = s.opencodezenModel;
+  if (s.opencodegoModel) document.getElementById('model-opencodego').value = s.opencodegoModel;
   if (s.language) document.getElementById('settings-language').value = s.language;
   // Add model info buttons + free/key badges in settings
   document.querySelectorAll('.provider-body [id^="model-"]').forEach(sel => {
@@ -1936,7 +2798,7 @@ async function loadSettings() {
     }
   }
   // Add temperature sliders to each provider body
-  const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of tempProviders) {
     const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body || body.querySelector('.temp-slider-wrap')) continue;
@@ -1978,6 +2840,10 @@ async function loadSettings() {
   if (s.autoAccept !== undefined) {
     setToggle('auto-accept', s.autoAccept);
     document.getElementById('auto-exceptions-area').classList.toggle('hidden', !s.autoAccept);
+    if (s.autoAccept) {
+      const permList = document.getElementById('permission-list');
+      if (permList) { permList.style.opacity = '0.4'; permList.style.pointerEvents = 'none'; }
+    }
   }
   const ex = s.autoExceptions || {};
   const excKeys = ['shell', 'outside', 'git', 'terminal', 'write_file', 'delete_file', 'web_search', 'web_fetch', 'browser', 'ask_question'];
@@ -1998,6 +2864,18 @@ async function loadSettings() {
       btn.title = 'Build mode: AI executes directly';
     }
   }
+  // Load loop detection settings
+  try {
+    const ldSettings = s.loopDetection || {};
+    const setCb = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+    const setSel = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setCb('loop-detection-enabled', ldSettings.enabled !== false);
+    setSel('loop-detection-sensitivity', ldSettings.sensitivity || 'balanced');
+    setCb('loop-detection-auto-recovery', ldSettings.autoRecovery !== false);
+    setSel('loop-detection-recovery-delay', String(ldSettings.recoveryDelay || 120000));
+    setSel('loop-detection-max-attempts', String(ldSettings.maxAttempts || 3));
+    setCb('loop-detection-stop-critical', ldSettings.stopOnCritical !== false);
+  } catch {}
   } catch (err) {
     console.error('loadSettings error:', err);
   }
@@ -2024,7 +2902,8 @@ async function validateAndSaveSettings() {
     { id: 'anthropic', key: document.getElementById('key-anthropic').value, model: document.getElementById('model-anthropic').value, test: async () => (new AnthropicProvider(document.getElementById('key-anthropic').value, document.getElementById('model-anthropic').value)).testKey() },
     { id: 'gemini', key: document.getElementById('key-gemini').value, model: document.getElementById('model-gemini').value, test: async () => (new GeminiProvider(document.getElementById('key-gemini').value, document.getElementById('model-gemini').value)).testKey() },
     { id: 'grok', key: document.getElementById('key-grok').value, model: document.getElementById('model-grok').value, test: async () => (new GrokProvider(document.getElementById('key-grok').value, document.getElementById('model-grok').value)).testKey() },
-    { id: 'opencode', key: document.getElementById('key-opencode').value, model: document.getElementById('model-opencode').value, test: async () => (new OpenCodeProvider(document.getElementById('key-opencode').value, document.getElementById('model-opencode').value)).testKey() },
+    { id: 'opencodezen', key: document.getElementById('key-opencodezen').value, model: document.getElementById('model-opencodezen').value, test: async () => (new OpenCodeProvider(document.getElementById('key-opencodezen').value, document.getElementById('model-opencodezen').value)).testKey() },
+    { id: 'opencodego', key: document.getElementById('key-opencodego').value, model: document.getElementById('model-opencodego').value, test: async () => (new OpenCodeGoProvider(document.getElementById('key-opencodego').value, document.getElementById('model-opencodego').value)).testKey() },
     { id: 'openrouter', key: document.getElementById('key-openrouter').value, model: document.getElementById('model-openrouter').value, test: async () => (new OpenRouterProvider(document.getElementById('key-openrouter').value, document.getElementById('model-openrouter').value)).testKey() },
     { id: 'custom', key: document.getElementById('key-custom').value, model: document.getElementById('model-custom').value, test: async () => (new CustomProvider(document.getElementById('key-custom').value, document.getElementById('model-custom').value, document.getElementById('url-custom').value)).testKey() },
     { id: 'ollama', key: '', model: document.getElementById('model-ollama')?.value || '', test: async () => true },
@@ -2095,7 +2974,7 @@ async function validateAndSaveSettings() {
     return cb ? cb.checked : false;
   }
 
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   function getVal(id, field) {
     const el = document.getElementById(field + '-' + id);
     return el ? el.value : '';
@@ -2128,6 +3007,12 @@ async function validateAndSaveSettings() {
   localStorage.setItem('florde-capability-cache', JSON.stringify(capabilityCache));
   await saveSettingsToDisk(settings);
 
+  // Apply language immediately
+  if (typeof I18n !== 'undefined') {
+    I18n._currentLang = settings.language || 'en';
+    await I18n.applyToPage();
+  }
+
   // Save valid API keys to OS keychain
   if (window.electronAPI?.keychain) {
     const keyProviders = [
@@ -2137,7 +3022,8 @@ async function validateAndSaveSettings() {
       { id: 'anthropic', key: settings.anthropicKey },
       { id: 'gemini', key: settings.geminiKey },
       { id: 'grok', key: settings.grokKey },
-      { id: 'opencode', key: settings.opencodeKey },
+      { id: 'opencodezen', key: settings.opencodezenKey },
+      { id: 'opencodego', key: settings.opencodegoKey },
       { id: 'openrouter', key: settings.openrouterKey },
       { id: 'custom', key: settings.customKey },
     ];
@@ -2150,7 +3036,7 @@ async function validateAndSaveSettings() {
 
   delete providers.openai; delete providers.deepseek; delete providers.mistral;
   delete providers.anthropic; delete providers.gemini; delete providers.grok;
-  delete providers.opencode; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
+  delete providers.opencodezen; delete providers.opencodego; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
   delete providers.openrouter; delete providers.custom;
 
   function setTemp(prov, id) { if (prov) prov.temperature = settings[id + 'Temp'] || 0.7; }
@@ -2161,7 +3047,8 @@ async function validateAndSaveSettings() {
   if (p.anthropicEnabled && p.anthropicKey) setTemp(providers.anthropic = new AnthropicProvider(p.anthropicKey, p.anthropicModel), 'anthropic');
   if (p.geminiEnabled && p.geminiKey) setTemp(providers.gemini = new GeminiProvider(p.geminiKey, p.geminiModel), 'gemini');
   if (p.grokEnabled && p.grokKey) setTemp(providers.grok = new GrokProvider(p.grokKey, p.grokModel), 'grok');
-  if (p.opencodeEnabled && p.opencodeKey) setTemp(providers.opencode = new OpenCodeProvider(p.opencodeKey, p.opencodeModel), 'opencode');
+  if (p.opencodezenEnabled && p.opencodezenKey) setTemp(providers.opencodezen = new OpenCodeProvider(p.opencodezenKey, p.opencodezenModel), 'opencodezen');
+  if (p.opencodegoEnabled && p.opencodegoKey) setTemp(providers.opencodego = new OpenCodeGoProvider(p.opencodegoKey, p.opencodegoModel), 'opencodego');
   if (p.ollamaEnabled) setTemp(providers.ollama = new OllamaProvider(p.ollamaUrl, p.ollamaModel), 'ollama');
   if (p.lmstudioEnabled) setTemp(providers.lmstudio = new LMStudioProvider(p.lmstudioUrl, p.lmstudioModel), 'lmstudio');
   if (p.localaiEnabled) setTemp(providers.localai = new LocalAIProvider(p.localaiUrl, p.localaiModel), 'localai');
@@ -2251,71 +3138,51 @@ async function initSandbox() {
 function updatePrivacyIndicator() {
   const el = document.getElementById('privacy-indicator');
   const selected = document.getElementById('provider-select').value;
-  const isLocal = selected === 'ollama' || selected === 'lmstudio' || selected === 'localai';
+  let isLocal = selected === 'ollama' || selected === 'lmstudio' || selected === 'localai';
+  if (selected.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === selected.slice(6));
+    isLocal = route && ['ollama','lmstudio','localai'].includes(route.provider);
+  }
   if (isLocal) {
     el.textContent = '\uD83D\uDFE2 Local';
     el.className = 'privacy-indicator local';
-    el.title = 'Du arbeitest 100% lokal. Keine Daten verlassen diesen PC.';
+    el.title = '100% Local - no data leaves this PC.';
   } else {
     el.textContent = '\uD83D\uDFE1 Hybrid';
     el.className = 'privacy-indicator hybrid';
-    el.title = 'Du nutzt einen externen Provider. Daten werden verschl\u00fcsselt \u00fcbertragen.';
+    el.title = 'External provider - data is encrypted in transit.';
   }
 }
 
 function updateProviderDropdown() {
-  const sel = document.getElementById('provider-select');
-  const currentVal = sel.value;
-  const activeProviders = [];
-  const allProviders = [
-    'openai', 'deepseek', 'mistral', 'anthropic', 'gemini', 'grok',
-    'opencode', 'ollama', 'lmstudio', 'localai', 'openrouter', 'custom'
-  ];
-  for (const id of allProviders) {
-    const cb = document.querySelector('.provider-enabled[data-provider="' + id + '"]');
-    const enabled = cb ? cb.checked : false;
-    if (!enabled) continue;
-    const keyInput = document.getElementById('key-' + id);
-    const urlInput = document.getElementById('url-' + id);
-    const hasKey = keyInput && keyInput.value.trim() !== '';
-    const hasUrl = urlInput && urlInput.value.trim() !== '';
-    if (hasKey || hasUrl) {
-      activeProviders.push(id);
-    }
-  }
-  const options = sel.querySelectorAll('option');
-  let hasCurrent = false;
-  for (const opt of options) {
-    if (activeProviders.includes(opt.value)) {
-      opt.style.display = '';
-      if (opt.value === currentVal) hasCurrent = true;
-    } else {
-      opt.style.display = 'none';
-    }
-  }
-  if (activeProviders.length === 0) {
-    sel.value = '';
-  } else if (!hasCurrent) {
-    sel.value = activeProviders[0];
-    updatePrivacyIndicator();
-  }
+  AIRouter.renderDropdown();
+  updatePrivacyIndicator();
   updateModelInfoBadge();
+  if (typeof TaskRouter !== 'undefined' && TaskRouter._enabled) {
+    TaskRouter._updateChatToolbar();
+  }
 }
 
 function updateModelInfoBadge() {
   const badge = document.getElementById('model-info-badge');
   if (!badge) return;
   const sel = document.getElementById('provider-select');
-  const provider = sel?.value;
-  const prov = providers[provider];
-  const model = prov?.model || '';
+  const selected = sel?.value;
+  let providerId, model;
+  if (selected?.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === selected.slice(6));
+    providerId = route?.provider || 'openai';
+    model = route?.model || '';
+  } else {
+    providerId = selected;
+    model = providers[providerId]?.model || '';
+  }
   badge.textContent = model;
-  badge.title = 'Model: ' + model + '\nProvider: ' + (provider || '') + '\nClick for details';
-  // Update free badge
+  badge.title = 'Model: ' + model + '\nProvider: ' + (providerId || '') + '\nClick for details';
   const freeBadge = document.getElementById('provider-free-badge');
   if (freeBadge) {
     const meta = MODEL_META[model];
-    const isLocal = provider === 'ollama' || provider === 'lmstudio' || provider === 'localai';
+    const isLocal = providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai';
     const isFree = meta ? meta.free : isLocal;
     freeBadge.textContent = isFree ? '\u2601 Free' : '\uD83D\uDD11 Key';
     freeBadge.className = 'model-free-badge ' + (isFree ? 'free' : 'key');
@@ -2357,13 +3224,22 @@ function showModelInfo(providerId, modelName) {
 
 function showModelInfoPopup() {
   const sel = document.getElementById('provider-select');
-  const provider = sel?.value;
-  const prov = providers[provider];
-  const modelName = prov?.model || 'Unknown';
-  const cacheKey = provider + ':' + modelName;
-  const caps = capabilityCache[cacheKey] || getKnownCapabilities(provider, prov?.model);
+  const selected = sel?.value;
+  let providerId, prov, modelName;
+  if (selected?.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === selected.slice(6));
+    providerId = route?.provider || 'openai';
+    prov = AIRouter.getProviderForRoute(route);
+    modelName = route?.model || 'Unknown';
+  } else {
+    providerId = selected;
+    prov = providers[providerId];
+    modelName = prov?.model || 'Unknown';
+  }
+  const cacheKey = providerId + ':' + modelName;
+  const caps = capabilityCache[cacheKey] || getKnownCapabilities(providerId, modelName);
   const temp = prov?.temperature !== undefined ? prov.temperature : 0.7;
-  const isLocal = provider === 'ollama' || provider === 'lmstudio' || provider === 'localai';
+  const isLocal = providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai';
   const meta = MODEL_META[modelName];
 
   let popup = document.getElementById('model-info-popup');
@@ -2478,6 +3354,7 @@ function initLayoutManager() {
   LayoutManager.init(container).then(() => {
     if (LayoutManager.isInitialized) {
       LayoutManager.activate();
+      if (typeof EditorMode !== 'undefined') applyModeToLayout(EditorMode.getMode());
     }
   });
 }
@@ -2861,8 +3738,8 @@ async function openProject(name) {
       'Send me a message to get started!';
     chatHistory.push({ role: 'assistant', content: welcome });
     trimChatHistory();
-    renderChat();
   }
+  renderChat();
 }
 
 // ==================== LOCALSTORAGE → .florde MIGRATION ====================
@@ -3145,6 +4022,10 @@ async function switchTab(index) {
         }
       });
       modelDisposables.set(name, disposable);
+    }
+    renderInlineDiffDecorations(name);
+    if (editor && editor.layout) {
+      requestAnimationFrame(() => editor.layout());
     }
   }
   renderTabs();
@@ -3504,14 +4385,14 @@ function renderChat() {
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'ai-actions';
       const actions = [
-        ['🔍', 'Fehler suchen', 'search_errors'],
+        ['🔍', 'Search Errors', 'search_errors'],
         ['⚡', 'Performance', 'performance'],
-        ['🧪', 'Testen', 'test'],
+        ['🧪', 'Test', 'test'],
         ['✅', 'To-Do', 'todo'],
-        ['🎯', 'Priorität', 'priority'],
+        ['🎯', 'Priority', 'priority'],
         ['📅', 'Deadline', 'deadline'],
-        ['🚀', 'Umsetzung', 'implementation'],
-        ['❓', 'Warum', 'why'],
+        ['🚀', 'Implementation', 'implementation'],
+        ['❓', 'Why', 'why'],
       ];
       for (const [icon, label, action] of actions) {
         const btn = document.createElement('button');
@@ -3520,14 +4401,14 @@ function renderChat() {
         btn.innerHTML = icon + ' ' + label;
         btn.addEventListener('click', async () => {
           const prompts = {
-            search_errors: 'Suche nach Fehlern/Bugs in folgendem Code. Analysiere gründlich und liste alle Probleme auf:\n\n',
-            performance: 'Analysiere die Performance und schlage Optimierungen für folgenden Code vor:\n\n',
-            test: 'Erstelle umfassende Tests für folgenden Code:\n\n',
-            todo: 'Wandle folgende Aufgaben in eine strukturierte To-Do-Liste um. Formatiere als Markdown-Liste:\n\n',
-            priority: 'Setze Prioritäten (hoch/mittel/niedrig) für folgende Aufgaben und begründe jeweils:\n\n',
-            deadline: 'Schlage realistische Deadlines für folgende Aufgaben vor. Berücksichtige Abhängigkeiten:\n\n',
-            implementation: 'Schlage eine konkrete Umsetzung für folgende Anforderungen vor:\n\n',
-            why: 'Erkläre mir folgenden Code/Ablauf auf Deutsch. Beschreibe das Warum im Detail:\n\n',
+            search_errors: 'Search for errors/bugs in the following code. Analyze thoroughly and list all issues:\n\n',
+            performance: 'Analyze the performance and suggest optimizations for the following code:\n\n',
+            test: 'Create comprehensive tests for the following code:\n\n',
+            todo: 'Convert the following tasks into a structured to-do list. Format as a Markdown list:\n\n',
+            priority: 'Set priorities (high/medium/low) for the following tasks and justify each:\n\n',
+            deadline: 'Suggest realistic deadlines for the following tasks. Consider dependencies:\n\n',
+            implementation: 'Suggest a concrete implementation for the following requirements:\n\n',
+            why: 'Explain the following code/flow in detail. Describe the why:\n\n',
           };
           const prompt = prompts[action] || '';
           await sendMessage(prompt + msg.content);
@@ -3695,8 +4576,17 @@ _chatInput.addEventListener('paste', (e) => {
 
 function buildVisionMessages(baseMessages, images) {
   if (!images || images.length === 0) return baseMessages;
-  const provider = document.getElementById('provider-select').value;
-  const caps = getKnownCapabilities(provider, providers[provider]?.model);
+  const providerValue = document.getElementById('provider-select').value;
+  let providerId, model;
+  if (providerValue.startsWith('route:')) {
+    const route = AIRouter._routes.find(r => r.id === providerValue.slice(6));
+    providerId = route?.provider || 'openai';
+    model = route?.model || '';
+  } else {
+    providerId = providerValue;
+    model = providers[providerId]?.model || '';
+  }
+  const caps = getKnownCapabilities(providerId, model);
   if (!caps || !caps.vision) return baseMessages;
 
   return baseMessages.map(m => {
@@ -3826,13 +4716,13 @@ function renderAuditLog() {
   const cloud = auditLog.filter(e => e.type === 'cloud').length;
   const local = auditLog.filter(e => e.type === 'local').length;
   const summaryHtml = `
-    <div class="audit-stat"><span class="num all">${auditLog.length}</span><span class="label">Gesamt</span></div>
+    <div class="audit-stat"><span class="num all">${auditLog.length}</span><span class="label">Total</span></div>
     <div class="audit-stat"><span class="num cloud">${cloud}</span><span class="label">Cloud</span></div>
-    <div class="audit-stat"><span class="num local">${local}</span><span class="label">Lokal</span></div>
+    <div class="audit-stat"><span class="num local">${local}</span><span class="label">Local</span></div>
   `;
   document.getElementById('audit-summary').innerHTML = summaryHtml;
   if (filtered.length === 0) {
-    container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">Keine Eintr\u00e4ge</div>';
+    container.innerHTML = '<div style="color:var(--text3);padding:1rem;text-align:center;">No entries</div>';
     return;
   }
   for (const entry of filtered) {
@@ -3955,7 +4845,7 @@ async function executeToolCall(name, args) {
       if (!args || !args.path) throw new Error('path required for read_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Read_File: ' + sanitizePath(args.path));
-      AuditLog.log({ type: 'file_read', action: 'Datei gelesen', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' gelesen', details: { file: sanitizePath(args.path) }, source: 'KI' });
+      AuditLog.log({ type: 'file_read', action: 'File read', status: 'auto', summary: 'File ' + sanitizePath(args.path) + ' read', details: { file: sanitizePath(args.path) }, source: 'AI' });
       logToTerminal('Read_File: ' + sanitizePath(args.path), 'info');
       return await window.electronAPI.projectReadFile(project, sanitizePath(args.path));
 
@@ -3976,13 +4866,13 @@ async function executeToolCall(name, args) {
             tabContents[sp] = content;
             tabDirty[sp] = false;
             if (wfIdx === activeTabIndex && editor) {
-              editor.setValue(content);
+              applyInlineDiffToEditor(sp, content);
             }
           }
           written.push(sp);
         }
         addAuditEntry('local', 'Batch_Write: ' + written.join(', '));
-        AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Batch: ' + written.length + ' Dateien geschrieben', details: { files: written }, source: 'KI' });
+        AuditLog.log({ type: 'file_write', action: 'File written', status: 'auto', summary: 'Batch: ' + written.length + ' files written', details: { files: written }, source: 'AI' });
         logToTerminal('Batch_Write: ' + written.join(', '), 'info');
         // Auto git commit
         try {
@@ -3997,7 +4887,7 @@ async function executeToolCall(name, args) {
       }
       const _writePath = sanitizePath(args.path);
       addAuditEntry('local', 'Write_File: ' + _writePath);
-      AuditLog.log({ type: 'file_write', action: 'Datei geschrieben', status: 'auto', summary: 'Datei ' + _writePath + ' geschrieben', details: { file: _writePath }, source: 'KI' });
+      AuditLog.log({ type: 'file_write', action: 'File written', status: 'auto', summary: 'File ' + _writePath + ' written', details: { file: _writePath }, source: 'AI' });
       logToTerminal('Write_File: ' + _writePath, 'info');
       let _oldContent = '';
       try { _oldContent = await window.electronAPI.projectReadFile(project, _writePath) || ''; } catch (e) {}
@@ -4009,11 +4899,13 @@ async function executeToolCall(name, args) {
         tabContents[_writePath] = args.content;
         tabDirty[_writePath] = false;
         if (wfIdx === activeTabIndex && editor) {
-          editor.setValue(args.content);
+          applyInlineDiffToEditor(_writePath, args.content);
         }
       }
       renderFileTree();
-      DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
+      if (!(wfIdx >= 0 && wfIdx === activeTabIndex && editor)) {
+        DiffViewer.show([{ name: _writePath, content: args.content, language: detectLanguage(_writePath) }]);
+      }
       // Auto git commit if in a git repo
       try {
         const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
@@ -4028,7 +4920,7 @@ async function executeToolCall(name, args) {
       if (!project) throw new Error('No project open');
       const delPath = sanitizePath(args.path);
       addAuditEntry('local', 'Delete_File: ' + delPath);
-      AuditLog.log({ type: 'file_write', action: 'Datei gelöscht', status: 'auto', summary: 'Datei ' + delPath + ' gelöscht', details: { file: delPath }, source: 'KI' });
+      AuditLog.log({ type: 'file_write', action: 'File deleted', status: 'auto', summary: 'File ' + delPath + ' deleted', details: { file: delPath }, source: 'AI' });
       logToTerminal('Delete_File: ' + delPath, 'info');
       await window.electronAPI.projectDeleteFile(project, delPath);
       const delIdx = openTabs.indexOf(delPath);
@@ -4083,7 +4975,7 @@ async function executeToolCall(name, args) {
       if (!args || !args.path || !args.oldString || args.newString === undefined) throw new Error('path, oldString, and newString required for edit_file');
       if (!project) throw new Error('No project open');
       addAuditEntry('local', 'Edit_File: ' + sanitizePath(args.path));
-      AuditLog.log({ type: 'file_write', action: 'Datei geändert', status: 'auto', summary: 'Datei ' + sanitizePath(args.path) + ' geändert', details: { file: sanitizePath(args.path) }, source: 'KI' });
+      AuditLog.log({ type: 'file_write', action: 'File modified', status: 'auto', summary: 'File ' + sanitizePath(args.path) + ' modified', details: { file: sanitizePath(args.path) }, source: 'AI' });
       logToTerminal('Edit_File: ' + sanitizePath(args.path), 'info');
       {
         const efPath = sanitizePath(args.path);
@@ -4110,11 +5002,13 @@ async function executeToolCall(name, args) {
           tabContents[efPath] = content;
           tabDirty[efPath] = false;
           if (efIdx === activeTabIndex && editor) {
-            editor.setValue(content);
+            applyInlineDiffToEditor(efPath, content);
           }
         }
         renderFileTree();
-        DiffViewer.show([{ name: efPath, content, language: detectLanguage(efPath) }]);
+        if (!(efIdx >= 0 && efIdx === activeTabIndex && editor)) {
+          DiffViewer.show([{ name: efPath, content, language: detectLanguage(efPath) }]);
+        }
         try {
           const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
           if (gitDir) {
@@ -4130,7 +5024,7 @@ async function executeToolCall(name, args) {
       const oldPath = sanitizePath(args.path);
       const newPath = sanitizePath(args.new_path);
       addAuditEntry('local', 'Rename_File: ' + oldPath + ' -> ' + newPath);
-      AuditLog.log({ type: 'file_write', action: 'Datei umbenannt', status: 'auto', summary: oldPath + ' -> ' + newPath, details: { from: oldPath, to: newPath }, source: 'KI' });
+      AuditLog.log({ type: 'file_write', action: 'File renamed', status: 'auto', summary: oldPath + ' -> ' + newPath, details: { from: oldPath, to: newPath }, source: 'AI' });
       logToTerminal('Rename_File: ' + oldPath + ' -> ' + newPath, 'info');
       // Read old content
       const oldContent = await window.electronAPI.projectReadFile(project, oldPath);
@@ -4289,7 +5183,7 @@ async function executeToolCall(name, args) {
       const session = ChatManager.getActive();
       const parentSessionId = session?.id || 'unknown';
 
-      appendSubagentStatus(parentSessionId, `⚡ Spawne Subagent für: ${args.goal.slice(0, 80)}...`);
+      appendSubagentStatus(parentSessionId, `⚡ Spawning subagent for: ${args.goal.slice(0, 80)}...`);
 
       const subagent = window.SubagentManager.create(
         parentSessionId,
@@ -4462,7 +5356,8 @@ function getKnownCapabilities(providerId, model) {
     anthropic: { tool_calling: true, streaming: true, json_mode: false, vision: true, thinking: m.includes('sonnet') || m.includes('opus'), images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     gemini: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: true, function_calling: true, custom_temperature: false, seed: false, context_caching: false },
     grok: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
-    opencode: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('big-pickle') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    opencodezen: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('gpt-5') || m.includes('claude') || m.includes('gemini') || m.includes('grok-4') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    opencodego: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('vision-exp') || m.includes('grok'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     ollama: { tool_calling: undefined, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
     lmstudio: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     localai: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
@@ -4564,8 +5459,7 @@ function formatToolActivity(name, args) {
 async function summarizeChat() {
   const totalChars = chatHistory.reduce((s, m) => s + (m.content || '').length, 0);
   if (totalChars < SUMMARY_THRESHOLD) return;
-  const providerId = document.getElementById('provider-select')?.value;
-  const prov = providerId ? providers[providerId] : null;
+  const { provider: prov } = resolveProvider();
   if (!prov || !prov.sendPlain) return;
   const recentMsgs = chatHistory.slice(-5);
   const olderMsgs = chatHistory.slice(0, -5).filter(m => m.role !== 'system').slice(-20);
@@ -4673,9 +5567,9 @@ async function handleFlordeCommand(text) {
       { icon: '📄', cmd: '/summarize all', desc: 'Summarize the entire conversation' },
       { icon: '⚡', cmd: '/git status', desc: 'Show git repository status' },
       { icon: '⚡', cmd: '/git log [n]', desc: 'Show git commits (default: 10)' },
-      { icon: '⚡', cmd: '/run <command>', desc: 'Execute shell command (AI führt aus, z.B. /run npm start)' },
+      { icon: '⚡', cmd: '/run <command>', desc: 'Execute shell command (AI runs it, e.g. /run npm start)' },
     ];
-    const staticHtml = '**Befehle:**\n\n' + staticCmds.map(c => c.icon + ' **' + c.cmd + '** — ' + c.desc).join('\n');
+    const staticHtml = '**Commands:**\n\n' + staticCmds.map(c => c.icon + ' **' + c.cmd + '** — ' + c.desc).join('\n');
     let appHtml = '';
     if (window._connectedAppIds && window._connectedAppIds.length && typeof CONNECTED_APPS !== 'undefined') {
       const appLines = window._connectedAppIds.map(id => {
@@ -4779,6 +5673,9 @@ async function sendMessage(text) {
     } catch {}
   }
 
+  const _taskClassification = TaskClassifier.classify(text);
+  TaskRouter.renderTaskIndicator(_taskClassification);
+
   // Pre-process AI-targeted /commands before handleFlordeCommand
   let _hideUserMsg = false;
   const trimmed = text.trim();
@@ -4810,11 +5707,45 @@ async function sendMessage(text) {
   const handled = await handleFlordeCommand(text);
   if (handled) { if (input) input.value = ''; return; }
 
-  const provider = document.getElementById('provider-select').value;
-  if (!provider || !providers[provider]) {
-    logToTerminal('\u274C Kein KI-Provider aktiviert. Bitte in den Einstellungen einen Provider aktivieren.', 'error');
-    if (input) input.value = text;
-    return;
+  const providerValue = document.getElementById('provider-select').value;
+  let provider, providerId, isCloud;
+  if (providerValue.startsWith('route:')) {
+    const routeId = providerValue.slice(6);
+    const route = AIRouter._routes.find(r => r.id === routeId);
+    if (!route || !route.enabled) {
+      logToTerminal('\u274C AI Router route not found or disabled.', 'error');
+      if (input) input.value = text;
+      return;
+    }
+    provider = AIRouter.getProviderForRoute(route);
+    providerId = route.provider;
+    isCloud = !['ollama','lmstudio','localai'].includes(route.provider);
+    if (!provider) {
+      logToTerminal('\u274C Could not create provider for route: ' + route.name + '. Check API key/URL.', 'error');
+      if (input) input.value = text;
+      return;
+    }
+  } else {
+    providerId = providerValue;
+    if (!providerId || !providers[providerId]) {
+      logToTerminal('\u274C No AI provider enabled. Please enable a provider in settings or add an AI Router route.', 'error');
+      if (input) input.value = text;
+      return;
+    }
+    provider = providers[providerId];
+    isCloud = providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'localai';
+  }
+
+  let _taskRouted = false;
+  if (TaskRouter._enabled && (TaskRouter._mode !== 'manual' || Object.values(TaskRouter._taskModels).some(v => v))) {
+    const taskResult = TaskRouter.getModelForTask(_taskClassification.primary, _attachedImages);
+    if (taskResult) {
+      provider = taskResult.provider;
+      providerId = taskResult.providerId;
+      isCloud = !['ollama','lmstudio','localai'].includes(taskResult.providerId);
+      _taskRouted = true;
+      logToTerminal('Task Router: ' + _taskClassification.primary + ' \u2192 ' + taskResult.model + ' (' + taskResult.providerId + ')', 'info');
+    }
   }
 
   // Toggle button to Stop mode
@@ -4825,9 +5756,8 @@ async function sendMessage(text) {
   sendBtn.textContent = 'Stop';
   sendBtn.classList.add('is-stopping');
 
-  const isCloud = provider !== 'ollama' && provider !== 'lmstudio' && provider !== 'localai';
-  addAuditEntry(isCloud ? 'cloud' : 'local', 'Nachricht gesendet an ' + provider);
-  AuditLog.log({ type: 'chat', action: 'Nachricht gesendet', status: 'auto', summary: 'Nachricht an ' + provider + ' (' + (isCloud ? 'Cloud' : 'Lokal') + ')', details: { provider, mode: isCloud ? 'cloud' : 'local' }, source: 'KI' });
+  addAuditEntry(isCloud ? 'cloud' : 'local', 'Message sent to ' + providerId);
+  AuditLog.log({ type: 'chat', action: 'Message sent', status: 'auto', summary: 'Message to ' + providerId + ' (' + (isCloud ? 'Cloud' : 'Local') + ')', details: { provider: providerId, mode: isCloud ? 'cloud' : 'local' }, source: 'AI' });
   updatePrivacyIndicator();
 
   const userImages = _attachedImages.length > 0 ? [..._attachedImages] : undefined;
@@ -4904,7 +5834,7 @@ async function sendMessage(text) {
     let plan = '';
     startAnim('*Planning*');
     try {
-      plan = await providers[provider].sendPlain(planMessages);
+      plan = await prov.sendPlain(planMessages);
     } catch (err) {
       if (_stoppedByUser || _timedOut || err.name === 'AbortError') throw err;
       logToTerminal('Plan generation failed, proceeding without plan: ' + err.message, 'warn');
@@ -4923,7 +5853,7 @@ async function sendMessage(text) {
 
   startAnim('*Thinking*');
 
-  logToTerminal('Sending request to ' + provider + '...', 'info');
+  logToTerminal('Sending request to ' + providerId + '...', 'info');
 
   try {
     const timeoutMinutes = parseInt(document.getElementById('settings-timeout')?.value) || 30;
@@ -4938,8 +5868,8 @@ async function sendMessage(text) {
     };
     startRequestTimeout(timeoutMinutes, onTimeout);
     _backoffStep = null;
-    const prov = providers[provider];
-    const supportsTools = prov ? (prov.supportsTools ? true : await checkToolSupport(prov, provider)) : false;
+    const prov = provider;
+    const supportsTools = prov ? (prov.supportsTools ? true : await checkToolSupport(prov, providerId)) : false;
     const systemMsg = { role: 'system', content: buildSystemPrompt(supportsTools) };
     // RAG injection
     if (document.getElementById('rag-auto')?.checked && typeof RagManager !== 'undefined') {
@@ -4961,7 +5891,7 @@ async function sendMessage(text) {
       messages.push({ role: 'user', content: text });
     }
     if (allImages.length > 0) {
-      if (provider === 'ollama') {
+      if (providerId === 'ollama') {
         prov._pendingImages = allImages.map(i => i.dataUrl.replace(/^data:image\/\w+;base64,/, ''));
       } else {
         messages = buildVisionMessages(messages, allImages);
@@ -5001,15 +5931,17 @@ async function sendMessage(text) {
         } catch (err) {
           if (_timedOut || _stoppedByUser) throw err;
           const is429 = /429|rate.?limit/i.test(err.message || '');
-          if (is429) {
+          const isServerError = /^5\d\d/.test(String(err.message || '').match(/\d+/)?.[0] || '') || /500|502|503|504|server.?error|internal.?error/i.test(err.message || '');
+          if (is429 || isServerError) {
             _backoffStep = (_backoffStep || 0) + 1;
             if (_backoffStep > MAX_BACKOFF_RETRIES) {
               _backoffStep = null;
-              throw new Error('Rate limited — max retries (' + MAX_BACKOFF_RETRIES + ') exceeded.');
+              throw new Error(is429 ? 'Rate limited — max retries (' + MAX_BACKOFF_RETRIES + ') exceeded.' : 'Server error — max retries (' + MAX_BACKOFF_RETRIES + ') exceeded.');
             }
             const delay = getBackoffDelay(_backoffStep - 1);
-            setActivity('Rate Limited — Retry in ' + Math.ceil(delay / 1000) + 's');
-            logToTerminal('Rate limited, retrying in ' + (delay / 1000) + 's (step ' + _backoffStep + ')', 'warn');
+            const reason = is429 ? 'Rate Limited' : 'Server Error (' + (err.message || '').slice(0, 30) + ')';
+            setActivity(reason + ' — Retry in ' + Math.ceil(delay / 1000) + 's');
+            logToTerminal(reason + ', retrying in ' + (delay / 1000) + 's (step ' + _backoffStep + ')', 'warn');
             await new Promise(r => { _backoffTimer = setTimeout(r, delay); });
             continue;
           }
@@ -5028,20 +5960,16 @@ async function sendMessage(text) {
       return m ? m[1].trim() : '';
     }
 
-    const _toolCallHistory = [];
-
-    function _detectToolLoop(name, args) {
-      const sig = name + ':' + JSON.stringify(args).slice(0, 100);
-      _toolCallHistory.push(sig);
-      const count = _toolCallHistory.filter(s => s === sig).length;
-      if (count >= 3) return 'Loop detected: ' + name + ' called ' + count + ' times with the same arguments. Stop using this tool and synthesize your response.';
-      if (_toolCallHistory.length >= 5) {
-        const recent = _toolCallHistory.slice(-5);
-        const unique = new Set(recent);
-        if (unique.size <= 2) return 'Loop detected: you are repeating the same ' + name + ' tool calls. Stop and synthesize your response immediately.';
-      }
-      return null;
+    // Loop Detection
+    const loopDetector = new LoopDetector('main');
+    const recoveryManager = new RecoveryManager();
+    // Global loop detection across all agents
+    if (!window._globalLoopDetector) {
+      window._globalLoopDetector = new LoopDetector('global');
     }
+    const globalLoopDetector = window._globalLoopDetector;
+    const _ldSettings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}').loopDetection || {}; } catch { return {}; } })();
+    if (_ldSettings.sensitivity) loopDetector._sensitivity = _ldSettings.sensitivity;
 
     if (supportsTools) {
       let toolRounds = 0;
@@ -5071,14 +5999,6 @@ async function sendMessage(text) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
             const name = toolCall.function.name;
 
-            const loopMsg = _detectToolLoop(name, args);
-            if (loopMsg) {
-              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-              logToTerminal(loopMsg, 'warn');
-              chatHistory.push({ role: 'system', content: '[Tool] ' + name + ' → Loop detected' });
-              continue;
-            }
-
             logToTerminal('AI uses tool: ' + name, 'ai');
             startAnim('*Running tool: ' + name + '*');
 
@@ -5104,9 +6024,48 @@ async function sendMessage(text) {
             }
             messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
 
+            // Record action for loop detection
+            loopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: loopDetector._inferActionType(name),
+              tool: name,
+              command: args.command,
+              file: args.file || args.path,
+              args: args,
+              result: String(result).slice(0, 500),
+              resultHash: loopDetector._fingerprintResult(String(result).slice(0, 500)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? loopDetector._fingerprintError(String(result)) : null,
+              filesChanged: (name === 'edit_file' || name === 'write_file') ? [args.file || args.path || ''] : [],
+            });
+            // Also record to global detector
+            globalLoopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: globalLoopDetector._inferActionType(name),
+              tool: name,
+              args: args,
+              result: String(result).slice(0, 200),
+              resultHash: globalLoopDetector._fingerprintResult(String(result).slice(0, 200)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? globalLoopDetector._fingerprintError(String(result)) : null,
+            });
+
             chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider });
             chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
             trimChatHistory();
+          }
+
+          // Loop detection analysis
+          if (_ldSettings.enabled !== false) {
+            const loopAnalysis = loopDetector.analyze();
+            if (loopAnalysis.status === 'possible' && _ldSettings.showPossibleWarning !== false) {
+              updateLoopIndicator('possible', loopAnalysis);
+            } else if (loopAnalysis.status === 'confirmed' || loopAnalysis.status === 'critical') {
+              const shouldStop = await handleLoopDetection(loopAnalysis);
+              if (shouldStop) break;
+            }
           }
 
           toolRounds++;
@@ -5168,15 +6127,6 @@ async function sendMessage(text) {
           for (const toolCall of processedCalls) {
             const args = toolCall.args;
             const name = toolCall.function.name;
-            const loopMsg = _detectToolLoop(name, args);
-            if (loopMsg) {
-              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-              const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
-              displayContent = displayContent.replace(bracketStr, '');
-              if (toolCall._raw) displayContent = displayContent.replace(toolCall._raw, '');
-              logToTerminal(loopMsg, 'warn');
-              continue;
-            }
             // Step tracking
             if (_planSteps) {
               _currentStep = Math.min(_currentStep + 1, _planSteps);
@@ -5198,6 +6148,18 @@ async function sendMessage(text) {
               result = 'Error: ' + err.message;
             }
             messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
+            // Record action for loop detection
+            loopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: loopDetector._inferActionType(name),
+              tool: name,
+              args: args,
+              result: String(result).slice(0, 500),
+              resultHash: loopDetector._fingerprintResult(String(result).slice(0, 500)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? loopDetector._fingerprintError(String(result)) : null,
+            });
             // Audit trail
             if (_planSteps) {
               chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });
@@ -5211,6 +6173,16 @@ async function sendMessage(text) {
             resetRequestTimeout(timeoutMinutes, onTimeout);
           }
           stopAnim();
+          // Loop detection analysis (text-parse path)
+          if (_ldSettings.enabled !== false) {
+            const loopAnalysis = loopDetector.analyze();
+            if (loopAnalysis.status === 'possible' && _ldSettings.showPossibleWarning !== false) {
+              updateLoopIndicator('possible', loopAnalysis);
+            } else if (loopAnalysis.status === 'confirmed' || loopAnalysis.status === 'critical') {
+              const shouldStop = await handleLoopDetection(loopAnalysis);
+              if (shouldStop) break;
+            }
+          }
           toolRounds++;
           startAnim('*Waiting for AI*');
           finalContent = displayContent;
@@ -5235,7 +6207,7 @@ async function sendMessage(text) {
     const responseContent = finalContent || (messages.filter(m => m.role === 'assistant' && m.content).pop()?.content) || '';
     if (responseContent) {
       renderResponse(responseContent);
-      const pushMsg = { role: 'assistant', content: responseContent, model: provider };
+      const pushMsg = { role: 'assistant', content: responseContent, model: providerId };
       if (_lastReasoningContent) pushMsg.reasoning_content = _lastReasoningContent;
       chatHistory.push(pushMsg);
       trimChatHistory();
@@ -5293,9 +6265,30 @@ async function sendMessage(text) {
     } else if (err.name === 'AbortError') displayMsg = 'Request cancelled (timeout or aborted). Check your network and try again.';
     else if (/40[13]/.test(msg)) displayMsg = msg + ' \u2014 Check your API key in settings.';
     else if (/429/.test(msg)) displayMsg = msg + ' \u2014 Rate limited. Wait a moment and retry.';
+    else if (/^5\d\d/.test(msg) || /500|502|503|504/.test(msg)) displayMsg = msg + ' \u2014 Server error. Retrying automatically...';
     else if (/Failed to fetch/.test(msg)) displayMsg = 'Network error \u2014 check your connection and the API endpoint URL in settings.';
     contentDiv.textContent = 'Error: ' + displayMsg;
     logToTerminal('AI request failed: ' + displayMsg, 'error');
+    if (_taskRouted && err.message && !/Stopped by user|Timed out/i.test(err.message)) {
+      const fallback = TaskRouter.handleFailure(_taskClassification.primary, providerId, err);
+      if (fallback.action === 'fallback') {
+        TaskRouter.showFallbackToast(fallback.message, () => {
+          TaskRouter.setTaskModel(_taskClassification.primary, fallback.providerId, fallback.model);
+          input.value = text;
+          sendMessage(text);
+        }, () => {
+          TaskRouter._disabledTasks[_taskClassification.primary] = { model: providerId, reason: err.message };
+          TaskRouter._save();
+          TaskRouter.renderSettings();
+        });
+      } else if (fallback.action === 'disable') {
+        TaskRouter.showFallbackToast(fallback.message, null, () => {
+          TaskRouter._disabledTasks[_taskClassification.primary] = { model: providerId, reason: err.message };
+          TaskRouter._save();
+          TaskRouter.renderSettings();
+        });
+      }
+    }
   } finally {
     clearActivity();
     _isRequestActive = false;
@@ -5629,7 +6622,12 @@ const DEFAULT_SHORTCUTS = {
   saveFile: { label: 'Save current file', keys: 'Ctrl+S', ctrl: true, key: 's', shift: false, alt: false, fn: () => saveCurrentFile() },
   newFile: { label: 'New file', keys: 'Ctrl+N', ctrl: true, key: 'n', shift: false, alt: false, fn: () => { const name = prompt('File name:'); if (name) { tabContents[name] = ''; tabLanguages[name] = detectLanguage(name); tabDirty[name] = true; openTabs.push(name); switchTab(openTabs.length - 1); renderFileTree(); } } },
   closeTab: { label: 'Close current tab', keys: 'Ctrl+W', ctrl: true, key: 'w', shift: false, alt: false, fn: () => { if (activeTabIndex >= 0) closeTab(activeTabIndex); } },
-  commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+P', ctrl: true, key: 'p', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
+  commandPalette: { label: 'Command palette', keys: 'Ctrl+Shift+O', ctrl: true, key: 'o', shift: true, alt: false, fn: () => { if (typeof CommandPalette !== 'undefined') CommandPalette.show(); } },
+  smartSearch: {
+    label: 'Smart search (all)',
+    keys: 'Ctrl+Shift+P', ctrl: true, shift: true, key: 'p',
+    fn: () => { if (currentProject) SmartSearch.open(); }
+  },
   searchFiles: { label: 'Search in files', keys: 'Ctrl+Shift+F', ctrl: true, key: 'f', shift: true, alt: false, fn: () => { document.getElementById('btn-search-toggle').click(); } },
   toggleSidebar: { label: 'Toggle sidebar', keys: 'Ctrl+B', ctrl: true, key: 'b', shift: false, alt: false, fn: () => { const sb = document.getElementById('sidebar'); const resizer = document.getElementById('sidebar-resizer'); sb.classList.toggle('hidden'); if (resizer) resizer.classList.toggle('hidden'); localStorage.setItem('florde-sidebar-hidden', sb.classList.contains('hidden') ? '1' : '0'); } },
   nextTab: { label: 'Next tab', keys: 'Ctrl+Tab', ctrl: true, key: 'Tab', shift: false, alt: false, fn: () => { if (openTabs.length > 1) { const next = (activeTabIndex + 1 + openTabs.length) % openTabs.length; switchTab(next); } } },
@@ -5651,7 +6649,7 @@ function shortcutMatch(e, s) {
     if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return false;
     return true;
   }
-  return (e.ctrlKey || e.metaKey) === s.ctrl && e.key === s.key && e.shiftKey === s.shift && e.altKey === s.alt;
+  return (e.ctrlKey || e.metaKey) === s.ctrl && e.key.toLowerCase() === s.key.toLowerCase() && e.shiftKey === s.shift && e.altKey === s.alt;
 }
 
 document.addEventListener('keydown', (e) => {
@@ -5701,12 +6699,12 @@ function renderKeybindings() {
   const allItems = [];
   for (const [id, s] of Object.entries(shortcuts)) {
     const custom = bindings.find(b => b.id === id);
-    allItems.push({ id, label: s.label, category: 'Allgemein', keys: custom ? custom.keys : s.keys, isCustom: !!custom });
+    allItems.push({ id, label: s.label, category: 'General', keys: custom ? custom.keys : s.keys, isCustom: !!custom });
   }
   for (const [id, c] of Object.entries(registry)) {
     if (!shortcuts[id]) {
       const custom = bindings.find(b => b.id === id);
-      allItems.push({ id, label: c.label, category: c.category || 'Befehle', keys: custom ? custom.keys : '', isCustom: !!custom });
+      allItems.push({ id, label: c.label, category: c.category || 'Commands', keys: custom ? custom.keys : '', isCustom: !!custom });
     }
   }
 
@@ -5727,7 +6725,7 @@ function renderKeybindings() {
     html += '<span style="font-size:0.85rem;">' + item.label + '</span>';
     html += '<div style="display:flex;align-items:center;gap:0.4rem;">';
     html += '<kbd style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--text2);min-width:60px;text-align:center;">' + (item.keys || '—') + '</kbd>';
-    if (item.isCustom) html += '<button class="keybinding-reset-btn" data-id="' + item.id + '" title="Zurücksetzen" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.9rem;">↺</button>';
+    if (item.isCustom) html += '<button class="keybinding-reset-btn" data-id="' + item.id + '" title="Reset" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.9rem;">↺</button>';
     html += '</div></div>';
   }
   container.innerHTML = html;
@@ -5738,7 +6736,7 @@ function renderKeybindings() {
       const id = row.dataset.id;
       const kbd = row.querySelector('kbd');
       const prevText = kbd.textContent;
-      kbd.textContent = 'Taste drücken...';
+      kbd.textContent = 'Press key...';
       kbd.style.borderColor = 'var(--accent)';
       kbd.style.color = 'var(--text)';
       const handler = (e) => {
@@ -5771,7 +6769,7 @@ function renderKeybindings() {
           const btn = document.createElement('button');
           btn.className = 'keybinding-reset-btn';
           btn.dataset.id = id;
-          btn.title = 'Zurücksetzen';
+          btn.title = 'Reset';
           btn.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.9rem;';
           btn.textContent = '↺';
           btn.addEventListener('click', (e2) => {
@@ -5808,7 +6806,7 @@ function renderKeybindings() {
   });
 
   document.getElementById('btn-reset-keybindings')?.addEventListener('click', () => {
-    if (confirm('Alle Tastenkürzel zurücksetzen?')) {
+    if (confirm('Reset all keyboard shortcuts?')) {
       KeybindManager.resetAll();
       renderKeybindings();
     }
@@ -6338,8 +7336,12 @@ function buildConnectedAppsPrompt() {
 }
 
 // Language select
-document.getElementById('settings-language').addEventListener('change', () => {
-  logToTerminal('Language will take effect on restart', 'info');
+document.getElementById('settings-language').addEventListener('change', async () => {
+  const lang = document.getElementById('settings-language').value;
+  if (typeof I18n !== 'undefined') {
+    await I18n.setLanguage(lang);
+  }
+  logToTerminal('Language changed to ' + lang, 'info');
 });
 
 // Theme select
@@ -6548,7 +7550,9 @@ async function checkOllamaStatus() {
 document.getElementById('url-ollama')?.addEventListener('change', checkOllamaStatus);
 checkOllamaStatus();
 function _isOllamaActive() {
-  return document.getElementById('provider-select')?.value === 'ollama';
+  const { providerId, isRoute, route } = resolveProvider();
+  if (isRoute) return route && route.provider === 'ollama';
+  return providerId === 'ollama';
 }
 async function _conditionalOllamaCheck() {
   if (_isOllamaActive()) await checkOllamaStatus();
@@ -6587,6 +7591,11 @@ if (autoAcceptToggle) {
   autoAcceptToggle.addEventListener('click', () => {
     const checked = autoAcceptToggle.classList.contains('on');
     document.getElementById('auto-exceptions-area')?.classList.toggle('hidden', !checked);
+    const permList = document.getElementById('permission-list');
+    if (permList) {
+      permList.style.opacity = checked ? '0.4' : '1';
+      permList.style.pointerEvents = checked ? 'none' : '';
+    }
     saveSettingsToDisk({ autoAccept: checked });
   });
 }
@@ -6620,7 +7629,7 @@ document.getElementById('settings-timeout')?.addEventListener('change', (e) => {
 
 // Dynamic validate buttons for each provider
 function addValidateButtons() {
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of providerIds) {
     const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body) continue;
@@ -7791,8 +8800,7 @@ const AuditLog = {
     container.innerHTML = `<div class="audit-ai-result">Searching logs...</div>`;
 
     try {
-      const provider = document.getElementById('provider-select').value;
-      const prov = window.providers?.[provider];
+      const { provider: prov } = resolveProvider();
       if (!prov || !prov.sendPlain) {
         container.innerHTML = `<div class="audit-ai-result" style="color:#ef4444;">No active AI provider configured</div>`;
         return;
@@ -8556,7 +9564,7 @@ async function _mcpConnect(id) {
   const cfg = loadMcpConfig().find(c => c && c.id === id);
   if (!cfg) return;
   if (!cfg.command && cfg.transport === 'stdio') {
-    showNotification('error', 'MCP: Befehl erforderlich f\u00fcr STDIO Transport', '\u274C');
+    showNotification('error', 'MCP: Command required for STDIO Transport', '\u274C');
     return;
   }
   try {
@@ -8565,9 +9573,9 @@ async function _mcpConnect(id) {
     await client.connect();
     _mcpClients.set(id, client);
     renderMcpServers();
-    showNotification('success', 'MCP Server "' + cfg.name + '" verbunden', '\uD83D\uDD0C');
+    showNotification('success', 'MCP Server "' + cfg.name + '" connected', '\uD83D\uDD0C');
   } catch (err) {
-    showNotification('error', 'MCP Verbindung fehlgeschlagen: ' + err.message, '\u274C');
+    showNotification('error', 'MCP Connection failed: ' + err.message, '\u274C');
     renderMcpServers();
   }
 }
@@ -8580,12 +9588,12 @@ async function renderMcpServers() {
   list.innerHTML = configs.map((cfg, i) => {
     const client = _mcpClients.get(cfg.id);
     const connected = client && client._connected;
-    const status = connected ? 'verbunden' : 'getrennt';
+    const status = connected ? 'connected' : 'disconnected';
     const tools = client ? client._tools : [];
     const tl = TO[cfg.transport] || cfg.transport;
     const isStdio = cfg.transport === 'stdio';
     const fields = isStdio
-      ? '<label>Befehl</label><input class="mcp-field" data-field="command" value="' + escapeHtml(cfg.command || '') + '" placeholder="python server.py" />'
+      ? '<label>Command</label><input class="mcp-field" data-field="command" value="' + escapeHtml(cfg.command || '') + '" placeholder="python server.py" />'
       : '<label>URL</label><input class="mcp-field" data-field="url" value="' + escapeHtml(cfg.url || '') + '" placeholder="http://localhost:6543" />';
     const transportOptions = Object.keys(TO).map(k => '<option value="' + k + '" ' + (k === cfg.transport ? 'selected' : '') + '>' + TO[k] + '</option>').join('');
     return '<div class="mcp-server-card" data-index="' + i + '" data-id="' + cfg.id + '">' +
@@ -8605,9 +9613,9 @@ async function renderMcpServers() {
         '</details>' +
       '</div>' +
       '<div class="mcp-server-actions">' +
-        '<button class="btn btn-sm btn-primary mcp-connect" data-id="' + cfg.id + '">' + (connected ? 'Neu verbinden' : 'Verbinden') + '</button>' +
-        '<button class="btn btn-sm btn-secondary mcp-disconnect" data-id="' + cfg.id + '" ' + (connected ? '' : 'style="display:none;"') + '>Trennen</button>' +
-        '<button class="btn btn-sm btn-secondary mcp-remove" data-id="' + cfg.id + '">Entfernen</button>' +
+        '<button class="btn btn-sm btn-primary mcp-connect" data-id="' + cfg.id + '">' + (connected ? 'Reconnect' : 'Connect') + '</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-disconnect" data-id="' + cfg.id + '" ' + (connected ? '' : 'style="display:none;"') + '>Disconnect</button>' +
+        '<button class="btn btn-sm btn-secondary mcp-remove" data-id="' + cfg.id + '">Remove</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -8667,7 +9675,7 @@ document.getElementById('btn-add-mcp-server')?.addEventListener('click', () => {
   const configs = loadMcpConfig();
   const id = 'mcp-' + Date.now();
   configs.push({
-    id, name: 'Neuer MCP Server',
+    id, name: 'New MCP Server',
     transport: 'stdio',
     command: '',
     args: [],
@@ -8682,7 +9690,7 @@ document.getElementById('btn-start-mcp-server')?.addEventListener('click', async
   const command = document.getElementById('mcp-run-command').value.trim();
   const port = document.getElementById('mcp-run-port').value.trim();
   if (!name || !command) {
-    showNotification('error', 'Bitte Namen und Befehl eingeben', '\u274C');
+    showNotification('error', 'Please enter name and command', '\u274C');
     return;
   }
   const args = [];
@@ -8690,10 +9698,10 @@ document.getElementById('btn-start-mcp-server')?.addEventListener('click', async
   const id = 'mcp-run-' + Date.now();
   const result = await window.electronAPI.mcpExec.spawn(id, command, args, {});
   if (!result.ok) {
-    showNotification('error', 'MCP Server Start fehlgeschlagen: ' + result.error, '\u274C');
+    showNotification('error', 'MCP Server start failed: ' + result.error, '\u274C');
     return;
   }
-  showNotification('success', 'MCP Server "' + name + '\" gestartet', '\u2705');
+  showNotification('success', 'MCP Server "' + name + '\" started', '\u2705');
   const defaultPort = port || '6543';
   const configs = loadMcpConfig();
   configs.push({
@@ -8721,6 +9729,102 @@ if (typeof KeybindManager !== 'undefined') KeybindManager.init();
 if (typeof SkillsManager !== 'undefined') SkillsManager.init();
 if (typeof OllamaManager !== 'undefined') OllamaManager.init();
 
+SmartSearch.setSources({
+  file: async (q) => {
+    const list = await window.electronAPI.projectListFiles(currentProject);
+    return list.filter(f => f.toLowerCase().includes(q.toLowerCase())).map(f => ({ name: f.split('/').pop(), path: f }));
+  },
+  symbol: async (q) => {
+    const list = await window.electronAPI.projectListFiles(currentProject);
+    const out = [];
+    for (const f of list.slice(0, 60)) {
+      if (!/\.(js|jsx|ts|tsx|py|html|css)$/.test(f)) continue;
+      let content = '';
+      try { content = await window.electronAPI.projectReadFile(currentProject, f) || ''; } catch (e) { continue; }
+      const lang = f.endsWith('.py') ? 'python' : f.endsWith('.html') ? 'html' : f.endsWith('.css') ? 'css' : 'javascript';
+      const syms = extractSymbols(content, lang);
+      syms.forEach(s => {
+        if (s.name.toLowerCase().includes(q.toLowerCase())) out.push({ ...s, file: f, category: 'symbol' });
+      });
+    }
+    return out.slice(0, 30);
+  },
+  memory: async (q) => {
+    const names = await window.electronAPI.flordeFs.memoryList(currentProject) || [];
+    const out = [];
+    for (const n of names) {
+      const content = await window.electronAPI.flordeFs.memoryRead(currentProject, n) || '';
+      const path = '.florde/memory/' + n;
+      if (content.toLowerCase().includes(q.toLowerCase()) || n.toLowerCase().includes(q.toLowerCase())) {
+        out.push({ name: n, content, path });
+      }
+    }
+    return out;
+  },
+  commit: async (q) => {
+    const commits = await window.electronAPI.gitLog(currentProject, 50) || [];
+    return commits.filter(c => c.message.toLowerCase().includes(q.toLowerCase())).map(c => ({ message: c.message, shortHash: c.shortHash, date: c.date, author: c.author }));
+  },
+  todo: async (q) => {
+    if (typeof TodoList === 'undefined') return [];
+    return TodoList._todos.filter(t => t.text.toLowerCase().includes(q.toLowerCase())).map(t => ({ text: t.text, done: !!t.done }));
+  },
+  decision: async (q) => {
+    if (typeof DecisionLog === 'undefined') return [];
+    return DecisionLog._decisions.filter(d => (d.title + ' ' + d.reasons).toLowerCase().includes(q.toLowerCase())).map(d => ({ title: d.title, decision: d.reasons }));
+  },
+  issue: async (q) => {
+    if (!(window._connectedAppIds || []).includes('github')) return [];
+    try {
+      const text = await executeAppTool('github_search_issues', { q, per_page: 8 });
+      let parsed = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        const start = text.indexOf('{');
+        const end = text.lastIndexOf('}');
+        if (start !== -1 && end > start) parsed = JSON.parse(text.slice(start, end + 1));
+      }
+      const items = (parsed && parsed.items) || [];
+      return items.map(it => ({ title: it.title, url: it.html_url || '', description: it.body || '' }));
+    } catch (e) { return []; }
+  }
+});
+
+SmartSearch.onNavigate = (nav) => {
+  switch (nav.action) {
+    case 'openTab':
+      openTab(nav.value);
+      break;
+    case 'openTabAtLine':
+      openTab(nav.value.path);
+      setTimeout(() => {
+        if (editor && editor.getModel()) {
+          editor.revealLineInCenter(nav.value.line);
+          editor.setPosition({ lineNumber: nav.value.line, column: 1 });
+          editor.focus();
+        }
+      }, 200);
+      break;
+    case 'openGit':
+      try {
+        const api = (typeof LayoutManager !== 'undefined' && LayoutManager._api) || null;
+        if (api) {
+          const gitP = api.getPanel('git');
+          if (gitP) { gitP.api.setVisible(true); gitP.api.setActive(); }
+        }
+        if (typeof GitPanel !== 'undefined') GitPanel.refresh();
+      } catch (e) { console.warn('openGit dockview error:', e); }
+      break;
+    case 'openPanel':
+      if (typeof ManagementPanel !== 'undefined') ManagementPanel.show(nav.value);
+      break;
+    case 'openUrl':
+      window.open(nav.value, '_blank');
+      break;
+  }
+};
+
 // Hook Ollama Hub download button
 document.getElementById('btn-ollama-hub-download')?.addEventListener('click', () => {
   if (typeof showOllamaDownloadModal === 'function') showOllamaDownloadModal();
@@ -8739,6 +9843,238 @@ document.getElementById('btn-browser-toggle')?.addEventListener('click', async (
   }
 });
 
+// ==================== AI ROUTER ====================
+
+const AIRouter = {
+  _routes: [],
+  _activeRouteId: null,
+
+  init() {
+    try {
+      const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+      this._routes = s.aiRoutes || [];
+      this._activeRouteId = s.activeRouteId || null;
+    } catch { this._routes = []; this._activeRouteId = null; }
+    this._setupEvents();
+    this.renderDropdown();
+  },
+
+  _setupEvents() {
+    document.getElementById('btn-ai-router')?.addEventListener('click', () => this.showModal());
+    document.getElementById('btn-ai-router-close')?.addEventListener('click', () => this.hideModal());
+    document.getElementById('btn-ai-router-add')?.addEventListener('click', () => this.addRoute());
+    document.getElementById('provider-select')?.addEventListener('change', () => {
+      const val = document.getElementById('provider-select').value;
+      if (val.startsWith('route:')) {
+        this._activeRouteId = val.slice(6);
+        this._save();
+      }
+    });
+  },
+
+  _save() {
+    try {
+      const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+      s.aiRoutes = this._routes;
+      s.activeRouteId = this._activeRouteId;
+      localStorage.setItem('florde-settings', JSON.stringify(s));
+      saveSettingsToDisk(s);
+    } catch {}
+  },
+
+  showModal() {
+    this.renderRoutes();
+    document.getElementById('ai-router-modal')?.classList.remove('hidden');
+  },
+
+  hideModal() {
+    document.getElementById('ai-router-modal')?.classList.add('hidden');
+  },
+
+  addRoute() {
+    const id = 'route-' + Date.now();
+    this._routes.push({
+      id,
+      name: 'New Route',
+      provider: 'openai',
+      model: '',
+      key: '',
+      url: '',
+      temperature: 0.7,
+      enabled: true,
+    });
+    this._activeRouteId = id;
+    this._save();
+    this.renderRoutes();
+    this.renderDropdown();
+  },
+
+  removeRoute(id) {
+    this._routes = this._routes.filter(r => r.id !== id);
+    if (this._activeRouteId === id) this._activeRouteId = this._routes[0]?.id || null;
+    this._save();
+    this.renderRoutes();
+    this.renderDropdown();
+  },
+
+  updateRoute(id, field, value) {
+    const route = this._routes.find(r => r.id === id);
+    if (!route) return;
+    route[field] = value;
+    this._save();
+    this.renderDropdown();
+  },
+
+  setActive(id) {
+    this._activeRouteId = id;
+    this._save();
+    this.renderDropdown();
+  },
+
+  getActiveRoute() {
+    return this._routes.find(r => r.id === this._activeRouteId) || null;
+  },
+
+  getProviderForRoute(route) {
+    if (!route) return null;
+    const providerTypes = {
+      openai: [OpenAIProvider, 'key', 'model', 'gpt-5.5'],
+      deepseek: [DeepSeekProvider, 'key', 'model', 'deepseek-chat'],
+      mistral: [MistralProvider, 'key', 'model', 'mistral-large-latest'],
+      anthropic: [AnthropicProvider, 'key', 'model', 'claude-sonnet-4-6'],
+      gemini: [GeminiProvider, 'key', 'model', 'gemini-2.5-flash'],
+      grok: [GrokProvider, 'key', 'model', 'grok-4.3'],
+      opencodezen: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+      opencodego: [OpenCodeGoProvider, 'key', 'model', 'deepseek-v4-flash'],
+      openrouter: [OpenRouterProvider, 'key', 'model', 'openai/gpt-4o'],
+      custom: [CustomProvider, 'key', 'model', 'custom-model'],
+      ollama: [OllamaProvider, 'url', 'model', 'qwen2.5-coder'],
+      lmstudio: [LMStudioProvider, 'url', 'model', 'local-model'],
+      localai: [LocalAIProvider, 'url', 'model', 'local-model'],
+    };
+    const cfg = providerTypes[route.provider];
+    if (!cfg) return null;
+    const [Ctor, keyField, modelField, defaultModel] = cfg;
+    const val = keyField === 'url' ? (route.url || '') : (route.key || '');
+    if (!val && keyField !== 'url') return null;
+    const model = route.model || defaultModel;
+    let inst;
+    if (route.provider === 'custom') {
+      inst = new Ctor(val, model, route.url || '');
+    } else if (route.provider === 'ollama' || route.provider === 'lmstudio' || route.provider === 'localai') {
+      inst = new Ctor(val || '', model);
+    } else {
+      inst = new Ctor(val, model);
+    }
+    if (inst) inst.temperature = route.temperature || 0.7;
+    return inst;
+  },
+
+  renderDropdown() {
+    const sel = document.getElementById('provider-select');
+    if (!sel) return;
+    const current = sel.value;
+    let html = '';
+    if (this._routes.length > 0) {
+      for (const route of this._routes) {
+        if (!route.enabled) continue;
+        const prov = this._getProviderLabel(route.provider);
+        const model = route.model || this._getDefaultModel(route.provider);
+        const active = route.id === this._activeRouteId ? ' selected' : '';
+        html += `<option value="route:${route.id}"${active}>${this._esc(route.name)} (${prov}: ${model})</option>`;
+      }
+      html += '<option disabled>────────────</option>';
+    }
+    const providerTypes = [
+      ['openai', 'OpenAI'], ['deepseek', 'DeepSeek'], ['mistral', 'Mistral'],
+      ['anthropic', 'Anthropic'], ['gemini', 'Gemini'], ['grok', 'Grok'],
+      ['opencodezen', 'OpenCode Zen'], ['opencodego', 'OpenCode Go'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'],
+      ['localai', 'LocalAI'], ['openrouter', 'OpenRouter'], ['custom', 'Custom']
+    ];
+    for (const [id, label] of providerTypes) {
+      if (providers[id]) {
+        const model = providers[id].model || '';
+        html += `<option value="${id}">${label} (${this._esc(model)})</option>`;
+      }
+    }
+    sel.innerHTML = html;
+    if (current && sel.querySelector(`option[value="${current}"]`)) {
+      sel.value = current;
+    } else if (this._activeRouteId && sel.querySelector(`option[value="route:${this._activeRouteId}"]`)) {
+      sel.value = 'route:' + this._activeRouteId;
+    }
+  },
+
+  _getProviderLabel(id) {
+    const labels = { openai:'OpenAI', deepseek:'DeepSeek', mistral:'Mistral', anthropic:'Anthropic', gemini:'Gemini', grok:'Grok', opencodezen:'OpenCode Zen', opencodego:'OpenCode Go', openrouter:'OpenRouter', custom:'Custom', ollama:'Ollama', lmstudio:'LM Studio', localai:'LocalAI' };
+    return labels[id] || id;
+  },
+
+  _getDefaultModel(id) {
+    const defaults = { openai:'gpt-5.5', deepseek:'deepseek-chat', mistral:'mistral-large-latest', anthropic:'claude-sonnet-4-6', gemini:'gemini-2.5-flash', grok:'grok-4.3', opencodezen:'big-pickle', opencodego:'deepseek-v4-flash', openrouter:'openai/gpt-4o', custom:'custom-model', ollama:'qwen2.5-coder', lmstudio:'local-model', localai:'local-model' };
+    return defaults[id] || 'unknown';
+  },
+
+  _esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+
+  renderRoutes() {
+    const container = document.getElementById('ai-router-routes');
+    if (!container) return;
+    if (this._routes.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:var(--text3);padding:2rem;">No routes configured. Click "+ Add Route" to create one.</div>';
+      return;
+    }
+    const providerOptions = [
+      ['openai','OpenAI'],['deepseek','DeepSeek'],['mistral','Mistral'],
+      ['anthropic','Anthropic'],['gemini','Gemini'],['grok','Grok'],
+      ['opencodezen','OpenCode Zen'],['opencodego','OpenCode Go'],['ollama','Ollama'],['lmstudio','LM Studio'],
+      ['localai','LocalAI'],['openrouter','OpenRouter'],['custom','Custom']
+    ];
+    const modelSuggestions = {
+      openai: ['gpt-5.5','gpt-5.4-mini','gpt-5','gpt-5-mini','gpt-4.1','gpt-4.1-mini','gpt-4o','gpt-4o-mini','o3-pro','o3','o4-mini','o3-mini'],
+      deepseek: ['deepseek-chat','deepseek-coder','deepseek-reasoner'],
+      mistral: ['mistral-large-latest','mistral-medium-latest','mistral-small-latest','ministral-3b-latest','devstral-2.0','devstral-1.0','codestral-latest','codestral-mamba-latest'],
+      anthropic: ['claude-opus-4-8','claude-opus-4-7','claude-opus-4-6','claude-sonnet-5','claude-sonnet-4-6'],
+      gemini: ['gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-pro'],
+      grok: ['grok-4.3','grok-4.20','grok-build-0.1'],
+      opencodezen: ['big-pickle','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-pro','gpt-5.4-mini','gpt-5.4-nano','gpt-5.3-codex','gpt-5','gpt-5-nano','claude-fable-5','claude-opus-5','claude-sonnet-5','claude-haiku-4-5','gemini-3.7-flash','gemini-3.1-pro','gemini-3-flash','gemini-3.5-flash-lite','muse-spark-1.2','grok-4.6','grok-4.5','grok-build-0.1','kimi-k3','kimi-k2.7-code','kimi-k2.6','qwen3.7-max','qwen3.7-plus','minimax-m3','glm-5.2','deepseek-v4-pro','deepseek-v4-flash','nemotron-3-ultra-free','mimo-v2.5-free','hy3-free','x-preview-f-free'],
+      opencodego: ['deepseek-v4-flash','deepseek-v4-pro','deepseek-v4-flash-vision-exp','grok-4.5','glm-5.3','glm-5.2','glm-5.1','gpt-5.6-luna','kimi-k3','kimi-k2.7-code','kimi-k2.6','longcat-2.0','mimo-v2.5','mimo-v2.5-pro','minimax-m3','minimax-m2.7','muse-spark-1.2-contributor','qwen3.8-max','qwen3.7-max','qwen3.7-plus','qwen3.6-plus','hy3','ox-alpha-free'],
+      openrouter: ['anthropic/claude-sonnet-4-6','openai/gpt-4o','google/gemini-2.5-flash','meta-llama/llama-3.1-70b','mistralai/mistral-large'],
+    };
+    container.innerHTML = this._routes.map(route => {
+      const isActive = route.id === this._activeRouteId;
+      const isLocal = ['ollama','lmstudio','localai'].includes(route.provider);
+      const models = modelSuggestions[route.provider] || [];
+      const modelOptions = models.map(m => `<option value="${m}"${m===route.model?' selected':''}>${m}</option>`).join('');
+      return `<div class="ai-router-route" style="background:${isActive?'var(--bg3)':'var(--bg2)'};border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:8px;padding:0.6rem;display:flex;flex-direction:column;gap:0.4rem;">
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <input type="text" value="${this._esc(route.name)}" data-id="${route.id}" data-field="name" class="ai-router-input" style="flex:1;min-width:120px;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.8rem;" placeholder="Route name">
+          <select data-id="${route.id}" data-field="provider" class="ai-router-select" style="padding:0.3rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;">
+            ${providerOptions.map(([v,l]) => `<option value="${v}"${v===route.provider?' selected':''}>${l}</option>`).join('')}
+          </select>
+          ${models.length > 0 ? `<select data-id="${route.id}" data-field="model" class="ai-router-select" style="padding:0.3rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;max-width:180px;">${modelOptions}</select>` : `<input type="text" value="${this._esc(route.model)}" data-id="${route.id}" data-field="model" class="ai-router-input" style="width:140px;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="Model">`}
+          <button data-id="${route.id}" data-action="activate" class="btn btn-sm ${isActive?'btn-primary':'btn-secondary'}" style="font-size:0.7rem;white-space:nowrap;">${isActive?'✓ Active':'Use'}</button>
+          <button data-id="${route.id}" data-action="delete" class="btn btn-sm btn-secondary" style="font-size:0.7rem;color:var(--danger);">✕</button>
+        </div>
+        <div style="display:flex;gap:0.4rem;align-items:center;">
+          ${isLocal ? `<input type="text" value="${this._esc(route.url || '')}" data-id="${route.id}" data-field="url" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="URL (e.g. http://localhost:11434)">` : `<input type="password" value="${this._esc(route.key || '')}" data-id="${route.id}" data-field="key" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="API Key">`}
+          <span style="font-size:0.7rem;color:var(--text3);">Temp:</span>
+          <input type="number" value="${route.temperature || 0.7}" data-id="${route.id}" data-field="temperature" class="ai-router-input" style="width:50px;padding:0.3rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" min="0" max="2" step="0.1">
+        </div>
+      </div>`;
+    }).join('');
+    container.querySelectorAll('.ai-router-input, .ai-router-select').forEach(el => {
+      el.addEventListener('change', () => this.updateRoute(el.dataset.id, el.dataset.field, el.value));
+    });
+    container.querySelectorAll('[data-action="activate"]').forEach(btn => {
+      btn.addEventListener('click', () => { this.setActive(btn.dataset.id); this.renderRoutes(); });
+    });
+    container.querySelectorAll('[data-action="delete"]').forEach(btn => {
+      btn.addEventListener('click', () => { this.removeRoute(btn.dataset.id); });
+    });
+  },
+};
+
 // Restore sidebar state
 (function() {
   const sb = document.getElementById('sidebar');
@@ -8754,6 +10090,11 @@ document.getElementById('btn-browser-toggle')?.addEventListener('click', async (
   }
 })();
 
+(async () => { if (typeof I18n !== 'undefined') { await I18n.init(); await I18n.applyToPage(); } })();
+
+try { AIRouter.init(); } catch(e) { console.warn('AIRouter init error:', e); }
+try { TaskRouter.init(); } catch(e) { console.warn('TaskRouter init error:', e); }
+
 showStartMenu();
 
 require.config({ paths: { vs: '../node_modules/monaco-editor/min/vs' } });
@@ -8765,8 +10106,8 @@ require(['vs/editor/editor.main'], () => {
       theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
       automaticLayout: true,
       fontSize: 13,
-      readOnly: true,
-      domReadOnly: true,
+      readOnly: false,
+      domReadOnly: false,
       minimap: { enabled: false },
       wordWrap: 'on',
       lineNumbers: 'on',
@@ -8774,7 +10115,10 @@ require(['vs/editor/editor.main'], () => {
       scrollBeyondLastLine: false,
       padding: { top: 8, bottom: 8 },
     });
-    setupCodeToolbar(editor);
+    EditorMode.onModeChange = applyModeToLayout;
+    applyModeToLayout(EditorMode.getMode());
+    EditorMode.onAction = handleEditorAction;
+    initInlineDiffHover();
 
     // Restore active tab if one was opened before Monaco was ready
     if (activeTabIndex >= 0 && activeTabIndex < openTabs.length) {
@@ -8792,69 +10136,242 @@ require(['vs/editor/editor.main'], () => {
   }
 });
 
-// ==================== CODE SELECTION TOOLBAR ====================
+// ==================== MODE TOGGLE + INLINE DIFF ====================
 
-let codeToolbar = null;
+const inlineDiffStates = {};
+let inlineDiffDecoIds = [];
+let inlineDiffDecoModel = null;
 
-function setupCodeToolbar(ed) {
-  const toolbar = document.createElement('div');
-  toolbar.id = 'code-toolbar';
-  toolbar.className = 'hidden';
-  toolbar.innerHTML = `
-    <button class="ct-btn" data-action="explain">Explain Me</button>
-    <button class="ct-btn" data-action="optimize">Code Optimizer</button>
-    <button class="ct-btn" data-action="search">Search Code</button>
-  `;
-  document.body.appendChild(toolbar);
-  codeToolbar = toolbar;
+function applyModeToLayout(mode) {
+  const body = document.body;
+  body.classList.toggle('app-mode-editor', mode === 'editor');
+  body.classList.toggle('app-mode-chat', mode === 'chat');
+  const btnE = document.getElementById('btn-mode-editor');
+  const btnC = document.getElementById('btn-mode-chat');
+  if (btnE) btnE.classList.toggle('active', mode === 'editor');
+  if (btnC) btnC.classList.toggle('active', mode === 'chat');
 
-  toolbar.querySelectorAll('.ct-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sel = ed.getSelection();
-      const text = ed.getModel() ? ed.getModel().getValueInRange(sel) : '';
-      if (!text.trim()) return;
-      const fileName = openTabs[activeTabIndex] || 'unknown';
-      const lang = tabLanguages[fileName] || detectLanguage(fileName) || '';
-      switch (btn.dataset.action) {
-        case 'explain':
-          hideCodeToolbar();
-          sendMessage('Erkläre mir diesen Codeabschnitt ausführlich auf Deutsch.\n\n```' + lang + '\n' + text + '\n```');
-          break;
-        case 'optimize':
-          hideCodeToolbar();
-          showOptimizePrompt(text, lang, fileName);
-          break;
-        case 'search':
-          hideCodeToolbar();
-          searchCodeOnline(text, lang, fileName);
-          break;
+  try {
+    const api = (typeof LayoutManager !== 'undefined' && LayoutManager._api) || null;
+    if (api) {
+      const editorP = api.getPanel('editor');
+      const chatP = api.getPanel('chat');
+      if (mode === 'chat') {
+        if (editorP) editorP.api.setVisible(false);
+        if (chatP) { chatP.api.setVisible(true); chatP.api.setActive(); }
+      } else {
+        if (editorP) { editorP.api.setVisible(true); editorP.api.setActive(); }
+        if (chatP) { chatP.api.setVisible(true); chatP.api.setSize({ width: 320 }); }
       }
-    });
-  });
+    }
+  } catch (e) {
+    console.warn('applyModeToLayout dockview error:', e);
+  }
+}
 
-  ed.onDidChangeCursorSelection((e) => {
+document.getElementById('btn-mode-editor')?.addEventListener('click', () => EditorMode.setMode('editor'));
+document.getElementById('btn-mode-chat')?.addEventListener('click', () => EditorMode.setMode('chat'));
+
+function handleEditorAction(action, ctx) {
+  if (!editor || !editor.getModel()) return;
+  const fileName = getActiveFileName() || 'unknown';
+  const sel = editor.getSelection();
+  const text = ctx.text || (editor.getModel().getValueInRange(sel) || '');
+  if (!text.trim()) return;
+  const lang = ctx.lang || tabLanguages[fileName] || detectLanguage(fileName) || '';
+  if (action === 'whatis' || action === 'explain') {
+    sendMessage(EditorMode._buildPrompt(action, { text, lang, fileName }));
+    return;
+  }
+  let goal = '';
+  if (action === 'improve') {
+    const g = prompt('Improvement goal (optional):', '');
+    if (g === null) return;
+    goal = g;
+  } else if (action === 'change') {
+    const g = prompt('What should be changed?:', '');
+    if (g === null) return;
+    goal = g;
+  }
+  const promptText = EditorMode._buildPrompt(action, { text, lang, fileName, goal });
+  sendMessage(promptText);
+}
+
+function applyInlineDiffToEditor(fileName, newContent) {
+  if (!editor || !editor.getModel()) return;
+  if (fileName !== (getActiveFileName() || '')) return;
+  const originalText = editor.getModel().getValue();
+  inlineDiffStates[fileName] = createDiffState(fileName, originalText, newContent);
+  editor.getModel().setValue(newContent);
+  renderInlineDiffDecorations(fileName);
+}
+
+function renderInlineDiffDecorations(fileName) {
+  if (!editor || !editor.getModel()) return;
+  const model = editor.getModel();
+  if (inlineDiffDecoModel !== model) {
+    inlineDiffDecoIds = [];
+    inlineDiffDecoModel = model;
+  }
+  const state = inlineDiffStates[fileName];
+  if (!state) { inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []); return; }
+  const hunks = computeHunks(state.originalText, state.currentText);
+  const lineCount = editor.getModel().getLineCount();
+  const decos = [];
+  hunks.forEach(h => {
+    const pendingAdded = h.added.filter(x => !state.accepted.has(x.text));
+    pendingAdded.forEach(x => {
+      decos.push({
+        range: new monaco.Range(x.line, 1, x.line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'inline-diff-added',
+          linesDecorationsClassName: 'inline-diff-added-gutter',
+          glyphMargin: true,
+          glyphMarginClassName: 'inline-diff-glyph'
+        }
+      });
+    });
+    if (h.added.length === 0 && h.removed.length > 0) {
+      const dl = Math.max(1, Math.min(h.startLine, lineCount));
+      decos.push({
+        range: new monaco.Range(dl, 1, dl, 1),
+        options: { isWholeLine: true, className: 'inline-diff-removed', linesDecorationsClassName: 'inline-diff-removed-gutter' }
+      });
+    }
+  });
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, decos);
+}
+
+function findHunkAtLine(state, lineNo) {
+  const hunks = computeHunks(state.originalText, state.currentText);
+  const lineCount = editor.getModel().getLineCount();
+  return hunks.find(h =>
+    h.added.some(x => x.line === lineNo) ||
+    (h.removed.length > 0 && h.added.length === 0 && lineNo === Math.max(1, Math.min(h.startLine, lineCount)))
+  );
+}
+
+function initInlineDiffHover() {
+  if (!editor) return;
+  editor.onMouseDown((e) => {
+    const fileName = getActiveFileName();
+    const state = fileName ? inlineDiffStates[fileName] : null;
+    if (!state || !e.target || !e.target.position) { hideHunkToolbar(); return; }
+    const lineNo = e.target.position.lineNumber;
+    const hunk = findHunkAtLine(state, lineNo);
+    if (hunk) showHunkToolbar(fileName, hunk);
+    else hideHunkToolbar();
+  });
+  editor.onDidChangeCursorPosition((e) => {
+    const fileName = getActiveFileName();
+    const state = fileName ? inlineDiffStates[fileName] : null;
+    const bar = document.getElementById('hunk-toolbar');
+    if (!state || !e.position) { hideHunkToolbar(); return; }
+    const hunk = findHunkAtLine(state, e.position.lineNumber);
+    if (hunk) showHunkToolbar(fileName, hunk);
+    else if (bar && bar.style.display === 'flex') hideHunkToolbar();
+  });
+  editor.onDidChangeCursorSelection((e) => {
     const sel = e.selection;
-    if (sel && !sel.isEmpty() && ed.getModel()) {
-      showCodeToolbar(ed, sel);
+    if (sel && !sel.isEmpty() && editor.getModel()) {
+      const fileName = getActiveFileName() || 'unknown';
+      const lang = tabLanguages[fileName] || detectLanguage(fileName) || '';
+      const text = editor.getModel().getValueInRange(sel);
+      const pos = editor.getScrolledVisiblePosition(sel.getStartPosition());
+      const editorDom = document.getElementById('editor-container');
+      const editorRect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
+      EditorMode.showSelectionMenu(sel, {
+        text, lang, fileName,
+        position: { left: editorRect.left + (pos ? pos.left : 0) + 10, top: editorRect.top + (pos ? pos.top : 0) - 40 }
+      });
     } else {
-      hideCodeToolbar();
+      const existing = document.getElementById('editor-action-menu');
+      if (existing) existing.remove();
     }
   });
 }
 
-function showCodeToolbar(ed, sel) {
-  if (!codeToolbar) return;
-  const pos = ed.getScrolledVisiblePosition(sel.getStartPosition());
-  if (!pos) return;
+function showHunkToolbar(fileName, hunk) {
+  let bar = document.getElementById('hunk-toolbar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'hunk-toolbar'; document.body.appendChild(bar); }
+  bar.innerHTML =
+    '<button class="ht-btn" data-k="accept">Accept</button>' +
+    '<button class="ht-btn" data-k="reject">Reject</button>' +
+    '<button class="ht-btn" data-k="acceptLine">Accept Line</button>' +
+    '<button class="ht-btn" data-k="rejectLine">Reject Line</button>' +
+    '<button class="ht-btn" data-k="acceptAll">Accept All</button>' +
+    '<button class="ht-btn" data-k="rejectAll">Reject All</button>';
+  const pos = editor.getScrolledVisiblePosition({ lineNumber: hunk.added[0] ? hunk.added[0].line : hunk.startLine, column: 1 });
   const editorDom = document.getElementById('editor-container');
-  const editorRect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
-  codeToolbar.style.left = (editorRect.left + pos.left + 10) + 'px';
-  codeToolbar.style.top = (editorRect.top + pos.top - 40) + 'px';
-  codeToolbar.classList.remove('hidden');
+  const rect = editorDom ? editorDom.getBoundingClientRect() : { top: 0, left: 0 };
+  bar.style.left = (rect.left + (pos ? pos.left : 0) + 10) + 'px';
+  bar.style.top = (rect.top + (pos ? pos.top : 0) - 40) + 'px';
+  bar.style.display = 'flex';
+  bar.onclick = (ev) => {
+    const b = ev.target.closest('.ht-btn');
+    if (!b) return;
+    if (b.dataset.k === 'accept') applyHunkDecision(fileName, hunk.id, 'accept');
+    else if (b.dataset.k === 'reject') applyHunkDecision(fileName, hunk.id, 'reject');
+    else if (b.dataset.k === 'acceptLine') applyHunkDecision(fileName, hunk.id, 'acceptLine', hunk.added[0] && hunk.added[0].line);
+    else if (b.dataset.k === 'rejectLine') applyHunkDecision(fileName, hunk.id, 'rejectLine', hunk.added[0] && hunk.added[0].line);
+    else if (b.dataset.k === 'acceptAll') commitCurrentFile();
+    else if (b.dataset.k === 'rejectAll') rejectCurrentFile();
+  };
 }
 
-function hideCodeToolbar() {
-  if (codeToolbar) codeToolbar.classList.add('hidden');
+function hideHunkToolbar() {
+  const bar = document.getElementById('hunk-toolbar');
+  if (bar) bar.style.display = 'none';
+}
+
+function applyHunkDecision(fileName, hunkId, kind, lineNo) {
+  const state = inlineDiffStates[fileName];
+  if (!state) return;
+  let next;
+  if (kind === 'accept') { next = acceptHunk(state, hunkId); }
+  else if (kind === 'reject') { next = rejectHunk(state, hunkId).state; }
+  else if (kind === 'acceptLine') { next = acceptLine(state, hunkId, lineNo); }
+  else if (kind === 'rejectLine') { next = rejectLine(state, hunkId, lineNo).state; }
+  if (next === state) return;
+  inlineDiffStates[fileName] = next;
+  if (kind === 'reject' || kind === 'rejectLine') {
+    if (editor && editor.getModel()) editor.getModel().setValue(next.currentText);
+    persistEditorToDisk(fileName);
+  }
+  renderInlineDiffDecorations(fileName);
+  hideHunkToolbar();
+}
+
+function persistEditorToDisk(fileName) {
+  if (!currentProject || !editor || !editor.getModel()) return;
+  const content = editor.getModel().getValue();
+  tabContents[fileName] = content;
+  tabDirty[fileName] = false;
+  window.electronAPI.projectWriteFile(currentProject, fileName, content).catch(() => {});
+  renderTabs();
+}
+
+function commitCurrentFile() {
+  const fileName = getActiveFileName();
+  if (!fileName || !inlineDiffStates[fileName]) return;
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
+  delete inlineDiffStates[fileName];
+  hideHunkToolbar();
+  logToTerminal('Changes applied (already saved).', 'success');
+}
+
+function rejectCurrentFile() {
+  const fileName = getActiveFileName();
+  if (!fileName || !inlineDiffStates[fileName]) return;
+  const state = inlineDiffStates[fileName];
+  const r = rejectAll(state);
+  if (editor && editor.getModel()) editor.getModel().setValue(r.state.currentText);
+  inlineDiffDecoIds = editor.deltaDecorations(inlineDiffDecoIds, []);
+  delete inlineDiffStates[fileName];
+  persistEditorToDisk(fileName);
+  hideHunkToolbar();
+  logToTerminal('All changes discarded, original restored.', 'info');
 }
 
 function showOptimizePrompt(code, lang, fileName) {
@@ -8867,13 +10384,13 @@ function showOptimizePrompt(code, lang, fileName) {
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1.5rem;width:500px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
       <h3 style="margin:0 0 0.5rem;font-size:1rem;">Code Optimizer</h3>
       <p style="font-size:0.8rem;color:var(--text3);margin-bottom:1rem;">
-        Was möchtest du an diesem Codeabschnitt verbessern?
+        What would you like to improve in this code section?
       </p>
-      <textarea id="optimize-input" rows="3" placeholder="z.B. Performance verbessern, lesbarer machen, Fehler beheben, auf TypeScript umstellen..."
+      <textarea id="optimize-input" rows="3" placeholder="e.g. improve performance, make more readable, fix bugs, convert to TypeScript..."
         style="width:100%;padding:0.5rem;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;resize:vertical;box-sizing:border-box;"></textarea>
       <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
-        <button id="optimize-cancel" class="btn btn-sm btn-secondary">Abbrechen</button>
-        <button id="optimize-confirm" class="btn btn-sm btn-primary">Optimieren</button>
+        <button id="optimize-cancel" class="btn btn-sm btn-secondary">Cancel</button>
+        <button id="optimize-confirm" class="btn btn-sm btn-primary">Optimize</button>
       </div>
     </div>
   `;
@@ -8884,9 +10401,9 @@ function showOptimizePrompt(code, lang, fileName) {
     const goal = document.getElementById('optimize-input').value.trim();
     overlay.remove();
     if (goal) {
-      sendMessage('Optimiere den folgenden Codeabschnitt. Ziel: ' + goal + '\n\n```' + lang + '\n' + code + '\n```\n\nZeige mir den optimierten Code und erkläre die Änderungen.');
+      sendMessage('Optimize the following code section. Goal: ' + goal + '\n\n```' + lang + '\n' + code + '\n```\n\nShow me the optimized code and explain the changes.');
     } else {
-      sendMessage('Optimiere den folgenden Codeabschnitt hinsichtlich Performance und Lesbarkeit.\n\n```' + lang + '\n' + code + '\n```\n\nZeige mir den optimierten Code und erkläre die Änderungen.');
+      sendMessage('Optimize the following code section for performance and readability.\n\n```' + lang + '\n' + code + '\n```\n\nShow me the optimized code and explain the changes.');
     }
   };
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -8896,19 +10413,19 @@ async function searchCodeOnline(code, lang, fileName) {
   ManagementPanel.show('ci');
   const tabs = document.getElementById('ci-tabs');
   const results = document.getElementById('ci-results');
-  if (results) results.innerHTML = 'Suche...';
+  if (results) results.innerHTML = 'Searching...';
   const iso = typeof CodeIntelligence !== 'undefined' ? CodeIntelligence : null;
   if (iso) iso._activeTab = 'code-search';
 
   const q = encodeURIComponent(code.trim().slice(0, 200));
-  let output = '<div style="padding:0.75rem;font-size:0.8rem;color:var(--text2);">Suche nach ähnlichem Code...</div>';
+  let output = '<div style="padding:0.75rem;font-size:0.8rem;color:var(--text2);">Searching for similar code...</div>';
 
   // searchcode.com
   try {
     const r = await fetch('https://api.searchcode.com/api/v1/search/?q=' + q, { signal: AbortSignal.timeout(15000) });
     const data = await r.json();
     if (data.results?.length > 0) {
-      output = '<div style="padding:0.75rem;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🔍 Repo-Suche (searchcode)</div>' +
+      output = '<div style="padding:0.75rem;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🔍 Repo Search (searchcode)</div>' +
         data.results.slice(0, 12).map(item => `
           <div style="padding:0.4rem 0;border-bottom:1px solid var(--border);">
             <a href="${escapeHtml(item.url)}" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:500;">${escapeHtml(item.name)}</a>
@@ -8917,10 +10434,10 @@ async function searchCodeOnline(code, lang, fileName) {
           </div>
         `).join('') + '</div>';
     } else {
-      output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">Keine Ergebnisse auf searchcode.com gefunden.</div>';
+      output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">No results found on searchcode.com.</div>';
     }
   } catch (e) {
-    output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">searchcode.com Fehler: ' + (e.message || 'Netzwerkfehler') + '</div>';
+    output = '<div style="padding:0.75rem;color:var(--text3);font-size:0.8rem;">searchcode.com Error: ' + (e.message || 'Network error') + '</div>';
   }
 
   // PublicWWW if connected
@@ -8934,7 +10451,7 @@ async function searchCodeOnline(code, lang, fileName) {
       const text = await r.text();
       if (text.trim()) {
         const lines = text.trim().split('\n').slice(0, 15);
-        output += '<div style="padding:0 0.75rem 0.75rem;"><hr style="border:none;border-top:1px solid var(--border);margin:0.5rem 0;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🌐 Web-Suche (PublicWWW)</div>' +
+        output += '<div style="padding:0 0.75rem 0.75rem;"><hr style="border:none;border-top:1px solid var(--border);margin:0.5rem 0;"><div style="margin-bottom:0.5rem;font-weight:500;font-size:0.85rem;">🌐 Web Search (PublicWWW)</div>' +
           lines.map(line => `<div style="padding:0.2rem 0;border-bottom:1px solid var(--border);font-size:0.7rem;word-break:break-all;">${line}</div>`).join('') + '</div>';
       }
     } catch {}
@@ -9269,7 +10786,7 @@ function initSubagentsOverlay() {
   closeBtn?.addEventListener('click', () => modal.classList.add('hidden'));
 
   abortAllBtn?.addEventListener('click', () => {
-    if (confirm('Alle Subagenten abbrechen?')) {
+    if (confirm('Cancel all subagents?')) {
       window.SubagentManager?.abortAll();
       renderSubagentsList();
     }
@@ -9299,14 +10816,14 @@ function renderSubagentsList() {
 
   const instances = window.SubagentManager.getAll();
   if (instances.length === 0) {
-    list.innerHTML = '<div style="color:var(--text3);text-align:center;padding:2rem;">Keine Subagenten aktiv</div>';
+    list.innerHTML = '<div style="color:var(--text3);text-align:center;padding:2rem;">No active subagents</div>';
     return;
   }
 
   list.innerHTML = instances.map(inst => {
     const statusLabel = inst.status.charAt(0).toUpperCase() + inst.status.slice(1);
     const timeAgo = Math.floor((Date.now() - inst.createdAt) / 1000);
-    const timeStr = timeAgo < 60 ? `vor ${timeAgo}s` : `vor ${Math.floor(timeAgo / 60)}m`;
+    const timeStr = timeAgo < 60 ? `${timeAgo}s ago` : `${Math.floor(timeAgo / 60)}m ago`;
     const output = inst._messages.slice(-5).map(m =>
       (m.role === 'user' ? '> ' : '') + m.content.slice(0, 200)
     ).join('\n---\n');
@@ -9316,7 +10833,7 @@ function renderSubagentsList() {
         <span><span class="subagent-card-id">${inst.id}</span> <span class="subagent-card-goal">${escapeHtml(inst.goal.slice(0, 60))}</span></span>
         <span class="subagent-card-status ${inst.status}">${statusLabel} · ${timeStr}</span>
       </div>
-      <div class="subagent-card-output">${escapeHtml(output || '(keine Ausgabe)')}</div>
+      <div class="subagent-card-output">${escapeHtml(output || '(no output)')}</div>
     </div>`;
   }).join('');
 }

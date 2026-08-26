@@ -15,6 +15,7 @@ class SystemDetector {
     const hasPodman = await SystemDetector._checkBinary('podman');
     const hasFirejail = await SystemDetector._checkBinary('firejail');
     const hasVmware = await SystemDetector._checkBinary('vmrun');
+    const hasQemu = await SystemDetector._checkBinary('virsh');
 
     return {
       cpu: {
@@ -31,6 +32,7 @@ class SystemDetector {
         podman: hasPodman,
         firejail: hasFirejail,
         vmware: hasVmware,
+        qemu: hasQemu,
       }
     };
   }
@@ -94,6 +96,15 @@ class SystemDetector {
         recommendations.push({ type: 'vmware', reason: 'Vollständige Isolation, Vision-fähig', score });
       } else {
         recommendations.push({ type: 'vmware', reason: 'VM möglich, aber VRAM für Vision knapp', score: 1 });
+      }
+    }
+
+    if (tools.qemu && ram.total >= 8192 && cpu.cores >= 2) {
+      if (!hasVisionModel || gpu.vram >= 2048) {
+        const score = hasVisionModel ? (ram.total >= 16384 ? 4 : 2) : (ram.total >= 16384 ? 5 : 4);
+        recommendations.push({ type: 'qemu', reason: 'VM-Isolation via KVM, günstiger als VMware', score });
+      } else {
+        recommendations.push({ type: 'qemu', reason: 'KVM möglich, aber VRAM für Vision knapp', score: 1 });
       }
     }
 

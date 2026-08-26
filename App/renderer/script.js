@@ -397,20 +397,46 @@ class OpenCodeProvider extends OpenAIProvider {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify(body),
     }, timeoutMs);
-    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode Zen API error: ${r.status} ${detail.error?.message || r.statusText}`); }
     return r;
   }
   async sendWithTools(messages, tools) {
     const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }));
     const text = await r.text();
     try { const data = JSON.parse(text); return data.choices?.[0]?.message || { content: '', role: 'assistant' }; }
-    catch { throw new Error('OpenCode API: invalid JSON response'); }
+    catch { throw new Error('OpenCode Zen API: invalid JSON response'); }
   }
   async sendPlain(messages) {
     const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, stream: false }));
     const text = await r.text();
     try { const data = JSON.parse(text); return data.choices?.[0]?.message?.content || ''; }
-    catch { throw new Error('OpenCode API: invalid JSON response'); }
+    catch { throw new Error('OpenCode Zen API: invalid JSON response'); }
+  }
+}
+
+class OpenCodeGoProvider extends OpenAIProvider {
+  constructor(apiKey, model = 'deepseek-v4-flash') { super(apiKey, model); this.apiKey = apiKey; this.model = model; this.baseUrl = 'https://opencode.ai/zen/go/v1/chat/completions'; }
+  _timeoutMs() { return (parseInt(document.getElementById('settings-timeout')?.value) || 30) * 60 * 1000; }
+  async _post(url, body, timeoutMs) {
+    if (timeoutMs === undefined) timeoutMs = this._timeoutMs();
+    const r = await fetchWithTimeout(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify(body),
+    }, timeoutMs);
+    if (!r.ok) { const detail = await r.json().catch(() => ({})); throw new Error(`OpenCode Go API error: ${r.status} ${detail.error?.message || r.statusText}`); }
+    return r;
+  }
+  async sendWithTools(messages, tools) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, tools, tool_choice: 'auto', stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message || { content: '', role: 'assistant' }; }
+    catch { throw new Error('OpenCode Go API: invalid JSON response'); }
+  }
+  async sendPlain(messages) {
+    const r = await this._post(this.baseUrl, this._withTemp({ model: this.model, messages, stream: false }));
+    const text = await r.text();
+    try { const data = JSON.parse(text); return data.choices?.[0]?.message?.content || ''; }
+    catch { throw new Error('OpenCode Go API: invalid JSON response'); }
   }
 }
 
@@ -509,7 +535,9 @@ class OllamaProvider {
     } catch (err) {
       if (err.message.includes('404')) {
         this._useChat = false;
-      } else if (!err.message.includes('400')) throw err;
+      } else {
+        throw err;
+      }
     }
     const content = await this._chatOrGenerate(this._withOpts({ model: this.model, messages, stream: false }));
     return { content, role: 'assistant' };
@@ -899,7 +927,7 @@ let providers = {};
 let capabilityCache = (() => { try { return JSON.parse(localStorage.getItem('florde-capability-cache') || '{}'); } catch { return {}; } })();
 // Clear stale cache so tool support is properly detected
 for (const key of Object.keys(capabilityCache)) {
-  if (key.startsWith('ollama:') || key.startsWith('opencode:')) {
+  if (key.startsWith('ollama:') || key.startsWith('opencodezen:') || key.startsWith('opencodego:')) {
     delete capabilityCache[key];
   }
 }
@@ -1515,7 +1543,7 @@ async function autoFillApiKey(providerName) {
 }
 
 async function autoFillAllKeys() {
-  const providers = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','openrouter','custom'];
+  const providers = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','openrouter','custom'];
   for (const p of providers) await autoFillApiKey(p);
 }
 
@@ -1851,13 +1879,72 @@ const MODEL_META = {
   'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
   'grok-4.20': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
   'grok-build-0.1': { context: 131072, costIn: 3, costOut: 9, free: false },
-  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-flash-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'deepseek-v4-pro': { context: 128000, costIn: 2, costOut: 8, free: false },
-  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'kimi-k2.7-code': { context: 131072, costIn: 0, costOut: 0, free: true },
-  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true },
-  'north-mini-code-free': { context: 128000, costIn: 0, costOut: 0, free: true },
+  // === OpenCode Zen Models ===
+  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-pro': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'grok-4.6': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-4.5': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'grok-build-0.1': { context: 131072, costIn: 1, costOut: 2, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-sol': { context: 272000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-terra': { context: 272000, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-luna': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.5': { context: 272000, costIn: 5, costOut: 30, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.5-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4': { context: 272000, costIn: 2.50, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-mini': { context: 272000, costIn: 0.75, costOut: 4.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.4-nano': { context: 272000, costIn: 0.20, costOut: 1.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.3-codex': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.3-codex-spark': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5': { context: 272000, costIn: 1.07, costOut: 8.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5-nano': { context: 272000, costIn: 0.05, costOut: 0.40, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-fable-5': { context: 200000, costIn: 10, costOut: 50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-opus-5': { context: 200000, costIn: 5, costOut: 25, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-sonnet-5': { context: 200000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'claude-haiku-4-5': { context: 200000, costIn: 1, costOut: 5, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.7-flash': { context: 1048576, costIn: 1.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.1-pro': { context: 1048576, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3-flash': { context: 1048576, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gemini-3.5-flash-lite': { context: 1048576, costIn: 0.30, costOut: 2.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2': { context: 131072, costIn: 1.25, costOut: 4.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k3': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.7-code': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.6': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-max': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-plus': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m3': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.2': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'hy3-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'x-preview-f-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'nemotron-3.5-lightning-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2-contributor-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  // === OpenCode Go Models ===
+  'grok-4.5-go': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.3': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.2-go': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'glm-5.1': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'gpt-5.6-luna-go': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k3-go': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.7-code-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'kimi-k2.6-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'longcat-2.0': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-pro-go': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash-go': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'deepseek-v4-flash-vision-exp': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5': { context: 128000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'mimo-v2.5-pro': { context: 128000, costIn: 0.435, costOut: 0.87, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m3-go': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'minimax-m2.7': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'muse-spark-1.2-contributor': { context: 128000, costIn: 0.10, costOut: 0.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.8-max': { context: 131072, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-max-go': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.7-plus-go': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'qwen3.6-plus': { context: 131072, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'hy3': { context: 128000, costIn: 0.14, costOut: 0.58, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
+  'ox-alpha-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
   'anthropic/claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
   'openai/gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
   'google/gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
@@ -1881,7 +1968,8 @@ const MODEL_CATALOG = {
   anthropic: ['claude-opus-4-8','claude-opus-4-7','claude-opus-4-6','claude-sonnet-5','claude-sonnet-4-6','claude-3.5-haiku'],
   gemini: ['gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-pro'],
   grok: ['grok-4.3','grok-4.20','grok-build-0.1'],
-  opencode: ['big-pickle'],
+  opencodezen: ['big-pickle','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-pro','gpt-5.4-mini','gpt-5.4-nano','gpt-5.3-codex','gpt-5','gpt-5-nano','claude-fable-5','claude-opus-5','claude-sonnet-5','claude-haiku-4-5','gemini-3.7-flash','gemini-3.1-pro','gemini-3-flash','gemini-3.5-flash-lite','muse-spark-1.2','grok-4.6','grok-4.5','grok-build-0.1','kimi-k3','kimi-k2.7-code','kimi-k2.6','qwen3.7-max','qwen3.7-plus','minimax-m3','glm-5.2','deepseek-v4-pro','deepseek-v4-flash','nemotron-3-ultra-free','mimo-v2.5-free','hy3-free','x-preview-f-free','nemotron-3.5-lightning-free','muse-spark-1.2-contributor-free'],
+  opencodego: ['deepseek-v4-flash','deepseek-v4-pro','deepseek-v4-flash-vision-exp','grok-4.5','glm-5.3','glm-5.2','glm-5.1','gpt-5.6-luna','kimi-k3','kimi-k2.7-code','kimi-k2.6','longcat-2.0','mimo-v2.5','mimo-v2.5-pro','minimax-m3','minimax-m2.7','muse-spark-1.2-contributor','qwen3.8-max','qwen3.7-max','qwen3.7-plus','qwen3.6-plus','hy3','ox-alpha-free'],
   openrouter: ['anthropic/claude-sonnet-4-6','openai/gpt-4o','google/gemini-2.5-flash','meta-llama/llama-3.1-70b','mistralai/mistral-large'],
   custom: ['custom-model'],
   ollama: [],
@@ -2194,7 +2282,7 @@ const TaskRouter = {
 
   _getConnectedProviders() {
     const connected = [];
-    const allIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+    const allIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
     for (const pid of allIds) {
       const enabledCb = document.querySelector('.provider-enabled[data-provider="' + pid + '"]');
       if (enabledCb && !enabledCb.checked) continue;
@@ -2267,7 +2355,7 @@ const TaskRouter = {
       }
     }
 
-    const allProviderIds = ['openai', 'deepseek', 'mistral', 'anthropic', 'gemini', 'grok', 'opencode', 'openrouter', 'custom', 'ollama', 'lmstudio', 'localai'];
+    const allProviderIds = ['openai', 'deepseek', 'mistral', 'anthropic', 'gemini', 'grok', 'opencodezen', 'opencodego', 'openrouter', 'custom', 'ollama', 'lmstudio', 'localai'];
     for (const pid of allProviderIds) {
       if (providers[pid] && providers[pid].model) {
         const tasks = MODEL_META[providers[pid].model]?.tasks || MODEL_TASK_DEFAULTS;
@@ -2447,12 +2535,12 @@ async function loadSettings() {
     const cb = document.querySelector('.provider-enabled[data-provider="' + id + '"]');
     if (cb) cb.checked = s[id + 'Enabled'] === true;
   }
-    const allProviderIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+    const allProviderIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of allProviderIds) setToggle(id);
 
   delete providers.openai; delete providers.deepseek; delete providers.mistral;
   delete providers.anthropic; delete providers.gemini; delete providers.grok;
-  delete providers.opencode; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
+  delete providers.opencodezen; delete providers.opencodego; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
   delete providers.openrouter; delete providers.custom;
 
   const providerCtors = {
@@ -2462,7 +2550,8 @@ async function loadSettings() {
     anthropic: [AnthropicProvider, 'key', 'model', 'claude-sonnet-4-6'],
     gemini: [GeminiProvider, 'key', 'model', 'gemini-2.5-flash'],
     grok: [GrokProvider, 'key', 'model', 'grok-4.3'],
-    opencode: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+    opencodezen: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+    opencodego: [OpenCodeGoProvider, 'key', 'model', 'deepseek-v4-flash'],
     openrouter: [OpenRouterProvider, 'key', 'model', 'openai/gpt-4o'],
     custom: [CustomProvider, 'key', 'model', 'custom-model'],
     ollama: [OllamaProvider, 'url', 'model', 'qwen2.5-coder'],
@@ -2493,7 +2582,8 @@ async function loadSettings() {
   if (s.anthropicModel) document.getElementById('model-anthropic').value = s.anthropicModel;
   if (s.geminiModel) document.getElementById('model-gemini').value = s.geminiModel;
   if (s.grokModel) document.getElementById('model-grok').value = s.grokModel;
-  if (s.opencodeModel) document.getElementById('model-opencode').value = s.opencodeModel;
+  if (s.opencodezenModel) document.getElementById('model-opencodezen').value = s.opencodezenModel;
+  if (s.opencodegoModel) document.getElementById('model-opencodego').value = s.opencodegoModel;
   if (s.language) document.getElementById('settings-language').value = s.language;
   // Add model info buttons + free/key badges in settings
   document.querySelectorAll('.provider-body [id^="model-"]').forEach(sel => {
@@ -2553,7 +2643,7 @@ async function loadSettings() {
     }
   }
   // Add temperature sliders to each provider body
-  const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const tempProviders = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of tempProviders) {
     const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body || body.querySelector('.temp-slider-wrap')) continue;
@@ -2645,7 +2735,8 @@ async function validateAndSaveSettings() {
     { id: 'anthropic', key: document.getElementById('key-anthropic').value, model: document.getElementById('model-anthropic').value, test: async () => (new AnthropicProvider(document.getElementById('key-anthropic').value, document.getElementById('model-anthropic').value)).testKey() },
     { id: 'gemini', key: document.getElementById('key-gemini').value, model: document.getElementById('model-gemini').value, test: async () => (new GeminiProvider(document.getElementById('key-gemini').value, document.getElementById('model-gemini').value)).testKey() },
     { id: 'grok', key: document.getElementById('key-grok').value, model: document.getElementById('model-grok').value, test: async () => (new GrokProvider(document.getElementById('key-grok').value, document.getElementById('model-grok').value)).testKey() },
-    { id: 'opencode', key: document.getElementById('key-opencode').value, model: document.getElementById('model-opencode').value, test: async () => (new OpenCodeProvider(document.getElementById('key-opencode').value, document.getElementById('model-opencode').value)).testKey() },
+    { id: 'opencodezen', key: document.getElementById('key-opencodezen').value, model: document.getElementById('model-opencodezen').value, test: async () => (new OpenCodeProvider(document.getElementById('key-opencodezen').value, document.getElementById('model-opencodezen').value)).testKey() },
+    { id: 'opencodego', key: document.getElementById('key-opencodego').value, model: document.getElementById('model-opencodego').value, test: async () => (new OpenCodeGoProvider(document.getElementById('key-opencodego').value, document.getElementById('model-opencodego').value)).testKey() },
     { id: 'openrouter', key: document.getElementById('key-openrouter').value, model: document.getElementById('model-openrouter').value, test: async () => (new OpenRouterProvider(document.getElementById('key-openrouter').value, document.getElementById('model-openrouter').value)).testKey() },
     { id: 'custom', key: document.getElementById('key-custom').value, model: document.getElementById('model-custom').value, test: async () => (new CustomProvider(document.getElementById('key-custom').value, document.getElementById('model-custom').value, document.getElementById('url-custom').value)).testKey() },
     { id: 'ollama', key: '', model: document.getElementById('model-ollama')?.value || '', test: async () => true },
@@ -2716,7 +2807,7 @@ async function validateAndSaveSettings() {
     return cb ? cb.checked : false;
   }
 
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   function getVal(id, field) {
     const el = document.getElementById(field + '-' + id);
     return el ? el.value : '';
@@ -2764,7 +2855,8 @@ async function validateAndSaveSettings() {
       { id: 'anthropic', key: settings.anthropicKey },
       { id: 'gemini', key: settings.geminiKey },
       { id: 'grok', key: settings.grokKey },
-      { id: 'opencode', key: settings.opencodeKey },
+      { id: 'opencodezen', key: settings.opencodezenKey },
+      { id: 'opencodego', key: settings.opencodegoKey },
       { id: 'openrouter', key: settings.openrouterKey },
       { id: 'custom', key: settings.customKey },
     ];
@@ -2777,7 +2869,7 @@ async function validateAndSaveSettings() {
 
   delete providers.openai; delete providers.deepseek; delete providers.mistral;
   delete providers.anthropic; delete providers.gemini; delete providers.grok;
-  delete providers.opencode; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
+  delete providers.opencodezen; delete providers.opencodego; delete providers.ollama; delete providers.lmstudio; delete providers.localai;
   delete providers.openrouter; delete providers.custom;
 
   function setTemp(prov, id) { if (prov) prov.temperature = settings[id + 'Temp'] || 0.7; }
@@ -2788,7 +2880,8 @@ async function validateAndSaveSettings() {
   if (p.anthropicEnabled && p.anthropicKey) setTemp(providers.anthropic = new AnthropicProvider(p.anthropicKey, p.anthropicModel), 'anthropic');
   if (p.geminiEnabled && p.geminiKey) setTemp(providers.gemini = new GeminiProvider(p.geminiKey, p.geminiModel), 'gemini');
   if (p.grokEnabled && p.grokKey) setTemp(providers.grok = new GrokProvider(p.grokKey, p.grokModel), 'grok');
-  if (p.opencodeEnabled && p.opencodeKey) setTemp(providers.opencode = new OpenCodeProvider(p.opencodeKey, p.opencodeModel), 'opencode');
+  if (p.opencodezenEnabled && p.opencodezenKey) setTemp(providers.opencodezen = new OpenCodeProvider(p.opencodezenKey, p.opencodezenModel), 'opencodezen');
+  if (p.opencodegoEnabled && p.opencodegoKey) setTemp(providers.opencodego = new OpenCodeGoProvider(p.opencodegoKey, p.opencodegoModel), 'opencodego');
   if (p.ollamaEnabled) setTemp(providers.ollama = new OllamaProvider(p.ollamaUrl, p.ollamaModel), 'ollama');
   if (p.lmstudioEnabled) setTemp(providers.lmstudio = new LMStudioProvider(p.lmstudioUrl, p.lmstudioModel), 'lmstudio');
   if (p.localaiEnabled) setTemp(providers.localai = new LocalAIProvider(p.localaiUrl, p.localaiModel), 'localai');
@@ -5096,7 +5189,8 @@ function getKnownCapabilities(providerId, model) {
     anthropic: { tool_calling: true, streaming: true, json_mode: false, vision: true, thinking: m.includes('sonnet') || m.includes('opus'), images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     gemini: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: true, function_calling: true, custom_temperature: false, seed: false, context_caching: false },
     grok: { tool_calling: true, streaming: true, json_mode: true, vision: true, thinking: false, images: true, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
-    opencode: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('big-pickle') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    opencodezen: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('gpt-5') || m.includes('claude') || m.includes('gemini') || m.includes('grok-4') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
+    opencodego: { tool_calling: true, streaming: true, json_mode: true, vision: m.includes('vision-exp') || m.includes('grok'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: false, context_caching: false },
     ollama: { tool_calling: undefined, streaming: true, json_mode: false, vision: m.includes('llava') || m.includes('vision'), thinking: false, images: false, embeddings: false, function_calling: true, custom_temperature: true, seed: true, context_caching: false },
     lmstudio: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
     localai: { tool_calling: false, streaming: true, json_mode: false, vision: false, thinking: false, images: false, embeddings: false, function_calling: false, custom_temperature: true, seed: false, context_caching: false },
@@ -5624,12 +5718,6 @@ async function sendMessage(text) {
       if (m.tool_calls) base.tool_calls = m.tool_calls;
       if (m.tool_call_id) base.tool_call_id = m.tool_call_id;
       if (m.name) base.name = m.name;
-      let rc = m.reasoning_content || '';
-      if (!rc && m.role === 'assistant' && base.content) {
-        const thinkMatch = base.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
-        if (thinkMatch) rc = thinkMatch[1].trim();
-      }
-      if (rc) base.reasoning_content = rc;
       return base;
     })];
     if (_hideUserMsg) {
@@ -5735,14 +5823,14 @@ async function sendMessage(text) {
         if (response.tool_calls && response.tool_calls.length > 0) {
           const hasText = response.content && response.content.trim().length > 0;
           if (hasText) {
-            messages.push({ role: 'assistant', content: response.content, reasoning_content: _getReasoningContent(response) });
+            messages.push({ role: 'assistant', content: response.content });
             messages.push({ role: 'user', content: 'Error: either Tool-Call OR Text, not both.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
           }
 
-          messages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls, reasoning_content: _getReasoningContent(response) });
+          messages.push({ role: 'assistant', content: '', tool_calls: response.tool_calls });
 
           for (const toolCall of response.tool_calls) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
@@ -5792,7 +5880,7 @@ async function sendMessage(text) {
           const text = response.content || '';
           const hasCodeBlock = /```[\s\S]*?```/.test(text);
           if (hasCodeBlock) {
-            messages.push({ role: 'assistant', content: text, reasoning_content: _getReasoningContent(response) });
+            messages.push({ role: 'assistant', content: text });
             messages.push({ role: 'user', content: 'Code in chat instead of write_file/edit_file. Use the appropriate tool.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
@@ -6567,6 +6655,18 @@ document.querySelectorAll('.provider-header').forEach(h => {
   });
 });
 
+// Provider search filter
+document.getElementById('provider-search')?.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  document.querySelectorAll('.provider-group').forEach(group => {
+    const header = group.querySelector('.provider-header');
+    if (!header) return;
+    const name = header.textContent.toLowerCase();
+    const id = (header.dataset.provider || '').toLowerCase();
+    group.style.display = (!q || name.includes(q) || id.includes(q)) ? '' : 'none';
+  });
+});
+
 // Open provider group when key is focused
 document.querySelectorAll('.provider-body input[type="password"]').forEach(input => {
   input.addEventListener('focus', () => {
@@ -7322,7 +7422,7 @@ document.getElementById('settings-timeout')?.addEventListener('change', (e) => {
 
 // Dynamic validate buttons for each provider
 function addValidateButtons() {
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencode','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of providerIds) {
     const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body) continue;
@@ -9637,7 +9737,8 @@ const AIRouter = {
       anthropic: [AnthropicProvider, 'key', 'model', 'claude-sonnet-4-6'],
       gemini: [GeminiProvider, 'key', 'model', 'gemini-2.5-flash'],
       grok: [GrokProvider, 'key', 'model', 'grok-4.3'],
-      opencode: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+      opencodezen: [OpenCodeProvider, 'key', 'model', 'big-pickle'],
+      opencodego: [OpenCodeGoProvider, 'key', 'model', 'deepseek-v4-flash'],
       openrouter: [OpenRouterProvider, 'key', 'model', 'openai/gpt-4o'],
       custom: [CustomProvider, 'key', 'model', 'custom-model'],
       ollama: [OllamaProvider, 'url', 'model', 'qwen2.5-coder'],
@@ -9680,7 +9781,7 @@ const AIRouter = {
     const providerTypes = [
       ['openai', 'OpenAI'], ['deepseek', 'DeepSeek'], ['mistral', 'Mistral'],
       ['anthropic', 'Anthropic'], ['gemini', 'Gemini'], ['grok', 'Grok'],
-      ['opencode', 'OpenCode'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'],
+      ['opencodezen', 'OpenCode Zen'], ['opencodego', 'OpenCode Go'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'],
       ['localai', 'LocalAI'], ['openrouter', 'OpenRouter'], ['custom', 'Custom']
     ];
     for (const [id, label] of providerTypes) {
@@ -9698,12 +9799,12 @@ const AIRouter = {
   },
 
   _getProviderLabel(id) {
-    const labels = { openai:'OpenAI', deepseek:'DeepSeek', mistral:'Mistral', anthropic:'Anthropic', gemini:'Gemini', grok:'Grok', opencode:'OpenCode', openrouter:'OpenRouter', custom:'Custom', ollama:'Ollama', lmstudio:'LM Studio', localai:'LocalAI' };
+    const labels = { openai:'OpenAI', deepseek:'DeepSeek', mistral:'Mistral', anthropic:'Anthropic', gemini:'Gemini', grok:'Grok', opencodezen:'OpenCode Zen', opencodego:'OpenCode Go', openrouter:'OpenRouter', custom:'Custom', ollama:'Ollama', lmstudio:'LM Studio', localai:'LocalAI' };
     return labels[id] || id;
   },
 
   _getDefaultModel(id) {
-    const defaults = { openai:'gpt-5.5', deepseek:'deepseek-chat', mistral:'mistral-large-latest', anthropic:'claude-sonnet-4-6', gemini:'gemini-2.5-flash', grok:'grok-4.3', opencode:'big-pickle', openrouter:'openai/gpt-4o', custom:'custom-model', ollama:'qwen2.5-coder', lmstudio:'local-model', localai:'local-model' };
+    const defaults = { openai:'gpt-5.5', deepseek:'deepseek-chat', mistral:'mistral-large-latest', anthropic:'claude-sonnet-4-6', gemini:'gemini-2.5-flash', grok:'grok-4.3', opencodezen:'big-pickle', opencodego:'deepseek-v4-flash', openrouter:'openai/gpt-4o', custom:'custom-model', ollama:'qwen2.5-coder', lmstudio:'local-model', localai:'local-model' };
     return defaults[id] || 'unknown';
   },
 
@@ -9719,7 +9820,7 @@ const AIRouter = {
     const providerOptions = [
       ['openai','OpenAI'],['deepseek','DeepSeek'],['mistral','Mistral'],
       ['anthropic','Anthropic'],['gemini','Gemini'],['grok','Grok'],
-      ['opencode','OpenCode'],['ollama','Ollama'],['lmstudio','LM Studio'],
+      ['opencodezen','OpenCode Zen'],['opencodego','OpenCode Go'],['ollama','Ollama'],['lmstudio','LM Studio'],
       ['localai','LocalAI'],['openrouter','OpenRouter'],['custom','Custom']
     ];
     const modelSuggestions = {
@@ -9729,7 +9830,8 @@ const AIRouter = {
       anthropic: ['claude-opus-4-8','claude-opus-4-7','claude-opus-4-6','claude-sonnet-5','claude-sonnet-4-6'],
       gemini: ['gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-pro'],
       grok: ['grok-4.3','grok-4.20','grok-build-0.1'],
-      opencode: ['big-pickle','deepseek-v4-flash-free','deepseek-v4-pro','grok-build-0.1','nemotron-3-ultra-free','kimi-k2.7-code','mimo-v2.5-free','north-mini-code-free'],
+      opencodezen: ['big-pickle','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-pro','gpt-5.4-mini','gpt-5.4-nano','gpt-5.3-codex','gpt-5','gpt-5-nano','claude-fable-5','claude-opus-5','claude-sonnet-5','claude-haiku-4-5','gemini-3.7-flash','gemini-3.1-pro','gemini-3-flash','gemini-3.5-flash-lite','muse-spark-1.2','grok-4.6','grok-4.5','grok-build-0.1','kimi-k3','kimi-k2.7-code','kimi-k2.6','qwen3.7-max','qwen3.7-plus','minimax-m3','glm-5.2','deepseek-v4-pro','deepseek-v4-flash','nemotron-3-ultra-free','mimo-v2.5-free','hy3-free','x-preview-f-free'],
+      opencodego: ['deepseek-v4-flash','deepseek-v4-pro','deepseek-v4-flash-vision-exp','grok-4.5','glm-5.3','glm-5.2','glm-5.1','gpt-5.6-luna','kimi-k3','kimi-k2.7-code','kimi-k2.6','longcat-2.0','mimo-v2.5','mimo-v2.5-pro','minimax-m3','minimax-m2.7','muse-spark-1.2-contributor','qwen3.8-max','qwen3.7-max','qwen3.7-plus','qwen3.6-plus','hy3','ox-alpha-free'],
       openrouter: ['anthropic/claude-sonnet-4-6','openai/gpt-4o','google/gemini-2.5-flash','meta-llama/llama-3.1-70b','mistralai/mistral-large'],
     };
     container.innerHTML = this._routes.map(route => {

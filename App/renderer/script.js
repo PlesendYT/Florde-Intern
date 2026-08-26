@@ -2524,6 +2524,161 @@ const TaskRouter = {
   }
 };
 
+// ==================== LOOP DETECTION UI ====================
+
+function updateLoopIndicator(status, analysis) {
+  let indicator = document.getElementById('loop-indicator');
+  if (!indicator) {
+    indicator = document.createElement('span');
+    indicator.id = 'loop-indicator';
+    indicator.style.cssText = 'font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:0.4rem;cursor:pointer;';
+    const toolbar = document.querySelector('.chat-panel .panel-header');
+    if (toolbar) toolbar.appendChild(indicator);
+  }
+  const labels = { possible: '\u26a0\ufe0f Possible loop', confirmed: '\ud83d\udfe0 Loop detected', critical: '\ud83d\udd34 Critical loop' };
+  const colors = { possible: '#eab308', confirmed: '#f97316', critical: '#ef4444' };
+  indicator.textContent = labels[status] || '';
+  indicator.style.background = colors[status] || 'transparent';
+  indicator.style.color = '#fff';
+  indicator.style.display = status === 'normal' ? 'none' : '';
+  if (analysis) {
+    indicator.title = `Score: ${(analysis.score * 100).toFixed(0)}% | Type: ${analysis.type || 'unknown'}`;
+  }
+}
+
+async function handleLoopDetection(analysis) {
+  if (analysis.status === 'possible') {
+    updateLoopIndicator('possible', analysis);
+    chatHistory.push({ role: 'system', content: `[Loop] Possible ${analysis.type || 'loop'} \u2014 Score: ${(analysis.score * 100).toFixed(0)}%` });
+    return false;
+  }
+
+  if (analysis.status === 'critical') {
+    updateLoopIndicator('critical', analysis);
+    const recoveryStatus = recoveryManager.getStatus();
+    if (recoveryStatus.attempts >= recoveryStatus.maxAttempts) {
+      chatHistory.push({ role: 'system', content: `[Loop] Critical Loop \u2014 Agent stopped after ${recoveryStatus.maxAttempts} failed recovery attempts. Score: ${(analysis.score * 100).toFixed(0)}%` });
+      appendSubagentStatus('main', '\ud83d\udd34 Critical Loop: Agent stopped after ' + recoveryStatus.maxAttempts + ' failed recovery attempts.');
+      return true;
+    }
+  }
+
+  updateLoopIndicator(analysis.status, analysis);
+
+  return new Promise((resolve) => {
+    const existing = document.getElementById('loop-warning-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'loop-warning-modal';
+    modal.className = 'modal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+    const recoveryStatus = recoveryManager.getStatus();
+    const typeLabels = { exact_loop: 'Exact Loop', error_loop: 'Error Loop', revert_loop: 'Revert Loop', context_loop: 'Context Loop' };
+    const typeLabel = typeLabels[analysis.type] || 'Loop';
+
+    modal.innerHTML = `
+      <div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+        <div style="font-size:1.1rem;font-weight:600;margin-bottom:0.8rem;color:var(--danger);">\u26a0\ufe0f Loop detected</div>
+        <div style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;">
+          Florde detected that the agent has made little or no measurable progress.
+        </div>
+        <div style="font-size:0.8rem;color:var(--text);margin-bottom:0.5rem;">
+          <strong>Type:</strong> ${typeLabel}<br>
+          <strong>Score:</strong> ${(analysis.score * 100).toFixed(0)}%<br>
+          <strong>Recovery:</strong> ${recoveryStatus.attempts} / ${recoveryStatus.maxAttempts}<br>
+          <strong>Agent:</strong> main<br>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+          <button id="loop-pause-btn" class="btn btn-secondary" style="flex:1;">Pause Agent</button>
+          <button id="loop-retry-btn" class="btn btn-primary" style="flex:1;">Retry</button>
+          <button id="loop-continue-btn" class="btn btn-secondary" style="flex:1;">Continue</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    modal.querySelector('#loop-pause-btn').addEventListener('click', () => {
+      modal.remove();
+      resolve(true);
+    });
+
+    modal.querySelector('#loop-retry-btn').addEventListener('click', () => {
+      modal.remove();
+      // Persist loop event to chat history
+      const loopTimestamp = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      const typeLabels = { exact_loop: 'Exact Loop', error_loop: 'Error Loop', revert_loop: 'Revert Loop', context_loop: 'Context Loop' };
+      chatHistory.push({ role: 'system', content: `[Loop] ${loopTimestamp} ${analysis.status} \u2014 ${typeLabels[analysis.type] || analysis.type} \u2014 Score: ${(analysis.score * 100).toFixed(0)}%` });
+
+      const recovery = recoveryManager.attemptRecovery(analysis, loopDetector);
+      if (recovery.critical) {
+        appendSubagentStatus('main', '\ud83d\udd34 Critical Loop: Max recovery attempts reached.');
+        resolve(true);
+      } else {
+        appendSubagentStatus('main', '\ud83d\udfe1 Recovery attempt ' + recovery.attempt + '/' + recovery.maxAttempts + ': ' + recovery.prompt.slice(0, 80) + '...');
+        // Mark recovery as potentially successful in history (will be confirmed by progress check)
+        const lastRecovery = recoveryManager._recoveryHistory[recoveryManager._recoveryHistory.length - 1];
+        if (lastRecovery) {
+          // Schedule a progress check after a few tool rounds
+          setTimeout(() => {
+            const currentMetrics = { ...loopDetector._metrics };
+            const lastError = currentMetrics.errorFingerprint;
+            if (lastError !== analysis.details?.signals?.sameError) {
+              lastRecovery.successful = true;
+              recoveryManager._save();
+              recoveryManager.resetCounter();
+              updateLoopIndicator('normal', null);
+            }
+          }, 30000); // Check after 30 seconds
+        }
+        resolve(false);
+      }
+    });
+
+    modal.querySelector('#loop-continue-btn').addEventListener('click', () => {
+      modal.remove();
+      resolve(false);
+    });
+  });
+}
+
+// Loop Detection settings events
+document.getElementById('loop-detection-enabled')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), enabled: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+});
+document.getElementById('loop-detection-sensitivity')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), sensitivity: e.target.value };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof loopDetector !== 'undefined') loopDetector._sensitivity = e.target.value;
+});
+document.getElementById('loop-detection-auto-recovery')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), autoRecovery: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ autoRecovery: e.target.checked });
+});
+document.getElementById('loop-detection-recovery-delay')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), recoveryDelay: parseInt(e.target.value) };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ recoveryDelay: parseInt(e.target.value) });
+});
+document.getElementById('loop-detection-max-attempts')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), maxAttempts: parseInt(e.target.value) };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+  if (typeof recoveryManager !== 'undefined') recoveryManager.configure({ maxAttempts: parseInt(e.target.value) });
+});
+document.getElementById('loop-detection-stop-critical')?.addEventListener('change', (e) => {
+  const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+  s.loopDetection = { ...(s.loopDetection || {}), stopOnCritical: e.target.checked };
+  localStorage.setItem('florde-settings', JSON.stringify(s));
+});
+
 // ==================== SETTINGS ====================
 
 async function loadSettings() {
@@ -2709,6 +2864,18 @@ async function loadSettings() {
       btn.title = 'Build mode: AI executes directly';
     }
   }
+  // Load loop detection settings
+  try {
+    const ldSettings = s.loopDetection || {};
+    const setCb = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+    const setSel = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setCb('loop-detection-enabled', ldSettings.enabled !== false);
+    setSel('loop-detection-sensitivity', ldSettings.sensitivity || 'balanced');
+    setCb('loop-detection-auto-recovery', ldSettings.autoRecovery !== false);
+    setSel('loop-detection-recovery-delay', String(ldSettings.recoveryDelay || 120000));
+    setSel('loop-detection-max-attempts', String(ldSettings.maxAttempts || 3));
+    setCb('loop-detection-stop-critical', ldSettings.stopOnCritical !== false);
+  } catch {}
   } catch (err) {
     console.error('loadSettings error:', err);
   }
@@ -5793,20 +5960,16 @@ async function sendMessage(text) {
       return m ? m[1].trim() : '';
     }
 
-    const _toolCallHistory = [];
-
-    function _detectToolLoop(name, args) {
-      const sig = name + ':' + JSON.stringify(args).slice(0, 100);
-      _toolCallHistory.push(sig);
-      const count = _toolCallHistory.filter(s => s === sig).length;
-      if (count >= 3) return 'Loop detected: ' + name + ' called ' + count + ' times with the same arguments. Stop using this tool and synthesize your response.';
-      if (_toolCallHistory.length >= 5) {
-        const recent = _toolCallHistory.slice(-5);
-        const unique = new Set(recent);
-        if (unique.size <= 2) return 'Loop detected: you are repeating the same ' + name + ' tool calls. Stop and synthesize your response immediately.';
-      }
-      return null;
+    // Loop Detection
+    const loopDetector = new LoopDetector('main');
+    const recoveryManager = new RecoveryManager();
+    // Global loop detection across all agents
+    if (!window._globalLoopDetector) {
+      window._globalLoopDetector = new LoopDetector('global');
     }
+    const globalLoopDetector = window._globalLoopDetector;
+    const _ldSettings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}').loopDetection || {}; } catch { return {}; } })();
+    if (_ldSettings.sensitivity) loopDetector._sensitivity = _ldSettings.sensitivity;
 
     if (supportsTools) {
       let toolRounds = 0;
@@ -5836,14 +5999,6 @@ async function sendMessage(text) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
             const name = toolCall.function.name;
 
-            const loopMsg = _detectToolLoop(name, args);
-            if (loopMsg) {
-              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-              logToTerminal(loopMsg, 'warn');
-              chatHistory.push({ role: 'system', content: '[Tool] ' + name + ' → Loop detected' });
-              continue;
-            }
-
             logToTerminal('AI uses tool: ' + name, 'ai');
             startAnim('*Running tool: ' + name + '*');
 
@@ -5869,9 +6024,48 @@ async function sendMessage(text) {
             }
             messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
 
+            // Record action for loop detection
+            loopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: loopDetector._inferActionType(name),
+              tool: name,
+              command: args.command,
+              file: args.file || args.path,
+              args: args,
+              result: String(result).slice(0, 500),
+              resultHash: loopDetector._fingerprintResult(String(result).slice(0, 500)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? loopDetector._fingerprintError(String(result)) : null,
+              filesChanged: (name === 'edit_file' || name === 'write_file') ? [args.file || args.path || ''] : [],
+            });
+            // Also record to global detector
+            globalLoopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: globalLoopDetector._inferActionType(name),
+              tool: name,
+              args: args,
+              result: String(result).slice(0, 200),
+              resultHash: globalLoopDetector._fingerprintResult(String(result).slice(0, 200)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? globalLoopDetector._fingerprintError(String(result)) : null,
+            });
+
             chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: providerId, reasoning_content: _getReasoningContent(response) });
             chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
             trimChatHistory();
+          }
+
+          // Loop detection analysis
+          if (_ldSettings.enabled !== false) {
+            const loopAnalysis = loopDetector.analyze();
+            if (loopAnalysis.status === 'possible' && _ldSettings.showPossibleWarning !== false) {
+              updateLoopIndicator('possible', loopAnalysis);
+            } else if (loopAnalysis.status === 'confirmed' || loopAnalysis.status === 'critical') {
+              const shouldStop = await handleLoopDetection(loopAnalysis);
+              if (shouldStop) break;
+            }
           }
 
           toolRounds++;
@@ -5933,15 +6127,6 @@ async function sendMessage(text) {
           for (const toolCall of processedCalls) {
             const args = toolCall.args;
             const name = toolCall.function.name;
-            const loopMsg = _detectToolLoop(name, args);
-            if (loopMsg) {
-              messages.push(getToolResultMsg(toolCall.id, name, loopMsg));
-              const bracketStr = '[' + name + ': ' + toolCall.function.arguments + ']';
-              displayContent = displayContent.replace(bracketStr, '');
-              if (toolCall._raw) displayContent = displayContent.replace(toolCall._raw, '');
-              logToTerminal(loopMsg, 'warn');
-              continue;
-            }
             // Step tracking
             if (_planSteps) {
               _currentStep = Math.min(_currentStep + 1, _planSteps);
@@ -5963,6 +6148,18 @@ async function sendMessage(text) {
               result = 'Error: ' + err.message;
             }
             messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
+            // Record action for loop detection
+            loopDetector.recordAction({
+              timestamp: Date.now(),
+              agentId: 'main',
+              type: loopDetector._inferActionType(name),
+              tool: name,
+              args: args,
+              result: String(result).slice(0, 500),
+              resultHash: loopDetector._fingerprintResult(String(result).slice(0, 500)),
+              success: !String(result).startsWith('Error:'),
+              errorFingerprint: String(result).startsWith('Error:') ? loopDetector._fingerprintError(String(result)) : null,
+            });
             // Audit trail
             if (_planSteps) {
               chatHistory.push({ role: 'system', content: '[Step ' + _currentStep + '/' + _planSteps + '] Executed: ' + formatToolActivity(name, args) + '\nResult: ' + String(result).slice(0, 500) });
@@ -5976,6 +6173,16 @@ async function sendMessage(text) {
             resetRequestTimeout(timeoutMinutes, onTimeout);
           }
           stopAnim();
+          // Loop detection analysis (text-parse path)
+          if (_ldSettings.enabled !== false) {
+            const loopAnalysis = loopDetector.analyze();
+            if (loopAnalysis.status === 'possible' && _ldSettings.showPossibleWarning !== false) {
+              updateLoopIndicator('possible', loopAnalysis);
+            } else if (loopAnalysis.status === 'confirmed' || loopAnalysis.status === 'critical') {
+              const shouldStop = await handleLoopDetection(loopAnalysis);
+              if (shouldStop) break;
+            }
+          }
           toolRounds++;
           startAnim('*Waiting for AI*');
           finalContent = displayContent;

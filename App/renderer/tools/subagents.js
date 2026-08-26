@@ -14,6 +14,7 @@ class SubagentInstance {
     this._permissionCallback = permissionCallback;
     this._aborted = false;
     this._abortController = null;
+    this._loopDetector = new LoopDetector(this.id);
 
     const systemPrompt = `You are a subagent working on a delegated task.
 Your job is to complete the assigned goal autonomously.
@@ -79,9 +80,31 @@ ${context}`;
         if (response.tool_call) {
           this._onChunk?.('tool', `Agent '${this.id}': ${response.tool_call.name}(${JSON.stringify(response.tool_call.args)})`);
           const result = await this._executeTool(response.tool_call);
+          this._loopDetector.recordAction({
+            timestamp: Date.now(),
+            agentId: this.id,
+            type: this._loopDetector._inferActionType(response.tool_call.name),
+            tool: response.tool_call.name,
+            args: response.tool_call.args,
+            result: String(result).slice(0, 500),
+            resultHash: this._loopDetector._fingerprintResult(String(result).slice(0, 500)),
+            success: !String(result).startsWith('Error:'),
+            errorFingerprint: String(result).startsWith('Error:') ? this._loopDetector._fingerprintError(String(result)) : null,
+          });
           this.addMessage('assistant', `Tool ${response.tool_call.name} executed.`);
           const truncated = String(result).slice(0, 1000);
           this.addMessage('user', `Tool result: ${truncated}`);
+        // Check for loops in subagent
+        const subAnalysis = this._loopDetector.analyze();
+        if (subAnalysis.status === 'confirmed' || subAnalysis.status === 'critical') {
+          this._onChunk?.('loop', subAnalysis);
+          if (subAnalysis.status === 'critical') {
+            this.status = 'failed';
+            this.summary = 'Critical loop detected in subagent';
+            this._onChunk?.('system', `\ud83d\udd34 Subagent '${this.id}' stopped: critical loop detected`);
+            return;
+          }
+        }
         } else {
           const text = response.content || '';
           this.addMessage('assistant', text);

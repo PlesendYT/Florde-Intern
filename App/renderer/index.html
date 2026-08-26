@@ -1031,6 +1031,48 @@
           </div>
           <div id="task-router-cards"></div>
         </div>
+
+          <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border2);">
+            <h3 style="margin:0 0 0.8rem;font-size:0.95rem;">Loop Detection</h3>
+            <div style="display:flex;flex-direction:column;gap:0.6rem;">
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer;">
+                <input type="checkbox" id="loop-detection-enabled" checked /> Enable Loop Detection
+              </label>
+              <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;">
+                <span>Sensitivity:</span>
+                <select id="loop-detection-sensitivity" style="padding:0.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.8rem;">
+                  <option value="conservative">Conservative</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+              </div>
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer;">
+                <input type="checkbox" id="loop-detection-auto-recovery" checked /> Automatic Recovery
+              </label>
+              <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;">
+                <span>Recovery delay:</span>
+                <select id="loop-detection-recovery-delay" style="padding:0.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.8rem;">
+                  <option value="30000">30 seconds</option>
+                  <option value="60000">1 minute</option>
+                  <option value="120000" selected>2 minutes</option>
+                  <option value="300000">5 minutes</option>
+                  <option value="600000">10 minutes</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;">
+                <span>Max recovery attempts:</span>
+                <select id="loop-detection-max-attempts" style="padding:0.3rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.8rem;">
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3" selected>3</option>
+                  <option value="5">5</option>
+                </select>
+              </div>
+              <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;cursor:pointer;">
+                <input type="checkbox" id="loop-detection-stop-critical" checked /> Stop agent on Critical Loop
+              </label>
+            </div>
+          </div>
       </div>
 
       <div id="settings-validation" class="settings-validation hidden"></div>
@@ -1371,6 +1413,8 @@
   <script src="diff-view.js"></script>
   <script src="project-detector.js"></script>
   <script src="layout-manager.js"></script>
+  <script src="tools/loop-detector.js"></script>
+  <script src="tools/recovery-manager.js"></script>
   <script src="tools/subagents.js"></script>
   <script src="sandbox-settings.js"></script>
   <script src="diff-utils.js"></script>

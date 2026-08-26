@@ -4955,12 +4955,6 @@ async function sendMessage(text) {
       if (m.tool_calls) base.tool_calls = m.tool_calls;
       if (m.tool_call_id) base.tool_call_id = m.tool_call_id;
       if (m.name) base.name = m.name;
-      let rc = m.reasoning_content || '';
-      if (!rc && m.role === 'assistant' && base.content) {
-        const thinkMatch = base.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
-        if (thinkMatch) rc = thinkMatch[1].trim();
-      }
-      if (rc) base.reasoning_content = rc;
       return base;
     })];
     if (_hideUserMsg) {
@@ -5064,14 +5058,14 @@ async function sendMessage(text) {
         if (response.tool_calls && response.tool_calls.length > 0) {
           const hasText = response.content && response.content.trim().length > 0;
           if (hasText) {
-            messages.push({ role: 'assistant', content: response.content, reasoning_content: _getReasoningContent(response) });
+            messages.push({ role: 'assistant', content: response.content });
             messages.push({ role: 'user', content: 'Fehler: entweder Tool-Call ODER Text, nicht beides.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
             continue;
           }
 
-          messages.push({ role: 'assistant', content: null, tool_calls: response.tool_calls, reasoning_content: _getReasoningContent(response) });
+          messages.push({ role: 'assistant', content: '', tool_calls: response.tool_calls });
 
           for (const toolCall of response.tool_calls) {
             const args = JSON.parse(toolCall.function.arguments || '{}');
@@ -5110,7 +5104,7 @@ async function sendMessage(text) {
             }
             messages.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 500)));
 
-            chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider, reasoning_content: _getReasoningContent(response) });
+            chatHistory.push({ role: 'assistant', content: null, tool_calls: [toolCall], model: provider });
             chatHistory.push(getToolResultMsg(toolCall.id, name, String(result).slice(0, 1000)));
             trimChatHistory();
           }
@@ -5121,7 +5115,7 @@ async function sendMessage(text) {
           const text = response.content || '';
           const hasCodeBlock = /```[\s\S]*?```/.test(text);
           if (hasCodeBlock) {
-            messages.push({ role: 'assistant', content: text, reasoning_content: _getReasoningContent(response) });
+            messages.push({ role: 'assistant', content: text });
             messages.push({ role: 'user', content: 'Code in Chat statt write_file/edit_file. Benutze das passende Tool.' });
             toolRounds++;
             startAnim('*Waiting for AI*');
@@ -5867,6 +5861,18 @@ document.querySelectorAll('.provider-header').forEach(h => {
   h.addEventListener('click', (e) => {
     if (e.target.closest('.provider-toggle-checkbox')) return;
     h.classList.toggle('collapsed');
+  });
+});
+
+// Provider search filter
+document.getElementById('provider-search')?.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase().trim();
+  document.querySelectorAll('.provider-group').forEach(group => {
+    const header = group.querySelector('.provider-header');
+    if (!header) return;
+    const name = header.textContent.toLowerCase();
+    const id = (header.dataset.provider || '').toLowerCase();
+    group.style.display = (!q || name.includes(q) || id.includes(q)) ? '' : 'none';
   });
 });
 

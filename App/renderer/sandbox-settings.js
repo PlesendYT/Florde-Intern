@@ -33,6 +33,7 @@ const SandboxSettings = {
 
         <button id="btn-sandbox-detect" class="btn btn-small">System erkennen & Empfehlung</button>
         <div id="sandbox-recommendation" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+        <button id="btn-sandbox-wizard" class="btn btn-small" style="margin-top:0.5rem;">Setup erneut starten</button>
       </div>
     `;
 
@@ -63,6 +64,10 @@ const SandboxSettings = {
       } catch (err) {
         showNotification('error', 'Fehler: ' + err.message);
       }
+    });
+
+    document.getElementById('btn-sandbox-wizard')?.addEventListener('click', () => {
+      if (typeof SandboxWizard !== 'undefined') SandboxWizard.open();
     });
   }
 };

@@ -18,7 +18,11 @@ class QEMUBackend extends SandboxBackend {
     this._guestUser = null;
     this._guestPass = null;
     this._vncPort = null;
+    this._network = options.network || 'nat';
   }
+
+  get network() { return this._network; }
+  set network(value) { this._network = value; }
 
   _run(args, timeout = 30000) {
     try {

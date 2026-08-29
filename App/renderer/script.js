@@ -6114,6 +6114,13 @@ async function sendMessage(text) {
             }
 
             stopAnim('*' + formatToolActivity(name, args) + '*');
+            // Pause gate: hold tool dispatch while VM live-view pause is active
+            while (window._vmPaused) {
+              if (_requestAborter && _requestAborter.signal && _requestAborter.signal.aborted) break;
+              startAnim('*Pausiert (Anhalten aktiv)*');
+              await new Promise(r => setTimeout(r, 300));
+            }
+            if (_requestAborter && _requestAborter.signal && _requestAborter.signal.aborted) break;
             let result;
             try {
               result = await executeToolCall(name, args);
@@ -6166,6 +6173,7 @@ async function sendMessage(text) {
             }
           }
 
+          if (_requestAborter && _requestAborter.signal && _requestAborter.signal.aborted) break;
           toolRounds++;
           startAnim('*Waiting for AI*');
         } else {

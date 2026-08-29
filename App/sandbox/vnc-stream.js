@@ -7,6 +7,8 @@ class VncStreamer {
     this._client = null;
     this._running = false;
     this._cb = () => {};
+    this._resizeCb = () => {};
+    this._lastSize = null;
     this._framebuffer = null;
   }
 
@@ -15,42 +17,55 @@ class VncStreamer {
 
   onFrame(cb) { if (typeof cb === 'function') this._cb = cb; }
 
+  onResize(cb) { if (typeof cb === 'function') this._resizeCb = cb; }
+
   async start() {
     if (this._running) throw new Error('VNC stream already running');
     this._running = true;
     this._client = new VNCClient(this._opts);
-    await this._client.connect();
-    const rfbClient = this._client._client;
+    try {
+      await this._client.connect();
+      const rfbClient = this._client._client;
 
-    const bppBytes = rfbClient.bpp >> 3 || 4;
-    this._framebuffer = Buffer.alloc(rfbClient.width * rfbClient.height * bppBytes);
+      const bppBytes = rfbClient.bpp >> 3 || 4;
+      this._framebuffer = Buffer.alloc(rfbClient.width * rfbClient.height * bppBytes);
 
-    rfbClient.on('rect', (rect) => {
-      const w = rfbClient.width;
-      const h = rfbClient.height;
-      const bytesPerPixel = rfbClient.bpp >> 3 || 4;
+      rfbClient.on('rect', (rect) => {
+        const w = rfbClient.width;
+        const h = rfbClient.height;
+        const bytesPerPixel = rfbClient.bpp >> 3 || 4;
 
-      const isRaw = rect.encoding === rfb.encodings.raw;
-      const isPseudo = rect.encoding < 0 || rect.width === 0 || rect.height === 0;
+        const isRaw = rect.encoding === rfb.encodings.raw;
+        const isPseudo = rect.encoding < 0 || rect.width === 0 || rect.height === 0;
 
-      if (isRaw && !isPseudo && rect.data && this._framebuffer) {
-        if (this._framebuffer.length !== w * h * bytesPerPixel) {
-          this._framebuffer = Buffer.alloc(w * h * bytesPerPixel);
+        if (isRaw && !isPseudo && rect.data && this._framebuffer) {
+          if (this._framebuffer.length !== w * h * bytesPerPixel) {
+            this._framebuffer = Buffer.alloc(w * h * bytesPerPixel);
+          }
+          const bppY = w * bytesPerPixel;
+          for (let line = 0; line < rect.height; line++) {
+            const srcStart = line * rect.width * bytesPerPixel;
+            const dstStart = (rect.y + line) * bppY + rect.x * bytesPerPixel;
+            rect.data.copy(this._framebuffer, dstStart, srcStart, srcStart + rect.width * bytesPerPixel);
+          }
         }
-        const bppY = w * bytesPerPixel;
-        for (let line = 0; line < rect.height; line++) {
-          const srcStart = line * rect.width * bytesPerPixel;
-          const dstStart = (rect.y + line) * bppY + rect.x * bytesPerPixel;
-          rect.data.copy(this._framebuffer, dstStart, srcStart, srcStart + rect.width * bytesPerPixel);
+
+        if (this._lastSize !== w * h) {
+          this._lastSize = w * h;
+          this._resizeCb({ width: w, height: h });
         }
-      }
 
-      this._cb({ width: w, height: h, buffer: this._framebuffer, bytes: w * h * bytesPerPixel });
-    });
+        this._cb({ width: w, height: h, buffer: this._framebuffer, bytes: w * h * bytesPerPixel });
+      });
 
-    rfbClient.requestUpdate(false, 0, 0, rfbClient.width, rfbClient.height);
+      rfbClient.requestUpdate(false, 0, 0, rfbClient.width, rfbClient.height);
 
-    return true;
+      return true;
+    } catch (err) {
+      this._running = false;
+      this._client = null;
+      throw err;
+    }
   }
 
   stop() {

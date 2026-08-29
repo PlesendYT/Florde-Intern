@@ -1,5 +1,5 @@
 const os = require('os');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 class SystemDetector {
   static async detect() {
@@ -58,12 +58,10 @@ class SystemDetector {
   }
 
   static async _checkBinary(name) {
+    if (!name || /[/\\;&|`$\n]/.test(name)) return false;
     try {
-      if (os.platform() === 'win32') {
-        execSync(`where ${name} 2>nul`, { stdio: 'ignore' });
-      } else {
-        execSync(`which ${name} 2>/dev/null`, { stdio: 'ignore' });
-      }
+      const binary = os.platform() === 'win32' ? 'where' : 'which';
+      execFileSync(binary, [name], { stdio: 'ignore' });
       return true;
     } catch {
       return false;

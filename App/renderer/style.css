@@ -2136,3 +2136,6 @@ body.app-mode-editor .chat-panel { flex: 0 0 320px !important; width: 320px !imp
 .sandbox-option-pros, .sandbox-option-cons { display:flex; flex-direction:column; gap:2px; font-size:0.75rem; }
 .sandbox-option-pros .pro { color:#22c55e; }
 .sandbox-option-cons .con { color:#ef4444; }
+
+/* VM live view: takeover button active state */
+#vm-btn-take.active { border:1px solid var(--accent); color:var(--accent); }

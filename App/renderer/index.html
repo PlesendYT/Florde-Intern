@@ -1018,6 +1018,16 @@
       <!-- Sandbox Settings Tab -->
       <div class="settings-tab-content" data-tab="sandbox">
         <div id="sandbox-settings-content"></div>
+        <div id="sandbox-vm-panel" class="hidden" style="margin-top:1rem;">
+          <h3 style="margin:0 0 0.5rem;">VM Live-Ansicht</h3>
+          <div style="display:flex;gap:6px;margin-bottom:0.5rem;">
+            <button id="vm-btn-pause" class="btn btn-small">Anhalten (Pause)</button>
+            <button id="vm-btn-stop" class="btn btn-small" style="background:#ef4444;">Stop</button>
+            <button id="vm-btn-take" class="btn btn-small">Übernehmen</button>
+            <button id="vm-btn-snapshot" class="btn btn-small">Snapshot jetzt</button>
+          </div>
+          <canvas id="vm-canvas" tabindex="0" style="width:100%;max-width:640px;border:1px solid var(--border2);border-radius:6px;background:#000;"></canvas>
+        </div>
       </div>
 
       <!-- Experimental Settings Tab -->
@@ -1429,6 +1439,7 @@
   <script src="tools/recovery-manager.js"></script>
   <script src="tools/subagents.js"></script>
   <script src="sandbox-wizard.js"></script>
+  <script src="sandbox-vm-panel.js"></script>
   <script src="sandbox-settings.js"></script>
   <script src="diff-utils.js"></script>
   <script src="inline-diff.js"></script>

@@ -44,6 +44,9 @@ const SandboxSettings = {
       const type = e.target.value;
       try {
         await window.electronAPI.sandbox.switchBackend(type);
+        const isVm = e.target.value === 'vmware' || e.target.value === 'qemu';
+        if (isVm) { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.show(); }
+        else { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.hide(); }
         showNotification('success', `Sandbox auf ${type} umgestellt`);
       } catch (err) {
         showNotification('error', 'Fehler: ' + err.message);
@@ -77,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const observer = new MutationObserver(() => {
     if (document.getElementById('sandbox-settings-content')) {
       SandboxSettings.init();
+      if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.init();
       observer.disconnect();
     }
   });

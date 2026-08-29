@@ -1015,6 +1015,8 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 }
 #btn-send:hover { opacity: 0.9; }
 #btn-send.is-stopping { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+.vision-badge { display:inline-flex; align-items:center; gap:4px; background:rgba(99,102,241,0.15); color:var(--accent); border:1px solid var(--accent); border-radius:12px; padding:2px 8px; font-size:0.7rem; }
+.vision-badge.hidden { display:none; }
 .agentic-btn {
   font-size: 0.75rem; font-weight: 600; border: none; padding: 0.25rem 0.7rem;
   border-radius: 5px; cursor: pointer; user-select: none; transition: background 0.2s, color 0.2s;

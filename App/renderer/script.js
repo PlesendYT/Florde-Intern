@@ -189,6 +189,12 @@ function getActiveTools() {
     { type: 'function', function: { name: 'browser_evaluate', description: 'Execute custom JavaScript code in the browser page context and return the result.', parameters: { type: 'object', properties: { code: { type: 'string', description: 'JavaScript code to execute' } }, required: ['code'] } } },
     { type: 'function', function: { name: 'spawn_subagent', description: 'Delegate a subtask to a subagent that works autonomously. The subagent has its own AI conversation and tool access, but cannot spawn further subagents. Returns the subagent ID for status tracking.', parameters: { type: 'object', properties: { goal: { type: 'string', description: 'Clear, detailed description of what the subagent should accomplish' }, context: { type: 'string', description: 'Context from the parent task that the subagent needs to know (files, state, decisions, etc.)' } }, required: ['goal', 'context'] } } },
   ];
+  const activeProvider = resolveProvider();
+  const modelName = activeProvider?.provider?.model;
+  const meta = modelName ? MODEL_META[modelName] : null;
+  if (meta && meta.tasks && meta.tasks.vision) {
+    baseTools.push({ type: 'function', function: { name: 'vision_request', description: 'Request permission to see the VM screen (vision) for the current task. Use this instead of take_screenshot when a vision-capable model needs to look at the screen.', parameters: { type: 'object', properties: { description: { type: 'string', description: 'What you want to look at' } }, required: [] } } });
+  }
   const appTools = _getAppToolDefs();
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
   const mcpTools = [];
@@ -215,6 +221,45 @@ function buildToolReminder() {
   const names = tools.map(t => t.function?.name).filter(Boolean);
   return 'Tools: ' + names.join(', ') + '\nRule: ONLY Tool Call OR ONLY Text. No self-questions. >>| thoughts in these blocks |<<';
 }
+
+// ==================== VISION SESSION ====================
+const VisionSession = {
+  active: false,
+  taskId: null,
+  startedAt: null,
+  allowed: false,
+
+  requestAccess(taskId) {
+    this.active = true;
+    this.taskId = taskId || Date.now().toString();
+    this.startedAt = Date.now();
+    AuditLog.log({ type: 'vision', action: 'Vision Session gestartet', status: 'auto', summary: 'Vision Session gestartet (Aufgabe: ' + this.taskId + ')', details: { taskId: this.taskId }, source: 'KI' });
+    document.getElementById('btn-send').innerHTML = 'Stop';
+    this._notify(false);
+    return 'Die KI hat um Bildschirm-Zugriff (Vision) für diese Aufgabe gebeten.';
+  },
+
+  grant() {
+    this.allowed = true;
+    AuditLog.log({ type: 'vision', action: 'Vision Erlaubnis nur für diese Aufgabe', status: 'allowed', summary: 'Vision Erlaubnis nur für diese Aufgabe erteilt', details: { taskId: this.taskId }, source: 'User' });
+    return 'Vision für diese Aufgabe erlaubt.';
+  },
+
+  revoke(reason) {
+    if (!this.active) return;
+    this.active = false;
+    this.allowed = false;
+    AuditLog.log({ type: 'vision', action: 'Vision Session beendet (' + reason + ')', status: 'auto', summary: 'Vision Session beendet (' + reason + ')', details: { taskId: this.taskId}, source: reason === 'manual' ? 'User' : 'KI' });
+    document.getElementById('btn-send').innerHTML = 'Senden';
+    this._notify(true);
+  },
+
+  _notify(done) {
+    window.__visionSessionActive = !done;
+    const badge = document.getElementById('vision-badge');
+    if (badge) badge.style.display = done ? 'none' : 'inline-flex';
+  }
+};
 
 window.__updateTools = function() {
   if (typeof pluginRegistry !== 'undefined' && pluginRegistry._loaded) {
@@ -4681,6 +4726,12 @@ chatInput?.addEventListener('keydown', (e) => {
 // Stop button state
 
 function toggleSendStop() {
+  if (VisionSession.active) {
+    VisionSession.revoke('manual');
+    const aborter = _requestAborter;
+    if (aborter) aborter.abort();
+    return;
+  }
   if (_isRequestActive) {
     _stoppedByUser = true;
     _isRequestActive = false;
@@ -5084,6 +5135,11 @@ async function executeToolCall(name, args) {
         renderTabs();
       }
       return 'Renamed ' + oldPath + ' to ' + newPath;
+
+    case 'vision_request':
+      AuditLog.log({ type: 'vision', action: 'Vision angefragt', status: 'auto', summary: 'KI fragt nach Vision (Bildschirm sehen)', details: {}, source: 'KI' });
+      VisionSession.requestAccess();
+      return 'Vision requested. The user must approve via the confirmation dialog. Ask them to confirm using ask_question or wait.';
 
     case 'take_screenshot':
       addAuditEntry('local', 'Take_Screenshot');
@@ -5702,6 +5758,10 @@ async function sendMessage(text) {
     } else if (slashCmd === 'run') {
       _hideUserMsg = true;
       text = '⚡ Execute the following command in the project using the exec_command tool: ' + rest;
+    } else if (slashCmd === 'vision') {
+      if (rest.toLowerCase() === 'allow') { VisionSession.grant(); }
+      else if (rest.toLowerCase() === 'stop') { VisionSession.revoke('manual'); }
+      _hideUserMsg = true;
     } else if (slashCmd !== 'help' && slashCmd !== 'git' && !trimmed.startsWith('!')) {
       const connectedApps = window._connectedAppIds || [];
       if (typeof CONNECTED_APPS !== 'undefined') {
@@ -6301,6 +6361,7 @@ async function sendMessage(text) {
     }
   } finally {
     clearActivity();
+    if (VisionSession.active) VisionSession.revoke('answer');
     _isRequestActive = false;
     if (_requestAborter === _currentAborter) _requestAborter = null;
     resetSendButton();

@@ -2116,7 +2116,16 @@ const TaskClassifier = {
     const secondary = sorted.length > 1 && sorted[1][1] / total > 0.2 ? sorted[1][0] : null;
 
     return { primary, confidence, secondary };
-  }
+  },
+
+  _riskOf(text) {
+    const t = (text || '').toLowerCase();
+    const hints = ['delete', 'rm ', 'drop ', 'format', 'clear', 'reset', 'password', 'secret', 'credential', 'chmod', 'sudo', 'usb', 'partition', 'bios', 'remove ', 'uninstal', 'löschen', 'formatieren', 'passwort', 'geheim'];
+    const hits = hints.filter(h => t.includes(h)).length;
+    if (hits >= 3) return 'high';
+    if (hits >= 1) return 'medium';
+    return 'low';
+  },
 };
 
 // ==================== TASK ROUTER ====================
@@ -5740,6 +5749,25 @@ async function sendMessage(text) {
   }
 
   const _taskClassification = TaskClassifier.classify(text);
+
+  // Risk-based snapshot preflight (VM backends only)
+  window.__vmRisk = { level: 'low', needsSnapshot: false };
+  try {
+    const sbx = await window.electronAPI.sandbox.getConfig();
+    const isVm = sbx.type === 'vmware' || sbx.type === 'qemu';
+    if (isVm) {
+      const risk = TaskClassifier._riskOf(text) || 'medium';
+      window.__vmRisk.level = risk;
+      if (risk === 'high') {
+        window.__vmRisk.needsSnapshot = true;
+        const name = 'pre-task-' + Date.now();
+        const r = await window.electronAPI.sandbox.vmSnapshot(name);
+        window.__vmRisk.snapshotTaken = !(r && r.ok === false);
+        AuditLog.log({ type: 'vm', action: 'Snapshot erstellt (riskante Aufgabe)', status: 'auto', summary: 'Auto-Snapshot vor riskanter Aufgabe: ' + name, details: { name, risk }, source: 'KI' });
+      }
+    }
+  } catch {}
+
   TaskRouter.renderTaskIndicator(_taskClassification);
 
   // Pre-process AI-targeted /commands before handleFlordeCommand

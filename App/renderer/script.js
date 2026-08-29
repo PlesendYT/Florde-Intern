@@ -2681,6 +2681,15 @@ document.getElementById('loop-detection-stop-critical')?.addEventListener('chang
 
 // ==================== SETTINGS ====================
 
+async function maybeShowSandboxWizard() {
+  try {
+    const cfg = await window.electronAPI.sandbox.getConfig();
+    if (!cfg.configured) {
+      await SandboxWizard.open();
+    }
+  } catch {}
+}
+
 async function loadSettings() {
   try {
   const s = await window.electronAPI.getSettings();
@@ -2876,6 +2885,7 @@ async function loadSettings() {
     setSel('loop-detection-max-attempts', String(ldSettings.maxAttempts || 3));
     setCb('loop-detection-stop-critical', ldSettings.stopOnCritical !== false);
   } catch {}
+  maybeShowSandboxWizard();
   } catch (err) {
     console.error('loadSettings error:', err);
   }

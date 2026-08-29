@@ -2123,3 +2123,14 @@ body.app-mode-editor .chat-panel { flex: 0 0 320px !important; width: 320px !imp
   color: var(--text1);
 }
 .task-fallback-toast .btn { font-size: 0.75rem; }
+
+.sandbox-option { border:1px solid var(--border2); border-radius:8px; padding:0.75rem; margin-bottom:0.6rem; cursor:pointer; transition:border-color .15s; }
+.sandbox-option:hover { border-color:var(--accent); }
+.sandbox-option.selected { border-color:var(--accent); background:rgba(99,102,241,0.08); }
+.sandbox-option-head { display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+.sandbox-option-radio { width:12px; height:12px; border-radius:50%; border:2px solid var(--text3); }
+.sandbox-option.selected .sandbox-option-radio { border-color:var(--accent); background:var(--accent); }
+.sandbox-option-desc { font-size:0.8rem; color:var(--text2); margin:0.3rem 0; }
+.sandbox-option-pros, .sandbox-option-cons { display:flex; flex-direction:column; gap:2px; font-size:0.75rem; }
+.sandbox-option-pros .pro { color:#22c55e; }
+.sandbox-option-cons .con { color:#ef4444; }

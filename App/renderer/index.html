@@ -89,6 +89,17 @@
     </div>
   </div>
 
+  <div id="sandbox-wizard-modal" class="modal hidden">
+    <div class="modal-content" style="max-width:640px;">
+      <h2 lang-key="tab_sandbox">Sandbox einrichten</h2>
+      <div class="wizard-body"></div>
+      <div class="modal-actions" style="margin-top:1rem;">
+        <button id="wizard-cancel" class="btn btn-small">Später</button>
+        <button id="wizard-save" class="btn btn-small primary">Übernehmen</button>
+      </div>
+    </div>
+  </div>
+
   <div id="prompt-modal" class="modal hidden">
     <div class="modal-content" style="max-width:450px;">
       <h2 id="prompt-title" lang-key="input_required">Input required</h2>
@@ -1416,6 +1427,7 @@
   <script src="tools/loop-detector.js"></script>
   <script src="tools/recovery-manager.js"></script>
   <script src="tools/subagents.js"></script>
+  <script src="sandbox-wizard.js"></script>
   <script src="sandbox-settings.js"></script>
   <script src="diff-utils.js"></script>
   <script src="inline-diff.js"></script>

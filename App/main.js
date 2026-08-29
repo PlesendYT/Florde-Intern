@@ -412,6 +412,24 @@ ipcMain.handle('sandbox:vm-snapshot', async (event, name) => sandboxManager.crea
 ipcMain.handle('sandbox:vm-mouse', async (event, x, y, button) => sandboxManager.sendMouse(x, y, button));
 ipcMain.handle('sandbox:vm-key', async (event, key) => sandboxManager.sendKey(key));
 
+ipcMain.handle('sandbox:get-config', () => {
+  try { return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {}; } catch { return {}; }
+});
+
+ipcMain.handle('sandbox:set-config', (event, cfg) => {
+  try {
+    const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
+    settings.sandbox = { ...(settings.sandbox || {}), ...cfg };
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+    return settings.sandbox;
+  } catch (e) { return { error: e.message }; }
+});
+
+ipcMain.handle('sandbox:set-network', async (event, network) => {
+  await sandboxManager.setNetwork(network);
+  return { ok: true, network };
+});
+
 // ==================== FILE WATCHER ====================
 
 const _watchers = new Map();

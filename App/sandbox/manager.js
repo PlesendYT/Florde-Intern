@@ -88,6 +88,17 @@ class SandboxManager {
   // System detection
   async detect() { return SystemDetector.detect(); }
   async recommend(spec) { return SystemDetector.recommend(spec); }
+
+  async setNetwork(network) {
+    const b = this.active;
+    if (b && typeof b.network !== 'undefined') {
+      if ('_network' in b) b._network = network;
+      else b.network = network;
+      this._emit('network-change', { network });
+      return true;
+    }
+    return false;
+  }
 }
 
 module.exports = { SandboxManager };

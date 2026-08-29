@@ -47,6 +47,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     vmSnapshot: (n) => ipcRenderer.invoke('sandbox:vm-snapshot', n),
     vmMouse: (x, y, b) => ipcRenderer.invoke('sandbox:vm-mouse', x, y, b),
     vmKey: (k) => ipcRenderer.invoke('sandbox:vm-key', k),
+    getConfig: () => ipcRenderer.invoke('sandbox:get-config'),
+    setConfig: (cfg) => ipcRenderer.invoke('sandbox:set-config', cfg),
+    setNetwork: (n) => ipcRenderer.invoke('sandbox:set-network', n),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),

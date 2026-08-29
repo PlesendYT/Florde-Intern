@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setNetwork: (n) => ipcRenderer.invoke('sandbox:set-network', n),
     vmStreamStart: (o) => ipcRenderer.invoke('sandbox:vm-stream-start', o),
     vmStreamStop: () => ipcRenderer.invoke('sandbox:vm-stream-stop'),
+    listTemplates: () => ipcRenderer.invoke('sandbox:list-templates'),
+    downloadImage: (key) => ipcRenderer.invoke('sandbox:download-image', key),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
@@ -204,4 +206,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 contextBridge.exposeInMainWorld('onVmFrame', (cb) => {
   ipcRenderer.on('sandbox:vm-frame', (e, frame) => cb(frame));
+});
+
+contextBridge.exposeInMainWorld('onDownloadProgress', (cb) => {
+  ipcRenderer.on('sandbox:download-progress', (e, p) => cb(p));
 });

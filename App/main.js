@@ -13,6 +13,7 @@ let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
 function getSettingsPath() { if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json'); return _settingsPath; }
 function getProjectsDir() { if (!_projectsDir) _projectsDir = path.join(app.getPath('userData'), 'projects'); return _projectsDir; }
 function getSandboxDir() { if (!_sandboxDir) _sandboxDir = path.join(app.getPath('userData'), 'sandbox'); return _sandboxDir; }
+function getSandboxImagesDir() { return path.join(getSandboxDir(), 'images'); }
 function getPluginsPath() { if (!_pluginsPath) _pluginsPath = path.join(app.getPath('userData'), 'plugins.json'); return _pluginsPath; }
 
 function createWindow() {
@@ -428,6 +429,43 @@ ipcMain.handle('sandbox:set-config', (event, cfg) => {
 ipcMain.handle('sandbox:set-network', async (event, network) => {
   await sandboxManager.setNetwork(network);
   return { ok: true, network };
+});
+
+const { getTemplate, listTemplates } = require('./sandbox/os-templates');
+
+ipcMain.handle('sandbox:list-templates', () => listTemplates());
+
+ipcMain.handle('sandbox:download-image', async (event, templateKey) => {
+  try {
+    const t = getTemplate(templateKey);
+    if (!t.url) return { ok: false, error: 'Kein Download-Link für ' + t.label + ' (bitte eigenes Image angeben)' };
+    const imagesDir = getSandboxImagesDir();
+    if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+    const dest = path.join(imagesDir, t.image);
+    if (fs.existsSync(dest)) return { ok: true, path: dest, cached: true };
+    const res = await new Promise((resolve, reject) => {
+      const req = net.request(t.url);
+      req.on('response', resolve);
+      req.on('error', reject);
+      req.end();
+    });
+    if (res.statusCode !== 200) return { ok: false, error: 'HTTP ' + res.statusCode };
+    const total = parseInt(res.headers['content-length'] || '0', 10) || 0;
+    let received = 0;
+    const ws = fs.createWriteStream(dest);
+    await new Promise((resolve, reject) => {
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        ws.write(chunk);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sandbox:download-progress', { key: templateKey, received, total, pct: total ? Math.round(received / total * 100) : 0 });
+        }
+      });
+      res.on('end', () => { ws.end(); resolve(); });
+      res.on('error', reject);
+    });
+    return { ok: true, path: dest };
+  } catch (e) { return { ok: false, error: e.message }; }
 });
 
 const { VncStreamer } = require('./sandbox/vnc-stream');

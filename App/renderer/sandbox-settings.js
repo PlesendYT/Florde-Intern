@@ -6,6 +6,7 @@ const SandboxSettings = {
   async init() {
     const status = await window.electronAPI.sandbox.status();
     this._render(status);
+    await this._renderVmConfig();
   },
 
   _render(status) {
@@ -34,6 +35,7 @@ const SandboxSettings = {
         <button id="btn-sandbox-detect" class="btn btn-small">System erkennen & Empfehlung</button>
         <div id="sandbox-recommendation" style="margin-top:0.5rem;font-size:0.85rem;"></div>
         <button id="btn-sandbox-wizard" class="btn btn-small" style="margin-top:0.5rem;">Setup erneut starten</button>
+        <div id="sandbox-vm-config" style="margin-top:0.75rem;"></div>
       </div>
     `;
 
@@ -48,6 +50,7 @@ const SandboxSettings = {
         if (isVm) { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.show(); }
         else { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.hide(); }
         showNotification('success', `Sandbox auf ${type} umgestellt`);
+        if (typeof this._renderVmConfig === 'function') this._renderVmConfig();
       } catch (err) {
         showNotification('error', 'Fehler: ' + err.message);
       }
@@ -72,6 +75,52 @@ const SandboxSettings = {
     document.getElementById('btn-sandbox-wizard')?.addEventListener('click', () => {
       if (typeof SandboxWizard !== 'undefined') SandboxWizard.open();
     });
+  },
+
+  async _renderVmConfig() {
+    const box = document.getElementById('sandbox-vm-config');
+    if (!box) return;
+    const cfg = (await window.electronAPI.sandbox.getConfig()) || {};
+    if (cfg.type !== 'vmware' && cfg.type !== 'qemu') { box.innerHTML = ''; return; }
+    const templates = await window.electronAPI.sandbox.listTemplates();
+    const tplOpts = templates.map(t => `<option value="${t.key}" ${cfg.vmTemplate === t.key ? 'selected' : ''}>${t.label} (${t.type})</option>`).join('');
+    const nets = [
+      ['none', 'Kein Internet'], ['localhost', 'Nur localhost'], ['projects', 'Nur Projektserver'],
+      ['all', 'Alles'], ['custom', 'Benutzerdefiniert'],
+    ];
+    const netOpts = nets.map(([v, l]) => `<option value="${v}" ${cfg.network === v ? 'selected' : ''}>${l}</option>`).join('');
+    box.innerHTML = `
+      <div style="margin-bottom:0.5rem;"><label style="font-weight:600;display:block;margin-bottom:0.2rem;">Betriebssystem-Template</label>
+        <select id="sbx-template"><option value="">— Auswählen —</option>${tplOpts}</select>
+        <button id="sbx-download" class="btn btn-small" style="margin-top:0.3rem;">Image herunterladen</button>
+        <span id="sbx-dl-progress" style="font-size:0.75rem;margin-left:0.5rem;"></span>
+      </div>
+      <div style="margin-bottom:0.5rem;"><label style="font-weight:600;display:block;margin-bottom:0.2rem;">Netzwerk</label>
+        <select id="sbx-network">${netOpts}</select>
+      </div>
+    `;
+
+    document.getElementById('sbx-template')?.addEventListener('change', async (e) => {
+      await window.electronAPI.sandbox.setConfig({ vmTemplate: e.target.value, type: cfg.type });
+    });
+    document.getElementById('sbx-network')?.addEventListener('change', async (e) => {
+      await window.electronAPI.sandbox.setConfig({ network: e.target.value, type: cfg.type });
+      await window.electronAPI.sandbox.setNetwork(e.target.value);
+    });
+    document.getElementById('sbx-download')?.addEventListener('click', async () => {
+      const key = document.getElementById('sbx-template')?.value;
+      if (!key) return;
+      const prog = document.getElementById('sbx-dl-progress');
+      if (prog) prog.textContent = 'Download startet...';
+      const r = await window.electronAPI.sandbox.downloadImage(key);
+      if (prog) prog.textContent = r.ok ? (r.cached ? '✅ Image vorhanden: ' + r.path : '✅ Heruntergeladen: ' + r.path) : '❌ ' + (r.error || 'Fehler');
+    });
+    if (typeof window.onDownloadProgress === 'function') {
+      window.onDownloadProgress((p) => {
+        const prog = document.getElementById('sbx-dl-progress');
+        if (prog) prog.textContent = 'Download ' + p.pct + '% (' + Math.round(p.received / 1024 / 1024) + '/' + Math.round(p.total / 1024 / 1024) + ' MB)';
+      });
+    }
   }
 };
 

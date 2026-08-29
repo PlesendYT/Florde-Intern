@@ -91,12 +91,14 @@ class SandboxManager {
 
   async setNetwork(network) {
     const b = this.active;
-    if (b && typeof b.network !== 'undefined') {
-      if ('_network' in b) b._network = network;
-      else b.network = network;
-      this._emit('network-change', { network });
+    if (!b) return false;
+    if (b.type === 'firejail') {
+      const r = { none: 'none', localhost: 'lo', all: 'eth0', custom: 'eth0' }[network];
+      if (r && typeof b.setNetwork === 'function') b.setNetwork(r);
       return true;
     }
+    if ('_network' in b) { b._network = network; this._emit('network-change', { network }); return true; }
+    if (typeof b.network !== 'undefined') { b.network = network; this._emit('network-change', { network }); return true; }
     return false;
   }
 }

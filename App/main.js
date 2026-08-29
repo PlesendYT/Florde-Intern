@@ -430,6 +430,31 @@ ipcMain.handle('sandbox:set-network', async (event, network) => {
   return { ok: true, network };
 });
 
+const { VncStreamer } = require('./sandbox/vnc-stream');
+let _vncStream = null;
+
+ipcMain.handle('sandbox:vm-stream-start', async (event, opts) => {
+  try {
+    _vncStream = new VncStreamer(opts || { port: 5900 });
+    _vncStream.onFrame((frame) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sandbox:vm-frame', {
+          width: frame.width, height: frame.height, buffer: frame.buffer,
+          jpeg: frame.buffer ? frame.buffer.toString('base64') : null,
+        });
+      }
+    });
+    await _vncStream.start();
+    return { ok: true };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('sandbox:vm-stream-stop', () => {
+  if (_vncStream) _vncStream.stop();
+  _vncStream = null;
+  return { ok: true };
+});
+
 // ==================== FILE WATCHER ====================
 
 const _watchers = new Map();

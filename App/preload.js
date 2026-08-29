@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getConfig: () => ipcRenderer.invoke('sandbox:get-config'),
     setConfig: (cfg) => ipcRenderer.invoke('sandbox:set-config', cfg),
     setNetwork: (n) => ipcRenderer.invoke('sandbox:set-network', n),
+    vmStreamStart: (o) => ipcRenderer.invoke('sandbox:vm-stream-start', o),
+    vmStreamStop: () => ipcRenderer.invoke('sandbox:vm-stream-stop'),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
@@ -198,4 +200,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveCache: (cache) => ipcRenderer.invoke('translation:save-cache', cache),
     translate: (text, sl, tl) => ipcRenderer.invoke('translation:translate', text, sl, tl),
   },
+});
+
+contextBridge.exposeInMainWorld('onVmFrame', (cb) => {
+  ipcRenderer.on('sandbox:vm-frame', (e, frame) => cb(frame));
 });

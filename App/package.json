@@ -8,10 +8,10 @@
     "dev": "electron-vite dev",
     "dev:watch": "electron-vite dev --watch",
     "build:bundle": "electron-vite build",
-    "build": "electron-builder --win --linux",
-    "build:win": "electron-builder --win",
-    "build:linux": "electron-builder --linux",
-    "build:mac": "electron-builder --mac"
+    "build": "electron-vite build && electron-builder --win --linux",
+    "build:win": "electron-vite build && electron-builder --win",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:mac": "electron-vite build && electron-builder --mac"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
@@ -36,10 +36,11 @@
     "appId": "com.florde.app",
     "productName": "Florde",
     "files": [
-      "main.js",
-      "preload.js",
-      "renderer/**/*",
+      "out/**/*",
       "LICENSE.txt"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "icon": "../config/icon/icon.png",
     "directories": {

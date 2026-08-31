@@ -1,8 +1,11 @@
-import { defineConfig } from 'electron-vite'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { resolve } from 'path'
+import commonjs from '@rollup/plugin-commonjs'
+import { nodeResolve } from '@rollup/plugin-node-resolve'
 
 export default defineConfig({
   main: {
+    plugins: [externalizeDepsPlugin(), commonjs(), nodeResolve()],
     build: {
       rollupOptions: {
         input: 'main.js'
@@ -12,7 +15,10 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        input: 'preload.js'
+        input: {
+          preload: resolve('preload.js'),
+          'browser-preload': resolve('browser-preload.js')
+        }
       }
     }
   },

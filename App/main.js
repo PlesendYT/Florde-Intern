@@ -34,6 +34,8 @@ async function restoreSandboxBackend() {
   }
 }
 
+const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'];
+
 function createWindow() {
   Menu.setApplicationMenu(null);
   const isMac = process.platform === 'darwin';
@@ -47,15 +49,19 @@ function createWindow() {
     titleBarOverlay: isMac ? undefined : { color: '#12121a', symbolColor: '#e0e0e0', height: 36 },
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
       webviewTag: false,
     },
   });
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  if (process.argv.includes('--dev')) {
+  if (DEV_SERVER_URL) {
+    mainWindow.loadURL(DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+  if (process.argv.includes('--dev') || DEV_SERVER_URL) {
     mainWindow.webContents.openDevTools();
   }
 }
@@ -1116,7 +1122,7 @@ function createBrowserWindow(url) {
       contextIsolation: true,
       webSecurity: false,
       allowFileAccess: true,
-      preload: path.join(__dirname, 'browser-preload.js'),
+      preload: path.join(__dirname, '../preload/browser-preload.js'),
     },
   });
   browserWindow.on('closed', () => {

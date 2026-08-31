@@ -21,6 +21,39 @@
 6. **Kleine, einzelverantwortliche Module.** Für jedes Modul beantwortbar: was tut es, wie nutzt man es, wovon hängt es ab. Interna änderbar ohne Konsumenten zu brechen.
 7. **Drittpartei-Scripts** werden künftig vom Bundler gehandhabt, nicht als manuelle globale Script-Tags.
 
+**Abhängigkeiten direkt importieren, kein internes Barrel/God-Modul.**
+`core/` hat keinen `index.js`-Facade-Export. Domänen importieren direkt vom konkreten Modul:
+```js
+import { logger } from "../../core/logger.js";      // richtig
+// import { logger } from "../../core/index.js";     // FALSCH — kein Barrel
+```
+So bleiben Abhängigkeiten sofort sichtbar und es entsteht kein internes God-Modul, über das alle Domänen laufen.
+
+## Architektur-Invariante (wichtigste Grenze)
+
+> **Kein Modul darf eine höhere Privilegierung erhalten, nur weil es einfacher zu importieren ist.**
+
+Insbesondere dürfen **Renderer-Domänen niemals direkt auf Node.js-, Filesystem-, Shell-, Secret- oder Electron-Main-APIs** zugreifen — auch wenn Vite den Import technisch auflösen könnte (z. B. `import fs from "node:fs"` in einem Renderer-Modul ist verboten).
+
+Die privilegierte Grenze bleibt strikt:
+
+```
+┌────────────────────────── Renderer ──────────────────────────┐
+│                                                              │
+│   domains → core → preload API                               │
+│                          │                                   │
+└──────────────────────────┼───────────────────────────────────┘
+                           │ IPC (contextBridge)
+                           ▼
+┌────────────────────────── Main ──────────────────────────────┐
+│                                                              │
+│   IPC → services → filesystem / shell / sandbox / DB         │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Diese Trennung ist für Florde wichtiger als die reine Ordnerstruktur. Sie wird durch die Preload-Fassade erzwungen und darf in keinem Umbau-Schritt aufgeweicht werden.
+
 ## Zielstruktur
 
 ### Renderer (`App/renderer`)
@@ -30,7 +63,6 @@ renderer/
 └── src/
     ├── bootstrap.js          # lädt & verdrahtet alle Domänen (ersetzt script.js-Rolle)
     ├── core/                 # domänenübergreifende, UI-unabhängige Helfer
-    │   ├── index.js          # interne gemeinsame Exporte (Facade NUR intern, kein window.Florde)
     │   ├── events.js         # Pub/Sub Event-Bus
     │   ├── state.js          # zentraler App-State (sauberer Umgang mit bisherigem Global-State)
     │   ├── logger.js         # technische Logs (console/terminal)
@@ -79,7 +111,7 @@ preload.js  (contextBridge, IPC)   ←   renderer/src/core/*  ←  renderer/src/
 - **core** hat keine Abhängigkeit auf Domänen oder UI.
 - **domains** importieren aus **core** und ggf. untereinander über explizite ESM-Importe (nur, wo die Kopplung gerechtfertigt ist).
 - **ui** importiert aus core, aber nicht umgekehrt.
-- **Renderer lernt den Main** ausschließlich über die Preload-Fassade kennen.
+- **Renderer lernt den Main** ausschließlich über die Preload-Fassade kennen (gilt auch für core: kein `node:`-Import im Renderer — siehe Architektur-Invariante).
 
 ## Migrationspfad (iterativ-inkrementell, App bleibt lauffähig)
 

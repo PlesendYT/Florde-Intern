@@ -9,6 +9,8 @@ App_Installer/*.exe
 Website/App_Download/*.exe
 *.exe
 App/build-output/
+out/
+App/out/
 
 # Environment files
 .env

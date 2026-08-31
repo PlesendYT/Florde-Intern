@@ -45,7 +45,13 @@ const SandboxSettings = {
     document.getElementById('sandbox-type-select')?.addEventListener('change', async (e) => {
       const type = e.target.value;
       try {
-        await window.electronAPI.sandbox.switchBackend(type);
+        const r = await window.electronAPI.sandbox.switchBackend(type);
+        if (r && r.ok === false) {
+          showNotification('error', 'Umschaltung auf ' + type + ' fehlgeschlagen: ' + (r.error || 'unbekannter Fehler'));
+          await SandboxSettings.init();
+          return;
+        }
+        await window.electronAPI.sandbox.setConfig({ type });
         const isVm = e.target.value === 'vmware' || e.target.value === 'qemu';
         if (isVm) { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.show(); }
         else { if (typeof SandboxVmPanel !== 'undefined') SandboxVmPanel.hide(); }

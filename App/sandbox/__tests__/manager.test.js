@@ -144,6 +144,54 @@ describe('SandboxManager', () => {
       manager._backends = originalBackends;
       manager._activeType = 'none';
     });
+
+    it('should keep current backend active when next init fails', async () => {
+      const originalBackends = manager._backends;
+      const mockNone = { type: 'none', initialized: true, destroy: () => {} };
+      const mockFirejail = { type: 'firejail', initialized: false, init: () => { throw new Error('init failed'); } };
+
+      manager._backends = new Map([
+        ['none', mockNone],
+        ['firejail', mockFirejail],
+      ]);
+      manager._activeType = 'none';
+
+      await assert.rejects(() => manager.switchBackend('firejail'), { message: 'init failed' });
+      assert.strictEqual(manager.activeType, 'none');
+
+      manager._backends = originalBackends;
+      manager._activeType = 'none';
+    });
+  });
+
+  describe('trySwitchBackend', () => {
+    it('should return ok when switching succeeds', async () => {
+      const result = await manager.trySwitchBackend('firejail');
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(manager.activeType, 'firejail');
+      await manager.trySwitchBackend('none');
+      assert.strictEqual(manager.activeType, 'none');
+    });
+
+    it('should return error without throwing when init fails', async () => {
+      const originalBackends = manager._backends;
+      const mockNone = { type: 'none', initialized: true, destroy: () => {} };
+      const mockDocker = { type: 'docker', initialized: false, init: () => { throw new Error('image missing'); } };
+
+      manager._backends = new Map([
+        ['none', mockNone],
+        ['docker', mockDocker],
+      ]);
+      manager._activeType = 'none';
+
+      const result = await manager.trySwitchBackend('docker');
+      assert.strictEqual(result.ok, false);
+      assert.match(result.error, /image missing/);
+      assert.strictEqual(manager.activeType, 'none');
+
+      manager._backends = originalBackends;
+      manager._activeType = 'none';
+    });
   });
 
   describe('exec', () => {

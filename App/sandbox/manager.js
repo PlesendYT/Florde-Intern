@@ -49,20 +49,29 @@ class SandboxManager {
     if (!this._backends.has(type)) throw new Error('Unknown backend: ' + type);
     if (this._activeType === type) return;
 
-    // Destroy current
-    const current = this.active;
-    if (current && current.initialized) {
-      await current.destroy();
-    }
-
-    // Init new
+    // Init new FIRST so an init failure leaves the current backend intact
     const next = this._backends.get(type);
     if (!next.initialized) {
       await next.init();
     }
 
+    // Destroy current only after the new backend is ready
+    const current = this.active;
+    if (current && current !== next && current.initialized) {
+      await current.destroy();
+    }
+
     this._activeType = type;
     this._emit('switch', { type });
+  }
+
+  async trySwitchBackend(type) {
+    try {
+      await this.switchBackend(type);
+      return { ok: true, active: this._activeType };
+    } catch (e) {
+      return { ok: false, error: e.message, active: this._activeType };
+    }
   }
 
   async exec(command, options = {}) {

@@ -16,6 +16,23 @@ function getSandboxDir() { if (!_sandboxDir) _sandboxDir = path.join(app.getPath
 function getSandboxImagesDir() { return path.join(getSandboxDir(), 'images'); }
 function getPluginsPath() { if (!_pluginsPath) _pluginsPath = path.join(app.getPath('userData'), 'plugins.json'); return _pluginsPath; }
 
+async function restoreSandboxBackend() {
+  if (!sandboxManager) return;
+  let saved;
+  try {
+    saved = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {};
+  } catch { return; }
+  const type = saved.type;
+  if (!type || type === 'none') return;
+  const result = await sandboxManager.trySwitchBackend(type);
+  if (result.ok && saved.network) {
+    try { await sandboxManager.setNetwork(saved.network); } catch {}
+  }
+  if (!result.ok) {
+    console.warn('[sandbox] Aktivierung von "' + type + '" fehlgeschlagen, starte mit "none": ' + result.error);
+  }
+}
+
 function createWindow() {
   Menu.setApplicationMenu(null);
   const isMac = process.platform === 'darwin';
@@ -42,10 +59,11 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!fs.existsSync(getProjectsDir())) fs.mkdirSync(getProjectsDir(), { recursive: true });
   if (!fs.existsSync(getSandboxDir())) fs.mkdirSync(getSandboxDir(), { recursive: true });
   sandboxManager = new SandboxManager(getSandboxDir());
+  await restoreSandboxBackend();
   createWindow();
 });
 
@@ -392,8 +410,7 @@ ipcMain.handle('sandbox:delete-file', async (event, filePath) => {
 });
 
 ipcMain.handle('sandbox:switch', async (event, type) => {
-  await sandboxManager.switchBackend(type);
-  return { ok: true, active: sandboxManager.activeType };
+  return sandboxManager.trySwitchBackend(type);
 });
 
 ipcMain.handle('sandbox:detect', async () => {

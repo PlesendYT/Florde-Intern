@@ -12,6 +12,7 @@ let sandboxManager;
 let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
 function getSettingsPath() { if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json'); return _settingsPath; }
 function getProjectsDir() { if (!_projectsDir) _projectsDir = path.join(app.getPath('userData'), 'projects'); return _projectsDir; }
+function isSafeProjectName(name) { return typeof name === 'string' && name.length > 0 && name.length <= 100 && !/[\/\\]/.test(name); }
 function getSandboxDir() { if (!_sandboxDir) _sandboxDir = path.join(app.getPath('userData'), 'sandbox'); return _sandboxDir; }
 function getSandboxImagesDir() { return path.join(getSandboxDir(), 'images'); }
 function getPluginsPath() { if (!_pluginsPath) _pluginsPath = path.join(app.getPath('userData'), 'plugins.json'); return _pluginsPath; }
@@ -112,7 +113,7 @@ ipcMain.handle('save-settings', (event, settings) => {
 // ==================== PROJECTS ====================
 
 function getProjectRoot(name) {
-  if (!name) return null;
+  if (!isSafeProjectName(name)) return null;
   const metaPath = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(metaPath)) return null;
   try {
@@ -123,6 +124,7 @@ function getProjectRoot(name) {
 }
 
 function getProjectMeta(name) {
+  if (!isSafeProjectName(name)) return null;
   const p = path.join(getProjectsDir(), name, 'meta.json');
   if (!fs.existsSync(p)) return null;
   try {
@@ -146,6 +148,7 @@ ipcMain.handle('list-projects', () => {
 });
 
 ipcMain.handle('create-sandbox-project', (event, name) => {
+  if (!isSafeProjectName(name)) return false;
   const dir = path.join(getProjectsDir(), name);
   if (fs.existsSync(dir)) return false;
   fs.mkdirSync(dir, { recursive: true });
@@ -156,6 +159,7 @@ ipcMain.handle('create-sandbox-project', (event, name) => {
 });
 
 ipcMain.handle('create-local-project', async (event, name, folderPath) => {
+  if (!isSafeProjectName(name)) return { ok: false, error: 'invalid name' };
   const dir = path.join(getProjectsDir(), name);
   if (fs.existsSync(dir)) return { ok: false, error: 'exists' };
   if (!fs.existsSync(folderPath)) return { ok: false, error: 'path not found' };
@@ -167,6 +171,7 @@ ipcMain.handle('create-local-project', async (event, name, folderPath) => {
 });
 
 ipcMain.handle('delete-project', (event, name) => {
+  if (!isSafeProjectName(name)) return { ok: false, error: 'invalid name' };
   const dir = path.join(getProjectsDir(), name);
   if (!fs.existsSync(dir)) return { ok: false, error: 'not found' };
   const meta = getProjectMeta(name);
@@ -308,6 +313,7 @@ ipcMain.handle('export-zip', async (event, name) => {
     filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
   });
   if (result.canceled || !result.filePath) return false;
+  if (/[;&|`$<>!~{}()\\]/.test(result.filePath)) return false;
   try {
     if (process.platform === 'win32') {
       const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
@@ -378,7 +384,7 @@ ipcMain.handle('sandbox-delete-file', (event, sandboxPath, filePath) => {
 ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
   const allowed = getSandboxDir();
   if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
-  if (/[;&|`$\n]/.test(command)) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
+  if (/[;&|`$<>!~{}()\n\\]/.test(command) || command.trimStart().startsWith('-')) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
   try {
     const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
     return { ok: true, output };
@@ -718,7 +724,8 @@ ipcMain.handle('git-commit', (event, repoPath, name, description) => {
 
 function gitExec(repoPath, cmd, timeout = 15000) {
   try {
-    const out = execSync(cmd, { cwd: repoPath, timeout, encoding: 'utf-8' }).trim();
+    const args = Array.isArray(cmd) ? cmd : cmd.split(/\s+/).filter(Boolean);
+    const out = execFileSync('git', args, { cwd: repoPath, timeout, encoding: 'utf-8', shell: false }).trim();
     return { stdout: out, stderr: '', error: null };
   } catch (e) {
     return { stdout: '', stderr: e.stderr || '', error: e.stderr || e.message };
@@ -781,7 +788,8 @@ ipcMain.handle('git:exec', (event, repoPath, args) => {
 });
 
 ipcMain.handle('git-log', (event, repoPath, limit = 50) => {
-  const out = gitExec(repoPath, `git log --oneline --decorate -${limit} --pretty=format:"%H|%h|%an|%ae|%ad|%s" --date=short`);
+  const n = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 1000);
+  const out = gitExec(repoPath, ['log', '--oneline', '--decorate', `-${n}`, '--pretty=format:%H|%h|%an|%ae|%ad|%s', '--date=short']);
   if (out.error) return [];
   return out.stdout.split('\n').filter(Boolean).map(line => {
     const parts = line.split('|');
@@ -790,7 +798,7 @@ ipcMain.handle('git-log', (event, repoPath, limit = 50) => {
 });
 
 ipcMain.handle('git-blame', (event, repoPath, filePath) => {
-  const out = gitExec(repoPath, `git blame --line-porcelain "${filePath}"`);
+  const out = gitExec(repoPath, ['blame', '--line-porcelain', filePath]);
   if (out.error) return [];
   const lines = [];
   const current = {};
@@ -806,7 +814,7 @@ ipcMain.handle('git-blame', (event, repoPath, filePath) => {
 });
 
 ipcMain.handle('git-diff-file', (event, repoPath, filePath) => {
-  const out = gitExec(repoPath, `git diff HEAD -- "${filePath}"`);
+  const out = gitExec(repoPath, ['diff', 'HEAD', '--', filePath]);
   return out.stdout;
 });
 

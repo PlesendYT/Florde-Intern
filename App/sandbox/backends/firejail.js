@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { SandboxBackend } = require('../backend');
 
-const UNSAFE_PATTERN = /[;&|`$\n]/;
+const UNSAFE_PATTERN = /[;&|`$<>!~{}()\n\\]/;
 
 class FirejailBackend extends SandboxBackend {
   get type() { return 'firejail'; }

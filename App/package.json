@@ -2,7 +2,7 @@
   "name": "Florde",
   "version": "1.0.0",
   "description": "AI-powered code generation from natural language",
-  "main": "main.js",
+  "main": "out/main/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron-vite dev",

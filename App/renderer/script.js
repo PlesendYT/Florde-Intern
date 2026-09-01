@@ -191,7 +191,7 @@ function getActiveTools() {
   ];
   const activeProvider = resolveProvider();
   const modelName = activeProvider?.provider?.model;
-  const meta = modelName ? MODEL_META[modelName] : null;
+  const meta = modelName ? window.__modelsMeta.MODEL_META[modelName] : null;
   if (meta && meta.tasks && meta.tasks.vision) {
     baseTools.push({ type: 'function', function: { name: 'vision_request', description: 'Request permission to see the VM screen (vision) for the current task. Use this instead of take_screenshot when a vision-capable model needs to look at the screen.', parameters: { type: 'object', properties: { description: { type: 'string', description: 'What you want to look at' } }, required: [] } } });
   }
@@ -1891,144 +1891,6 @@ function parseTextToolCalls(text) {
   return calls;
 }
 
-// ==================== MODEL META ====================
-const MODEL_META = {
-  'gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-4o-mini': { context: 128000, costIn: 0.15, costOut: 0.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.5': { context: 256000, costIn: 5, costOut: 25, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.4-mini': { context: 128000, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5': { context: 256000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5-mini': { context: 128000, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-4.1': { context: 1047576, costIn: 2, costOut: 8, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-4.1-mini': { context: 1047576, costIn: 0.4, costOut: 1.6, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'o3-pro': { context: 200000, costIn: 10, costOut: 40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'o3': { context: 200000, costIn: 2, costOut: 8, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'o4-mini': { context: 200000, costIn: 1.1, costOut: 4.4, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'o3-mini': { context: 200000, costIn: 1.1, costOut: 4.4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-opus-4-8': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-opus-4-7': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-opus-4-6': { context: 200000, costIn: 15, costOut: 75, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-sonnet-5': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-3.5-haiku': { context: 200000, costIn: 0.8, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.1-pro-preview': { context: 1048576, costIn: 1.25, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.1-flash-lite': { context: 1048576, costIn: 0, costOut: 0, free: true },
-  'gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-2.5-pro': { context: 1048576, costIn: 1.25, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-chat': { context: 64000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
-  'deepseek-coder': { context: 64000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
-  'deepseek-reasoner': { context: 64000, costIn: 0.55, costOut: 2.19, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
-  'mistral-large-latest': { context: 131000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'mistral-medium-latest': { context: 131000, costIn: 0.4, costOut: 2, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'mistral-small-latest': { context: 131000, costIn: 0.1, costOut: 0.3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'ministral-3b-latest': { context: 128000, costIn: 0.04, costOut: 0.04, free: false },
-  'devstral-2.0': { context: 256000, costIn: 0.3, costOut: 0.9, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'devstral-1.0': { context: 256000, costIn: 0.3, costOut: 0.9, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'codestral-latest': { context: 256000, costIn: 1, costOut: 3, free: false, tasks: { coding: true, chatting: false, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'codestral-mamba-latest': { context: 256000, costIn: 0.5, costOut: 1.5, free: false },
-  'mistral-tiny-latest': { context: 128000, costIn: 0.1, costOut: 0.3, free: false },
-  'grok-4.3': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'grok-4.20': { context: 131072, costIn: 5, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'grok-build-0.1': { context: 131072, costIn: 3, costOut: 9, free: false },
-  // === OpenCode Zen Models ===
-  'big-pickle': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-pro': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-flash': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'grok-4.6': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'grok-4.5': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'grok-build-0.1': { context: 131072, costIn: 1, costOut: 2, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.6-sol': { context: 272000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.6-terra': { context: 272000, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.6-luna': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.5': { context: 272000, costIn: 5, costOut: 30, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.5-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.4': { context: 272000, costIn: 2.50, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.4-pro': { context: 272000, costIn: 30, costOut: 180, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.4-mini': { context: 272000, costIn: 0.75, costOut: 4.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.4-nano': { context: 272000, costIn: 0.20, costOut: 1.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.3-codex': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.3-codex-spark': { context: 272000, costIn: 1.75, costOut: 14, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5': { context: 272000, costIn: 1.07, costOut: 8.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5-nano': { context: 272000, costIn: 0.05, costOut: 0.40, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-fable-5': { context: 200000, costIn: 10, costOut: 50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-opus-5': { context: 200000, costIn: 5, costOut: 25, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-sonnet-5': { context: 200000, costIn: 2, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'claude-haiku-4-5': { context: 200000, costIn: 1, costOut: 5, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.7-flash': { context: 1048576, costIn: 1.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.1-pro': { context: 1048576, costIn: 2, costOut: 12, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3-flash': { context: 1048576, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gemini-3.5-flash-lite': { context: 1048576, costIn: 0.30, costOut: 2.50, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'muse-spark-1.2': { context: 131072, costIn: 1.25, costOut: 4.25, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k3': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k2.7-code': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k2.6': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.7-max': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.7-plus': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'minimax-m3': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'glm-5.2': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'nemotron-3-ultra-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'mimo-v2.5-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'hy3-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'x-preview-f-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'nemotron-3.5-lightning-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'muse-spark-1.2-contributor-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  // === OpenCode Go Models ===
-  'grok-4.5-go': { context: 200000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'glm-5.3': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'glm-5.2-go': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'glm-5.1': { context: 131072, costIn: 1.40, costOut: 4.40, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'gpt-5.6-luna-go': { context: 272000, costIn: 0.20, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k3-go': { context: 131072, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k2.7-code-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'kimi-k2.6-go': { context: 131072, costIn: 0.95, costOut: 4, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'longcat-2.0': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-pro-go': { context: 128000, costIn: 0.66, costOut: 1.98, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-flash-go': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'deepseek-v4-flash-vision-exp': { context: 128000, costIn: 0.22, costOut: 0.66, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'mimo-v2.5': { context: 128000, costIn: 0.14, costOut: 0.28, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'mimo-v2.5-pro': { context: 128000, costIn: 0.435, costOut: 0.87, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'minimax-m3-go': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'minimax-m2.7': { context: 131072, costIn: 0.30, costOut: 1.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'muse-spark-1.2-contributor': { context: 128000, costIn: 0.10, costOut: 0.20, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.8-max': { context: 131072, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.7-max-go': { context: 131072, costIn: 2.50, costOut: 7.50, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.7-plus-go': { context: 131072, costIn: 0.40, costOut: 1.60, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen3.6-plus': { context: 131072, costIn: 0.50, costOut: 3, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'hy3': { context: 128000, costIn: 0.14, costOut: 0.58, free: false, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'ox-alpha-free': { context: 128000, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'anthropic/claude-sonnet-4-6': { context: 200000, costIn: 3, costOut: 15, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'openai/gpt-4o': { context: 128000, costIn: 2.5, costOut: 10, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: true, image_generation: true, tool_calling: true, experimental_tool_calling: false } },
-  'google/gemini-2.5-flash': { context: 1048576, costIn: 0, costOut: 0, free: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: true, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'meta-llama/llama-3.1-70b': { context: 128000, costIn: 0.52, costOut: 0.75, free: false },
-  'mistralai/mistral-large': { context: 131000, costIn: 2, costOut: 6, free: false, tasks: { coding: true, chatting: true, planning: true, brainstorming: true, vision: false, image_generation: false, tool_calling: true, experimental_tool_calling: false } },
-  'qwen2.5-coder': { context: 131072, costIn: 0, costOut: 0, free: true, local: true, tasks: { coding: true, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: true } },
-  'local-model': { context: 131072, costIn: 0, costOut: 0, free: true, local: true, tasks: { coding: false, chatting: true, planning: false, brainstorming: true, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: false } },
-  'custom-model': { context: 128000, costIn: 0, costOut: 0, free: false, tasks: { coding: false, chatting: true, planning: false, brainstorming: false, vision: false, image_generation: false, tool_calling: false, experimental_tool_calling: false } },
-};
-
-const MODEL_TASK_DEFAULTS = {
-  coding: false, chatting: true, planning: false, brainstorming: true,
-  vision: false, image_generation: false, tool_calling: false,
-  experimental_tool_calling: false
-};
-
-const MODEL_CATALOG = {
-  openai: ['gpt-5.5','gpt-5','gpt-5-mini','gpt-5.4-mini','gpt-4o','gpt-4o-mini','gpt-4.1','gpt-4.1-mini','o3-pro','o3','o4-mini','o3-mini'],
-  deepseek: ['deepseek-chat','deepseek-coder','deepseek-reasoner','deepseek-v4-flash-free','deepseek-v4-pro'],
-  mistral: ['mistral-large-latest','mistral-medium-latest','mistral-small-latest','ministral-3b-latest','devstral-2.0','devstral-1.0','codestral-latest','codestral-mamba-latest','mistral-tiny-latest'],
-  anthropic: ['claude-opus-4-8','claude-opus-4-7','claude-opus-4-6','claude-sonnet-5','claude-sonnet-4-6','claude-3.5-haiku'],
-  gemini: ['gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3.1-flash-lite','gemini-2.5-flash','gemini-2.5-pro'],
-  grok: ['grok-4.3','grok-4.20','grok-build-0.1'],
-  opencodezen: ['big-pickle','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna','gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-pro','gpt-5.4-mini','gpt-5.4-nano','gpt-5.3-codex','gpt-5','gpt-5-nano','claude-fable-5','claude-opus-5','claude-sonnet-5','claude-haiku-4-5','gemini-3.7-flash','gemini-3.1-pro','gemini-3-flash','gemini-3.5-flash-lite','muse-spark-1.2','grok-4.6','grok-4.5','grok-build-0.1','kimi-k3','kimi-k2.7-code','kimi-k2.6','qwen3.7-max','qwen3.7-plus','minimax-m3','glm-5.2','deepseek-v4-pro','deepseek-v4-flash','nemotron-3-ultra-free','mimo-v2.5-free','hy3-free','x-preview-f-free','nemotron-3.5-lightning-free','muse-spark-1.2-contributor-free'],
-  opencodego: ['deepseek-v4-flash','deepseek-v4-pro','deepseek-v4-flash-vision-exp','grok-4.5','glm-5.3','glm-5.2','glm-5.1','gpt-5.6-luna','kimi-k3','kimi-k2.7-code','kimi-k2.6','longcat-2.0','mimo-v2.5','mimo-v2.5-pro','minimax-m3','minimax-m2.7','muse-spark-1.2-contributor','qwen3.8-max','qwen3.7-max','qwen3.7-plus','qwen3.6-plus','hy3','ox-alpha-free'],
-  openrouter: ['anthropic/claude-sonnet-4-6','openai/gpt-4o','google/gemini-2.5-flash','meta-llama/llama-3.1-70b','mistralai/mistral-large'],
-  custom: ['custom-model'],
-  ollama: [],
-  lmstudio: ['local-model'],
-  localai: ['local-model']
-};
-
 const TaskClassifier = {
   _rules: [
     {
@@ -2229,13 +2091,13 @@ const TaskRouter = {
     const connectedProviders = this._getConnectedProviders();
 
     for (const pid of connectedProviders) {
-      const catalog = MODEL_CATALOG[pid] || [];
+      const catalog = window.__modelsMeta.MODEL_CATALOG[pid] || [];
       for (const model of catalog) {
         const key = pid + ':' + model;
         if (seen.has(key)) continue;
         seen.add(key);
-        const meta = MODEL_META[model] || {};
-        const taskCaps = meta.tasks || MODEL_TASK_DEFAULTS;
+        const meta = window.__modelsMeta.MODEL_META[model] || {};
+        const taskCaps = meta.tasks || window.__modelsMeta.MODEL_TASK_DEFAULTS;
         allModels.push({ providerId: pid, model, taskCaps, free: !!meta.free, local: !!meta.local });
       }
     }
@@ -2252,8 +2114,8 @@ const TaskRouter = {
       const key = 'ollama:' + name;
       if (seen.has(key)) continue;
       seen.add(key);
-      const meta = MODEL_META[name] || {};
-      const taskCaps = meta.tasks || { ...MODEL_TASK_DEFAULTS, experimental_tool_calling: true };
+      const meta = window.__modelsMeta.MODEL_META[name] || {};
+      const taskCaps = meta.tasks || { ...window.__modelsMeta.MODEL_TASK_DEFAULTS, experimental_tool_calling: true };
       allModels.push({ providerId: 'ollama', model: name, taskCaps, free: true, local: true });
     }
 
@@ -2366,8 +2228,8 @@ const TaskRouter = {
         taskModels: this._taskModels,
         taskProviders: this._taskProviders,
         disabledTasks: this._disabledTasks,
-        meta: MODEL_META,
-        taskDefaults: MODEL_TASK_DEFAULTS,
+        meta: window.__modelsMeta.MODEL_META,
+        taskDefaults: window.__modelsMeta.MODEL_TASK_DEFAULTS,
         getRoutes: () => typeof AIRouter !== 'undefined' ? AIRouter._routes || [] : [],
         getProviderStore: () => providers,
         providerFactory: (providerId, model) => {
@@ -2750,7 +2612,7 @@ async function loadSettings() {
       sel.parentNode.insertBefore(badge, sel.nextSibling);
     }
     const updateBadge = () => {
-      const meta = MODEL_META[sel.value];
+      const meta = window.__modelsMeta.MODEL_META[sel.value];
       if (meta && meta.free) { badge.textContent = '\u2601 Free'; badge.className = 'model-free-badge free'; }
       else { badge.textContent = '\uD83D\uDD11 Key'; badge.className = 'model-free-badge key'; }
     };
@@ -3172,7 +3034,7 @@ function updateModelInfoBadge() {
   badge.title = 'Model: ' + model + '\nProvider: ' + (providerId || '') + '\nClick for details';
   const freeBadge = document.getElementById('provider-free-badge');
   if (freeBadge) {
-    const meta = MODEL_META[model];
+    const meta = window.__modelsMeta.MODEL_META[model];
     const isLocal = providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai';
     const isFree = meta ? meta.free : isLocal;
     freeBadge.textContent = isFree ? '\u2601 Free' : '\uD83D\uDD11 Key';
@@ -3194,7 +3056,7 @@ document.addEventListener('click', (e) => {
 
 function showModelInfo(providerId, modelName) {
   const cap = capabilityCache[providerId + ':' + modelName];
-  const meta = MODEL_META[modelName];
+  const meta = window.__modelsMeta.MODEL_META[modelName];
   document.querySelectorAll('.modal-overlay:not(#command-palette-overlay)').forEach(el => el.remove());
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -3231,7 +3093,7 @@ function showModelInfoPopup() {
   const caps = capabilityCache[cacheKey] || getKnownCapabilities(providerId, modelName);
   const temp = prov?.temperature !== undefined ? prov.temperature : 0.7;
   const isLocal = providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai';
-  const meta = MODEL_META[modelName];
+  const meta = window.__modelsMeta.MODEL_META[modelName];
 
   let popup = document.getElementById('model-info-popup');
   if (!popup) {

@@ -3368,6 +3368,13 @@ function logToTerminal(message, type = 'info') {
   el.scrollTop = el.scrollHeight;
 }
 
+// Bridge: core/logger-Events ins Terminal rendern (bis Phase C UI-Schicht)
+if (window.__coreEvents && window.__coreEvents.on) {
+  window.__coreEvents.on('state:log', (e) => {
+    if (e && e.message) logToTerminal(e.message, e.type || 'info');
+  });
+}
+
 // ==================== START MENU ====================
 
 function blurMonaco() {

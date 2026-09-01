@@ -288,6 +288,13 @@ function showNotification(type, text, icon) {
   }
 }
 
+// Bridge: core/notify-Events an bestehende showNotification rendern (bis Phase C UI-Schicht)
+if (window.__coreEvents && window.__coreEvents.on) {
+  window.__coreEvents.on('state:notify', (e) => {
+    if (e && e.text) showNotification(e.type || 'info', e.text);
+  });
+}
+
 // ==================== QUESTION TOOL ====================
 
 let pendingQuestion = null;

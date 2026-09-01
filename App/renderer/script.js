@@ -2358,139 +2358,59 @@ const TaskRouter = {
     return connected;
   },
 
-  getModelForTask(taskType, attachedImages) {
-    if (this._disabledTasks[taskType]) return null;
-
-    if (attachedImages && attachedImages.length > 0) taskType = 'vision';
-
-    if (this._mode === 'auto') {
-      return this._autoSelect(taskType);
+  _getCore() {
+    if (!window.__taskRouterCore) return null;
+    if (!window.__taskRouterCoreInstance) {
+      window.__taskRouterCoreInstance = window.__taskRouterCore({
+        getMode: () => this._mode,
+        taskModels: this._taskModels,
+        taskProviders: this._taskProviders,
+        disabledTasks: this._disabledTasks,
+        meta: MODEL_META,
+        taskDefaults: MODEL_TASK_DEFAULTS,
+        getRoutes: () => typeof AIRouter !== 'undefined' ? AIRouter._routes || [] : [],
+        getProviderStore: () => providers,
+        providerFactory: (providerId, model) => {
+          if (typeof AIRouter !== 'undefined') {
+            const route = AIRouter._routes.find(r => r.provider === providerId && r.model === model && r.enabled);
+            if (route) return AIRouter.getProviderForRoute(route);
+          }
+          if (providers[providerId]) return providers[providerId];
+          return null;
+        }
+      });
     }
+    return window.__taskRouterCoreInstance;
+  },
 
-    const modelName = this._taskModels[taskType];
-    const providerId = this._taskProviders[taskType];
-    if (!modelName || !providerId) return null;
-
-    const prov = this._createProvider(providerId, modelName);
-    if (!prov) return null;
-
-    return { provider: prov, providerId, model: modelName, taskType };
+  getModelForTask(taskType, attachedImages) {
+    const trCore = this._getCore();
+    if (!trCore) return null;
+    return trCore.getModelForTask(taskType, attachedImages);
   },
 
   _autoSelect(taskType) {
-    const candidates = this._getCapableModels(taskType);
-    if (candidates.length === 0) return null;
-
-    candidates.sort((a, b) => {
-      const metaA = MODEL_META[a.model] || {};
-      const metaB = MODEL_META[b.model] || {};
-      if (metaA.free && !metaB.free) return -1;
-      if (!metaA.free && metaB.free) return 1;
-      return (metaA.costIn || 0) - (metaB.costIn || 0);
-    });
-
-    for (const candidate of candidates) {
-      const prov = this._createProvider(candidate.providerId, candidate.model);
-      if (prov) {
-        return { provider: prov, providerId: candidate.providerId, model: candidate.model, taskType };
-      }
-    }
-    return null;
+    const trCore = this._getCore();
+    if (!trCore) return null;
+    return trCore._autoSelect(taskType);
   },
 
   _getCapableModels(taskType) {
-    const candidates = [];
-    const seen = new Set();
-
-    if (typeof AIRouter !== 'undefined') {
-      for (const route of AIRouter._routes) {
-        if (!route.enabled) continue;
-        const tasks = MODEL_META[route.model]?.tasks || MODEL_TASK_DEFAULTS;
-        if (tasks[taskType]) {
-          const key = route.provider + ':' + route.model;
-          if (!seen.has(key)) {
-            seen.add(key);
-            candidates.push({ providerId: route.provider, model: route.model, source: 'route' });
-          }
-        }
-      }
-    }
-
-    const allProviderIds = ['openai', 'deepseek', 'mistral', 'anthropic', 'gemini', 'grok', 'opencodezen', 'opencodego', 'openrouter', 'custom', 'ollama', 'lmstudio', 'localai'];
-    for (const pid of allProviderIds) {
-      if (providers[pid] && providers[pid].model) {
-        const tasks = MODEL_META[providers[pid].model]?.tasks || MODEL_TASK_DEFAULTS;
-        if (tasks[taskType]) {
-          const key = pid + ':' + providers[pid].model;
-          if (!seen.has(key)) {
-            seen.add(key);
-            candidates.push({ providerId: pid, model: providers[pid].model, source: 'provider' });
-          }
-        }
-      }
-    }
-
-    return candidates;
-  },
-
-  _createProvider(providerId, model) {
-    if (typeof AIRouter !== 'undefined') {
-      const route = AIRouter._routes.find(r => r.provider === providerId && r.model === model && r.enabled);
-      if (route) return AIRouter.getProviderForRoute(route);
-    }
-    if (providers[providerId]) return providers[providerId];
-    return null;
+    const trCore = this._getCore();
+    if (!trCore) return [];
+    return trCore._getCapableModels(taskType);
   },
 
   getFallbackModel(taskType, excludeModel) {
-    const candidates = this._getCapableModels(taskType).filter(c => c.model !== excludeModel);
-    if (candidates.length === 0) return null;
-
-    const free = candidates.filter(c => MODEL_META[c.model]?.free);
-    const pick = free.length > 0 ? free[0] : candidates[0];
-
-    const prov = this._createProvider(pick.providerId, pick.model);
-    if (!prov) return null;
-    return { provider: prov, providerId: pick.providerId, model: pick.model, taskType };
+    const trCore = this._getCore();
+    if (!trCore) return null;
+    return trCore.getFallbackModel(taskType, excludeModel);
   },
 
   handleFailure(taskType, failedModel, error) {
-    const isRateLimit = /429|rate.?limit/i.test(error?.message || '');
-    const isCapability = /not.?support|cannot|doesn't/i.test(error?.message || '');
-
-    if (isRateLimit) {
-      const fallback = this.getFallbackModel(taskType, failedModel);
-      if (fallback) {
-        return {
-          action: 'fallback',
-          model: fallback.model,
-          providerId: fallback.providerId,
-          message: `Rate limited on ${failedModel}. Switching to ${fallback.model}.`
-        };
-      }
-      return {
-        action: 'disable',
-        message: `Rate limited on ${failedModel} and no fallback available. ${taskType} is temporarily disabled.`
-      };
-    }
-
-    if (isCapability) {
-      const fallback = this.getFallbackModel(taskType, failedModel);
-      if (fallback) {
-        return {
-          action: 'fallback',
-          model: fallback.model,
-          providerId: fallback.providerId,
-          message: `${failedModel} doesn't support ${taskType}. Switching to ${fallback.model}.`
-        };
-      }
-      return {
-        action: 'disable',
-        message: `${failedModel} doesn't support ${taskType} and no alternative available.`
-      };
-    }
-
-    return { action: 'error', message: error?.message || 'Unknown error' };
+    const trCore = this._getCore();
+    if (!trCore) return { action: 'error', message: error?.message || 'Unknown error' };
+    return trCore.handleFailure(taskType, failedModel, error);
   },
 
   setTaskModel(taskType, providerId, model) {

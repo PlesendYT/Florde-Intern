@@ -77,7 +77,12 @@ app.whenReady().then(async () => {
 // ==================== NOTIFICATIONS ====================
 
 ipcMain.handle('show-notification', (event, title, body) => {
-  const n = new Notification({ title, body, icon: path.join(__dirname, '..', 'config', 'icon', 'icon.png') });
+  const iconPath = path.join(app.getAppPath(), 'config', 'icon', 'icon.png');
+  const n = new Notification({
+    title,
+    body,
+    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {})
+  });
   n.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus(); } });
   n.show();
 });

@@ -1205,6 +1205,8 @@ const Favorites = {
 
 // ==================== PERMISSION MANAGER ====================
 
+const permCore = (typeof window !== 'undefined' && window.__permissionRules) ? window.__permissionRules.createPermissionRules({ mcpTools: (typeof APP_TOOL_NAMES !== 'undefined' ? APP_TOOL_NAMES : []) }) : null;
+
 const PermissionManager = {
   _rules: {},
 
@@ -1212,10 +1214,17 @@ const PermissionManager = {
     const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     this._rules = settings.permissions || {};
     const allTools = ['read_file', 'write_file', 'delete_file', 'edit_file', 'list_files', 'search_files', 'exec_command', 'ask_question', 'rename_file', 'take_screenshot', 'schedule_task', 'spawn_subagent', 'browser_open', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_back', 'browser_forward', 'browser_reload', 'browser_evaluate', ...APP_TOOL_NAMES];
-    allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
+    if (permCore) {
+      Object.keys(this._rules).forEach(t => permCore.set(t, this._rules[t]));
+      permCore.seed(allTools);
+      this._rules = permCore.rules;
+    } else {
+      allTools.forEach(t => { if (this._rules[t] === undefined) this._rules[t] = 'ask'; });
+    }
   },
 
   _resolveGroup(toolName) {
+    if (permCore) return permCore.resolveGroup(toolName);
     if (toolName.startsWith('browser_')) return 'browser';
     if (toolName.startsWith('git_')) return 'git';
     if (toolName === 'exec_command') return 'terminal';
@@ -1224,6 +1233,7 @@ const PermissionManager = {
   },
 
   getPermission(toolName) {
+    if (permCore) return permCore.get(toolName);
     if (this._rules[toolName] !== undefined) return this._rules[toolName];
     const group = this._resolveGroup(toolName);
     if (group && this._rules[group] !== undefined) return this._rules[group];
@@ -1231,7 +1241,12 @@ const PermissionManager = {
   },
 
   setPermission(toolName, level) {
-    this._rules[toolName] = level;
+    if (permCore) {
+      permCore.set(toolName, level);
+      this._rules = permCore.rules;
+    } else {
+      this._rules[toolName] = level;
+    }
     const settings = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
     settings.permissions = this._rules;
     localStorage.setItem('florde-settings', JSON.stringify(settings));
@@ -1243,6 +1258,7 @@ const PermissionManager = {
   },
 
   _isToolExcepted(toolName, args) {
+    if (permCore) return permCore.isExcepted(toolName, args, this._getAutoExceptions());
     const ex = this._getAutoExceptions();
     if (ex.shell && toolName === 'exec_command') return true;
     if (ex.outside && args && (args.path || '').startsWith('..')) return true;
@@ -1269,7 +1285,7 @@ const PermissionManager = {
       AuditLog.log({ type: _toolAuditType(toolName), action: formatToolActivity(toolName, args), status: 'auto', summary: 'Automatisch erlaubt: ' + formatToolActivity(toolName, args), details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
       return true;
     }
-    const level = this.getPermission(toolName);
+    const level = (permCore ? permCore.get(toolName) : this.getPermission(toolName));
     AuditLog.log({ type: _toolAuditType(toolName), action: formatToolActivity(toolName, args), status: 'auto', summary: 'Automatisch erlaubt (Regel): ' + formatToolActivity(toolName, args), details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     if (level === 'allow') return true;
     if (level === 'block') {

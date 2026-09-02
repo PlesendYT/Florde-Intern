@@ -30,7 +30,6 @@ export function createWorkspaces() {
 
   function setActive(id) {
     if (!_workspaces.find(w => w.id === id)) return false;
-    const changed = _activeWorkspaceId !== id;
     _activeWorkspaceId = id;
     return true;
   }

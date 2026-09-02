@@ -1744,14 +1744,12 @@ function resolveProvider() {
 
 function buildSystemPrompt(hasTools) {
   const providerValue = document.getElementById('provider-select').value;
-  let providerId, prov;
+  let providerId;
   if (providerValue.startsWith('route:')) {
     const route = AIRouter._routes.find(r => r.id === providerValue.slice(6));
     providerId = route?.provider || 'openai';
-    prov = AIRouter.getProviderForRoute(route);
   } else {
     providerId = providerValue;
-    prov = providers[providerId];
   }
   const pluginTools = typeof pluginRegistry !== 'undefined' ? pluginRegistry.getActiveTools() : [];
   const pluginToolDescriptions = pluginTools
@@ -1763,8 +1761,26 @@ function buildSystemPrompt(hasTools) {
   const promptExtSection = promptExt ? '\n\n' + promptExt : '';
   const customInstr = localStorage.getItem('florde-custom-instructions') || '';
   const customSection = customInstr ? '\n\nUser Custom Instructions:\n' + customInstr : '';
+  const appsSection = buildConnectedAppsPrompt();
+  const memFiles = currentProject && window._memoryFileList && window._memoryFileList.length > 0
+    ? window._memoryFileList.join(', ') : '';
 
-  const toolList = `- read_file(path): Read file content
+  const promptCore = (typeof window !== 'undefined' && window.__systemPrompt) ? window.__systemPrompt : null;
+  if (promptCore) {
+    return promptCore.buildSystemPromptText({
+      hasTools,
+      project: currentProject,
+      projectType: currentProjectType,
+      providerId,
+      memFiles,
+      pluginSection,
+      appsSection,
+      customSection,
+      promptExtSection
+    });
+  }
+
+  const nativeToolList = `- read_file(path): Read file content
 - write_file(path, content): Create or overwrite files
 - edit_file(path, oldString, newString): Make surgical text replacements in existing files (use instead of write_file for small changes)
 - delete_file(path): Delete files
@@ -1773,23 +1789,33 @@ function buildSystemPrompt(hasTools) {
 - exec_command(command): Run shell commands in the project directory
 - ask_question(question, choices): Ask the user a question when you need input or a decision
 - Plus connected service tools (e.g. make_list_scenarios, github_create_issue) — use them to interact with external services`;
+  return _buildSystemPromptInline({
+    hasTools,
+    toolList: nativeToolList,
+    providerId,
+    project: currentProject,
+    projectType: currentProjectType,
+    memFiles,
+    pluginSection,
+    appsSection,
+    customSection,
+    promptExtSection
+  });
+}
 
-  const appsSection = buildConnectedAppsPrompt();
-
+function _buildSystemPromptInline({ hasTools, toolList, providerId, project, projectType, memFiles, pluginSection, appsSection, customSection, promptExtSection }) {
   const basePrompt = `You are Florde AI, an AI coding assistant with direct access to the user's project files.
 
-Project: ${currentProject}
-Type: ${currentProjectType}
+Project: ${project}
+Type: ${projectType}
 Privacy: ${providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'localai' ? '100% Local - no data leaves this PC' : 'Cloud provider - data is encrypted in transit'}
-${currentProjectType === 'local' ? 'Notes: This is a local project. Shell commands run in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. Shell commands run in the isolated sandbox directory.'}
+${projectType === 'local' ? 'Notes: This is a local project. Shell commands run in the project root directory. You can use system commands (pip install, npm install, cargo build, etc.) to set up and run the project.' : 'Notes: This is a sandbox project. Files are stored in app data. Shell commands run in the isolated sandbox directory.'}
 
 Zero-Cloud-Storage: All user data, code, and chat history stays in the local database/JSON files.
 Encrypted API Communication: Cloud model connections go directly from client to provider - no proxy server.
 Local RAG: Project context is built locally. Embeddings are generated via local models.
 ${promptExtSection}${customSection}${appsSection}`;
 
-  const memFiles = currentProject && window._memoryFileList && window._memoryFileList.length > 0
-    ? window._memoryFileList.join(', ') : '';
   const memSection = memFiles ? `
 
 Persistent memory files (.florde/memory/): ${memFiles}

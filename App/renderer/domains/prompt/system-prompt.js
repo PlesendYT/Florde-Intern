@@ -51,6 +51,7 @@ You have persistent project memory files in .florde/memory/. Read them with !mem
   if (hasTools) {
     return basePrompt + memSection + `
 
+
 You have tool calling capabilities. Use the available functions below to interact with files and the terminal. These functions are CALLABLE BY YOU — invoke them when needed:
 ${toolList}${pluginSection}
 

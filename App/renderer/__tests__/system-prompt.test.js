@@ -27,6 +27,13 @@ test('no-tools variant includes WICHTIG block', () => {
   assert.ok(out.includes('Available Tools:'));
 });
 
+test('hasTools output is byte-exact (golden length) vs original template', () => {
+  const out = buildSystemPromptText({ ...base, hasTools: true });
+  assert.strictEqual(out.length, 2572);
+  const idx = out.indexOf('You have tool calling capabilities');
+  assert.strictEqual(out.slice(idx - 4, idx), '\n\n\n\n', 'must keep the original 4 newlines before the tool-calling heading');
+});
+
 test('privacy marks local providers as 100% Local', () => {
   const out = buildSystemPromptText({ ...base, hasTools: false, providerId: 'ollama' });
   assert.ok(out.includes('100% Local - no data leaves this PC'));

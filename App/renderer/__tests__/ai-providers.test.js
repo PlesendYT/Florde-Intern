@@ -17,6 +17,11 @@ test('classifyProvider falls back to unknown for unrecognized', () => {
   assert.strictEqual(r.kind, 'unknown');
 });
 
+test('classifyProvider distinguishes opencodezen vs opencodego by path', () => {
+  assert.strictEqual(classifyProvider({ baseUrl: 'https://opencode.ai/zen/v1/chat/completions' }).kind, 'opencodezen');
+  assert.strictEqual(classifyProvider({ baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions' }).kind, 'opencodego');
+});
+
 test('parseProviderConfig normalizes baseUrl and model defaults', () => {
   const cfg = parseProviderConfig({ baseUrl: 'http://x:8080', apiKey: '' });
   assert.strictEqual(cfg.baseUrl, 'http://x:8080');

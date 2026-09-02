@@ -6,7 +6,6 @@ const PROVIDER_HOST_MAP = {
   'generativelanguage.googleapis.com': 'gemini',
   'api.x.ai': 'grok',
   'openrouter.ai': 'openrouter',
-  'opencode.ai': 'opencodezen',
   'localhost:11434': 'ollama',
   'localhost:1234': 'lmstudio',
   'localhost:8080': 'localai',

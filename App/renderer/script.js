@@ -1009,52 +1009,95 @@ let pendingProjectOpen = null;
 
 // ==================== WORKSPACE MANAGER ====================
 
+const wsCore = (typeof window !== 'undefined' && window.__workspaces) ? window.__workspaces.createWorkspaces() : null;
+
 const WorkspaceManager = {
   _workspaces: [],
   _activeWorkspaceId: null,
 
   init() {
     const saved = (() => { try { return JSON.parse(localStorage.getItem('florde-settings') || '{}'); } catch { return {}; } })();
-    this._workspaces = saved.workspaces || [];
-    if (this._workspaces.length === 0) {
-      this._workspaces.push({ id: 'default', name: 'Default', path: null });
+    if (wsCore) {
+      wsCore.seed(saved);
+      this._workspaces = wsCore.workspaces;
+      this._activeWorkspaceId = wsCore.activeWorkspaceId;
+    } else {
+      this._workspaces = saved.workspaces || [];
+      if (this._workspaces.length === 0) {
+        this._workspaces.push({ id: 'default', name: 'Default', path: null });
+      }
+      this._activeWorkspaceId = this._workspaces[0].id;
     }
-    this._activeWorkspaceId = this._workspaces[0].id;
     this._renderTabs();
   },
 
   getActive() {
+    if (wsCore) return wsCore.getActive();
     return this._workspaces.find(w => w.id === this._activeWorkspaceId);
   },
 
   async openProject(path, name) {
-    const existing = this._workspaces.find(w => w.path === path);
+    const existing = wsCore ? wsCore.getExistingByPath(path) : this._workspaces.find(w => w.path === path);
     if (existing) {
       this.switchTo(existing.id);
       return;
     }
-    const id = 'ws-' + Date.now();
-    const displayName = name || path.split(/[/\\]/).pop();
-    this._workspaces.push({ id, name: displayName, path });
-    this._activeWorkspaceId = id;
+    let id;
+    if (wsCore) {
+      id = wsCore.newWorkspace(path, name);
+      this._workspaces = wsCore.workspaces;
+      this._activeWorkspaceId = wsCore.activeWorkspaceId;
+    } else {
+      id = 'ws-' + Date.now();
+      const displayName = name || path.split(/[/\\]/).pop();
+      this._workspaces.push({ id, name: displayName, path });
+      this._activeWorkspaceId = id;
+    }
     this._renderTabs();
     await this._loadWorkspace(id);
     this._persist();
   },
 
   async switchTo(id) {
-    this._activeWorkspaceId = id;
+    if (wsCore) {
+      if (!wsCore.setActive(id)) return;
+      this._workspaces = wsCore.workspaces;
+      this._activeWorkspaceId = wsCore.activeWorkspaceId;
+    } else {
+      this._activeWorkspaceId = id;
+    }
     this._renderTabs();
     await this._loadWorkspace(id);
   },
 
   closeWorkspace(id) {
+    if (wsCore) {
+      if (wsCore.size <= 1) return;
+      const oldActive = wsCore.activeWorkspaceId;
+      const newId = wsCore.closeWorkspace(id);
+      this._workspaces = wsCore.workspaces;
+      this._activeWorkspaceId = wsCore.activeWorkspaceId;
+      if (newId === null) {
+        this._renderTabs();
+        this._persist();
+        return;
+      }
+      this._renderTabs();
+      if (newId !== oldActive) {
+        this._loadWorkspace(newId);
+        this._renderTabs();
+      }
+      this._persist();
+      return;
+    }
     if (this._workspaces.length <= 1) return;
     const idx = this._workspaces.findIndex(w => w.id === id);
     this._workspaces = this._workspaces.filter(w => w.id !== id);
     if (this._activeWorkspaceId === id) {
       const next = this._workspaces[Math.min(idx, this._workspaces.length - 1)];
-      this.switchTo(next.id);
+      this._activeWorkspaceId = next.id;
+      this._renderTabs();
+      this._loadWorkspace(next.id);
     }
     this._renderTabs();
     this._persist();

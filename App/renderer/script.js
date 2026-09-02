@@ -3459,10 +3459,17 @@ async function openProject(name) {
     const session = await window.electronAPI.loadSession(name);
     savedMessages = (session && session.history) || [];
     // Migrate old messages: extract reasoning_content from >>| |<< blocks
-    for (const msg of savedMessages) {
-      if (msg.role === 'assistant' && !msg.reasoning_content && msg.content) {
-        const m = msg.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
-        if (m) msg.reasoning_content = m[1].trim();
+    const _extractReasoning = (typeof window !== 'undefined' && window.__projectHistory)
+      ? window.__projectHistory.extractReasoningContent
+      : null;
+    if (_extractReasoning) {
+      _extractReasoning(savedMessages);
+    } else {
+      for (const msg of savedMessages) {
+        if (msg.role === 'assistant' && !msg.reasoning_content && msg.content) {
+          const m = msg.content.match(/>>\|\s*([\s\S]*?)\s*\|\|</);
+          if (m) msg.reasoning_content = m[1].trim();
+        }
       }
     }
   } catch (e) {

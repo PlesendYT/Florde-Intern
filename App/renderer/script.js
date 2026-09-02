@@ -2451,7 +2451,7 @@ async function loadSettings() {
     const cb = document.querySelector('.provider-enabled[data-provider="' + id + '"]');
     if (cb) cb.checked = s[id + 'Enabled'] === true;
   }
-    const allProviderIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
+    const allProviderIds = window.__settings?.PROVIDER_IDS ?? ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of allProviderIds) setToggle(id);
 
   delete providers.openai; delete providers.deepseek; delete providers.mistral;
@@ -2645,7 +2645,7 @@ async function loadSettings() {
 
 async function saveSettingsToDisk(settings) {
   const existing = await window.electronAPI.getSettings();
-  const merged = { ...(existing || {}), ...settings };
+  const merged = (window.__settings?.mergeSettings || ((e, p) => ({ ...(e || {}), ...p })))(existing, settings);
   await window.electronAPI.saveSettings(merged);
 }
 
@@ -2673,7 +2673,7 @@ async function validateAndSaveSettings() {
     { id: 'localai', key: '', model: document.getElementById('model-localai')?.value || '', test: async () => true },
   ];
 
-  const localProviders = ['ollama', 'lmstudio', 'localai'];
+  const localProviders = window.__settings?.LOCAL_PROVIDER_IDS ?? ['ollama', 'lmstudio', 'localai'];
 
   async function testLocalProvider(id, url) {
     const statusEl = document.getElementById('status-' + id);
@@ -2736,28 +2736,38 @@ async function validateAndSaveSettings() {
     return cb ? cb.checked : false;
   }
 
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = window.__settings?.PROVIDER_IDS ?? ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   function getVal(id, field) {
     const el = document.getElementById(field + '-' + id);
     return el ? el.value : '';
   }
   function getTemp(id) { return parseFloat(document.getElementById('temp-' + id)?.value || '0.7'); }
-  const settings = {};
-  for (const id of providerIds) {
-    settings[id + 'Enabled'] = isEnabled(id);
-    if (id === 'custom') {
-      settings[id + 'Url'] = getVal(id, 'url');
-      settings[id + 'Key'] = isEnabled(id) && validResults.find(r => r.id === id)?.valid ? getVal(id, 'key') : '';
-      settings[id + 'Model'] = getVal(id, 'model');
-    } else if (id === 'ollama' || id === 'lmstudio' || id === 'localai') {
-      settings[id + 'Url'] = getVal(id, 'url');
-      settings[id + 'Model'] = getVal(id, 'model');
-    } else {
-      settings[id + 'Key'] = isEnabled(id) && validResults.find(r => r.id === id)?.valid ? getVal(id, 'key') : '';
-      settings[id + 'Model'] = getVal(id, 'model');
+  const buildProviderSettings = window.__settings?.buildProviderSettings || null;
+  const settings = buildProviderSettings ? buildProviderSettings({
+    providerIds,
+    isEnabled,
+    getVal,
+    getTemp,
+    isValidKey: id => isEnabled(id) && validResults.find(r => r.id === id)?.valid
+  }) : (() => {
+    const s = {};
+    for (const id of providerIds) {
+      s[id + 'Enabled'] = isEnabled(id);
+      if (id === 'custom') {
+        s[id + 'Url'] = getVal(id, 'url');
+        s[id + 'Key'] = isEnabled(id) && validResults.find(r => r.id === id)?.valid ? getVal(id, 'key') : '';
+        s[id + 'Model'] = getVal(id, 'model');
+      } else if (id === 'ollama' || id === 'lmstudio' || id === 'localai') {
+        s[id + 'Url'] = getVal(id, 'url');
+        s[id + 'Model'] = getVal(id, 'model');
+      } else {
+        s[id + 'Key'] = isEnabled(id) && validResults.find(r => r.id === id)?.valid ? getVal(id, 'key') : '';
+        s[id + 'Model'] = getVal(id, 'model');
+      }
+      s[id + 'Temp'] = getTemp(id);
     }
-    settings[id + 'Temp'] = getTemp(id);
-  }
+    return s;
+  })();
   settings.theme = document.getElementById('settings-theme').value;
   settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
   settings.language = document.getElementById('settings-language').value;
@@ -7440,9 +7450,8 @@ document.getElementById('settings-timeout')?.addEventListener('change', (e) => {
 
 // Dynamic validate buttons for each provider
 function addValidateButtons() {
-  const providerIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
+  const providerIds = window.__settings?.PROVIDER_IDS ?? ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of providerIds) {
-    const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body) continue;
     const keyWrap = body.querySelector('.key-input-wrap');
     if (!keyWrap || keyWrap.querySelector('.btn-validate')) continue;

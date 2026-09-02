@@ -7452,6 +7452,7 @@ document.getElementById('settings-timeout')?.addEventListener('change', (e) => {
 function addValidateButtons() {
   const providerIds = window.__settings?.PROVIDER_IDS ?? ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','ollama','lmstudio','localai','openrouter','custom'];
   for (const id of providerIds) {
+    const body = document.querySelector('.provider-body[data-provider="' + id + '"]');
     if (!body) continue;
     const keyWrap = body.querySelector('.key-input-wrap');
     if (!keyWrap || keyWrap.querySelector('.btn-validate')) continue;

@@ -2890,13 +2890,14 @@ function enableOfflineMode(enabled) {
 
 // ==================== THEME ====================
 
+const __theme = (typeof window !== 'undefined' && window.__theme) ? window.__theme : null;
+
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', currentTheme || 'dark');
-  const isLight = currentTheme === 'light' || currentTheme === 'solarized-light';
+  document.documentElement.setAttribute('data-theme', (__theme?.normalizeTheme || (t => t || 'dark'))(currentTheme));
+  const isLight = (__theme?.isLightTheme || (t => t === 'light' || t === 'solarized-light'))(currentTheme);
   document.getElementById('btn-theme-toggle') && (document.getElementById('btn-theme-toggle').textContent = isLight ? '\u263D' : '\u2600');
   if (editor) {
-    const monacoTheme = isLight ? 'vs' : 'vs-dark';
-    monaco.editor.setTheme(monacoTheme);
+    monaco.editor.setTheme((__theme?.monacoThemeFor || (t => isLight ? 'vs' : 'vs-dark'))(currentTheme));
   }
 }
 
@@ -6201,7 +6202,7 @@ function showDiffView(changes) {
     if (diffEditor) diffEditor.dispose();
     diffEditor = monaco.editor.createDiffEditor(diffContainer, {
       enableSplitViewResizing: false, renderSideBySide: true, readOnly: true,
-      theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
+      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
     });
     diffEditor.setModel({ original: originalModel, modified: modifiedModel });
   }
@@ -6399,8 +6400,7 @@ document.getElementById('btn-terminal-clear').addEventListener('click', () => {
 const THEME_CYCLE = ['dark', 'light', 'high-contrast', 'solarized-dark', 'solarized-light'];
 
 document.getElementById('btn-theme-toggle').addEventListener('click', () => {
-  const idx = THEME_CYCLE.indexOf(currentTheme);
-  currentTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+  currentTheme = (__theme?.nextTheme || (c => { const i = THEME_CYCLE.indexOf(c || 'dark'); return THEME_CYCLE[(i === -1 ? 0 : i + 1) % THEME_CYCLE.length]; }))(currentTheme);
   document.getElementById('settings-theme').value = currentTheme;
   applyTheme();
   saveSettingsToDisk({ theme: currentTheme });
@@ -9912,7 +9912,7 @@ require(['vs/editor/editor.main'], () => {
   const container = document.getElementById('editor-container');
   if (container) {
     editor = monaco.editor.create(container, {
-      theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
+      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
       automaticLayout: true,
       fontSize: 13,
       readOnly: false,
@@ -10343,7 +10343,7 @@ const DiffViewer = {
     this._model = model;
     this._editor = monaco.editor.create(container, {
       model: model,
-      theme: currentTheme === 'light' ? 'vs' : 'vs-dark',
+      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
       automaticLayout: true,
       fontSize: 13,
       scrollBeyondLastLine: false,

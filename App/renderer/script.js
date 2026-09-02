@@ -828,16 +828,19 @@ class GeminiProvider {
 
 // ==================== CHAT SESSIONS ====================
 
-const ChatManager = {
-  _sessions: [],
-  _activeSessionId: null,
-  _nextId: 1,
+const chatSessions = (typeof window !== 'undefined' && window.__chatSessions) ? window.__chatSessions.createChatSessions() : null;
 
+const ChatManager = {
   init() {
     this.newSession();
   },
 
   newSession() {
+    if (chatSessions) {
+      const id = chatSessions.newSession();
+      this._renderTabs();
+      return id;
+    }
     const id = this._nextId++;
     const session = { id, name: `Chat ${this._sessions.length + 1}`, messages: [], context: [], created: Date.now() };
     this._sessions.push(session);
@@ -847,15 +850,21 @@ const ChatManager = {
   },
 
   getActive() {
-    return this._sessions.find(s => s.id === this._activeSessionId);
+    return chatSessions ? chatSessions.getActive() : this._sessions.find(s => s.id === this._activeSessionId);
   },
 
   addMessage(msg) {
+    if (chatSessions) { chatSessions.addMessage(msg); return; }
     const s = this.getActive();
     if (s) s.messages.push(msg);
   },
 
   switchSession(id) {
+    if (chatSessions) {
+      const active = chatSessions.switchSession(id);
+      if (active) { chatHistory = active.messages; this._renderTabs(); renderChat(); }
+      return;
+    }
     if (id === this._activeSessionId) return;
     const s = this._sessions.find(x => x.id === id);
     if (!s) return;
@@ -866,6 +875,14 @@ const ChatManager = {
   },
 
   closeSession(id) {
+    if (chatSessions) {
+      const before = chatSessions.activeSessionId;
+      chatSessions.closeSession(id);
+      const changed = chatSessions.activeSessionId !== before;
+      this._renderTabs();
+      if (changed && chatSessions.getActive()) { chatHistory = chatSessions.getActive().messages; renderChat(); }
+      return;
+    }
     if (this._sessions.length <= 1) return;
     const idx = this._sessions.findIndex(s => s.id === id);
     this._sessions = this._sessions.filter(s => s.id !== id);
@@ -877,15 +894,30 @@ const ChatManager = {
   },
 
   renameSession(id, name) {
+    if (chatSessions) { chatSessions.renameSession(id, name); this._renderTabs(); return; }
     const s = this._sessions.find(s => s.id === id);
     if (s) s.name = name;
     this._renderTabs();
   },
 
+  reset() {
+    if (chatSessions) { chatSessions.reset(); return; }
+    this._sessions = [];
+    this._nextId = 1;
+  },
+
+  get sessions() { return chatSessions ? chatSessions.sessions : this._sessions; },
+  get activeSessionId() { return chatSessions ? chatSessions.activeSessionId : this._activeSessionId; },
+  get nextId() { return chatSessions ? chatSessions.nextId : this._nextId; },
+
+  _sessions: [],
+  _activeSessionId: null,
+  _nextId: 1,
+
   _renderTabs() {
     const bar = document.getElementById('chat-tab-bar');
     if (!bar) return;
-    bar.innerHTML = this._sessions.map(s => `<div class="chat-tab ${s.id === this._activeSessionId ? 'active' : ''}" data-id="${s.id}">
+    bar.innerHTML = this.sessions.map(s => `<div class="chat-tab ${s.id === this.activeSessionId ? 'active' : ''}" data-id="${s.id}">
       <span class="chat-tab-name">${this._escapeHtml(s.name)}</span>
       <button class="chat-tab-close" data-id="${s.id}">&times;</button>
     </div>`).join('') + '<button id="btn-new-chat-tab" title="New Chat (Ctrl+T)">+</button>';
@@ -930,12 +962,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     ChatManager.newSession();
   }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'w' && document.activeElement?.id === 'chat-input') { e.preventDefault(); ChatManager.closeSession(ChatManager._activeSessionId); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'w' && document.activeElement?.id === 'chat-input') { e.preventDefault(); ChatManager.closeSession(ChatManager.activeSessionId); }
   if ((e.ctrlKey || e.metaKey) && e.key === 'Tab' && document.activeElement?.id === 'chat-input') {
     e.preventDefault();
-    const idx = ChatManager._sessions.findIndex(s => s.id === ChatManager._activeSessionId);
-    const next = (idx + 1) % ChatManager._sessions.length;
-    ChatManager.switchSession(ChatManager._sessions[next].id);
+    const idx = ChatManager.sessions.findIndex(s => s.id === ChatManager.activeSessionId);
+    const next = (idx + 1) % ChatManager.sessions.length;
+    ChatManager.switchSession(ChatManager.sessions[next].id);
   }
 });
 
@@ -3432,8 +3464,7 @@ async function openProject(name) {
   } catch (e) {
     console.error('loadSession failed for', name, e);
   }
-  ChatManager._sessions = [];
-  ChatManager._nextId = 1;
+  ChatManager.reset();
   ChatManager.newSession();
   const active = ChatManager.getActive();
   active.messages = savedMessages;

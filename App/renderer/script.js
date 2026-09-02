@@ -8393,11 +8393,33 @@ const DecisionLog = {
 // ==================== KI-AKTIONEN AUDIT LOG ====================
 
 const AuditLog = {
-  _logs: [],
-  _currentProject: null,
   _aiMode: false,
-  _maxLogs: 500,
-  _useDb: false,
+
+  _core() {
+    if (!this._coreInstance) {
+      this._coreInstance = window.__auditLogCore || (window.__auditLogCore = (() => {
+        const { createAuditLog } = window.__auditLogModule || {};
+        if (createAuditLog) {
+          return createAuditLog({
+            dbCheck: (p) => window.electronAPI?.flordeDir?.check(p),
+            dbRun: (p, q, a) => window.electronAPI?.flordeDb?.run(p, q, a),
+            dbQuery: (p, q, a) => window.electronAPI?.flordeDb?.query(p, q, a),
+            storage: window.localStorage,
+            project: null
+          });
+        }
+        return {
+          _logs: [], _currentProject: null, _useDb: false, _maxLogs: 500,
+          setProject(n) { this._currentProject = n; this._load(); },
+          async log() {}, async _load() {}, _save() {},
+          getEntries() { return this._logs; },
+          clear() { this._logs = []; },
+          getMeta() { return { currentProject: this._currentProject, useDb: this._useDb, maxLogs: this._maxLogs }; }
+        };
+      })());
+    }
+    return this._coreInstance;
+  },
 
   init() {
     // Overlay tab switching
@@ -8436,67 +8458,33 @@ const AuditLog = {
   },
 
   setProject(name) {
-    this._currentProject = name;
-    this._load();
+    return this._core().setProject(name);
   },
 
   async log(entry) {
-    const logEntry = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-      type: entry.type || 'unknown',
-      action: entry.action || '',
-      status: entry.status || 'auto',
-      summary: entry.summary || '',
-      details: entry.details || {},
-      source: entry.source || 'KI',
-      project: this._currentProject,
-      sessionId: entry.sessionId || null
-    };
-    this._logs.unshift(logEntry);
-    if (this._logs.length > this._maxLogs) this._logs.length = this._maxLogs;
-    if (this._useDb) {
-      try {
-        await window.electronAPI.flordeDb.run(this._currentProject,
-          `INSERT INTO audit_log (project, event_type, data) VALUES (?, ?, ?)`,
-          [this._currentProject, entry.type || 'unknown', JSON.stringify(logEntry)]
-        );
-      } catch {}
-    }
-    this._save();
+    await this._core().log(entry);
   },
 
   async _load() {
-    this._useDb = false;
-    if (!this._currentProject) return;
-    try {
-      const hasDb = await window.electronAPI.flordeDir.check(this._currentProject);
-      if (hasDb) {
-        const rows = await window.electronAPI.flordeDb.query(this._currentProject,
-          'SELECT data FROM audit_log WHERE project = ? ORDER BY id DESC LIMIT ?',
-          [this._currentProject, this._maxLogs]);
-        if (rows && rows.length > 0) {
-          this._logs = rows.map(r => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean);
-          this._useDb = true;
-          return;
-        }
-      }
-    } catch {}
-    try {
-      const key = 'florde-audit-ki-' + this._currentProject;
-      this._logs = JSON.parse(localStorage.getItem(key)) || [];
-    } catch { this._logs = []; }
+    return this._core()._load();
   },
 
   _save() {
-    if (!this._currentProject || this._useDb) return;
-    localStorage.setItem('florde-audit-ki-' + this._currentProject, JSON.stringify(this._logs));
+    return this._core()._save();
+  },
+
+  getEntries() {
+    return this._core().getEntries();
+  },
+
+  clear() {
+    this._core().clear();
   },
 
   _populateFilters() {
     const typeSelect = document.getElementById('audit-ki-filter-type');
     if (!typeSelect) return;
-    const types = [...new Set(this._logs.map(l => l.type).filter(Boolean))];
+    const types = [...new Set(this.getEntries().map(l => l.type).filter(Boolean))];
     const current = typeSelect.value;
     typeSelect.innerHTML = '<option value="all">All Types</option>' +
       types.map(t => `<option value="${t}">${this._typeLabel(t)}</option>`).join('');
@@ -8504,7 +8492,7 @@ const AuditLog = {
 
     const statusSelect = document.getElementById('audit-ki-filter-status');
     if (!statusSelect) return;
-    const statuses = [...new Set(this._logs.map(l => l.status).filter(Boolean))];
+    const statuses = [...new Set(this.getEntries().map(l => l.status).filter(Boolean))];
     const curStatus = statusSelect.value;
     statusSelect.innerHTML = '<option value="all">All Status</option>' +
       statuses.map(s => `<option value="${s}">${this._statusLabel(s)}</option>`).join('');
@@ -8546,7 +8534,7 @@ const AuditLog = {
     const dateFilter = document.getElementById('audit-ki-filter-date')?.value || 'all';
     const searchText = document.getElementById('audit-ki-search')?.value?.toLowerCase().trim() || '';
 
-    let filtered = this._logs;
+    let filtered = this.getEntries();
 
     if (typeFilter !== 'all') filtered = filtered.filter(l => l.type === typeFilter);
     if (statusFilter !== 'all') filtered = filtered.filter(l => l.status === statusFilter);
@@ -8613,7 +8601,7 @@ const AuditLog = {
     const container = document.getElementById('audit-actions-list');
     if (!container) return;
 
-    const recentLogs = this._logs.slice(0, 50);
+    const recentLogs = this.getEntries().slice(0, 50);
     const context = recentLogs.map(l =>
       `[${new Date(l.timestamp).toLocaleString()}] ${l.action} | ${l.status} | ${l.summary}`
     ).join('\n');

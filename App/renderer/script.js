@@ -1205,6 +1205,7 @@ const Favorites = {
 
 // ==================== PERMISSION MANAGER ====================
 
+const APP_TOOL_NAMES = [];
 const permCore = (typeof window !== 'undefined' && window.__permissionRules) ? window.__permissionRules.createPermissionRules({ mcpTools: (typeof APP_TOOL_NAMES !== 'undefined' ? APP_TOOL_NAMES : []) }) : null;
 
 const PermissionManager = {
@@ -7016,7 +7017,6 @@ const APP_CAPABILITIES = {
 };
 
 // Build names list and reverse lookup
-const APP_TOOL_NAMES = [];
 const APP_TOOL_LOOKUP = {};
 for (const [appId, cap] of Object.entries(APP_CAPABILITIES)) {
   for (const t of cap.tools) {
@@ -9370,7 +9370,7 @@ async function initConnectedApps() {
 // ==================== MCP Manager ====================
 const _mcpClients = new Map();
 
-const TRANSPORT_LABELS = { stdio: 'STDIO', sse: 'SSE', websocket: 'WebSocket' };
+const TRANSPORT_LABELS = { stdio: 'STDIO', sse: 'SSE', websocket: 'WebSocket', mcp: 'MCP /mcp', custom: 'Custom' };
 
 function loadMcpConfig() {
   try { return JSON.parse(localStorage.getItem('florde-mcp-servers') || '[]'); } catch { return []; }

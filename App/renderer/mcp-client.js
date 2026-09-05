@@ -6,7 +6,7 @@ class McpClient {
     this.command = config.command;
     this.args = config.args || [];
     this.env = config.env || {};
-    this.url = config.url;
+    this.url = config.url ? this._ensureScheme(config.url) : config.url;
     this._requestId = 0;
     this._pending = new Map();
     this._tools = [];
@@ -24,12 +24,21 @@ class McpClient {
 
   onNotification(cb) { this._notificationCb = cb; }
 
+  _ensureScheme(raw) {
+    let u = String(raw || '').trim();
+    if (!u) return u;
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) u = 'http://' + u;
+    return u;
+  }
+
   async connect() {
     if (this._connected) return;
     switch (this.transport) {
       case 'stdio': await this._connectStdio(); break;
       case 'sse': await this._connectSSE(); break;
       case 'websocket': await this._connectWebSocket(); break;
+      case 'mcp': this._connectMCP(); break;
+      case 'custom': this._connectCustom(); break;
       default: throw new Error('Unsupported transport: ' + this.transport);
     }
     const initResult = await this._request('initialize', {
@@ -122,6 +131,16 @@ class McpClient {
     });
   }
 
+  _connectMCP() {
+    let url = this.url.replace(/\/+$/, '');
+    if (!/\/mcp$/i.test(url)) url += '/mcp';
+    this._messageEndpoint = url;
+  }
+
+  _connectCustom() {
+    this._messageEndpoint = this.url;
+  }
+
   _onData(chunk) {
     this._buffer += chunk;
     const lines = this._buffer.split('\n');
@@ -170,6 +189,8 @@ class McpClient {
         this._ws.send(JSON.stringify(request));
         break;
       case 'sse':
+      case 'mcp':
+      case 'custom':
       default:
         const ep = this._messageEndpoint || (this.url.replace(/\/+$/, '') + '/message');
         const r = await fetch(ep, {

@@ -1,5 +1,5 @@
 // App/renderer/inline-diff.js
-var src = (typeof require !== 'undefined' && require('./diff-utils')) || (typeof window !== 'undefined' ? window : globalThis) || {};
+var src = (typeof require === 'function' && require.resolve && require('./diff-utils')) || (typeof window !== 'undefined' ? window : globalThis) || {};
 var splitLines = src.splitLines;
 var computeHunks = src.computeHunks;
 

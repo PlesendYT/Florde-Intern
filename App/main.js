@@ -4,7 +4,11 @@ const fs = require('fs');
 const { execSync, spawnSync } = require('child_process');
 const FlordeStorage = require('./storage');
 const { SandboxService } = require('./main/services/sandbox-service');
+const { SettingsService } = require('./main/services/settings-service');
+const { TranslationService } = require('./main/services/translation-service');
 const { registerSandboxIpc } = require('./main/ipc/sandbox');
+const { registerSettingsIpc } = require('./main/ipc/settings');
+const { registerTranslationIpc } = require('./main/ipc/translation');
 const { getSettingsPath, getProjectsDir, getSandboxDir, getPluginsPath, isSafeProjectName, getProjectRoot, getProjectMeta, resolveSafe } = require('./main/services/shared');
 
 const _flordeStores = new Map(); // projectName -> FlordeStorage instance
@@ -54,6 +58,8 @@ app.whenReady().then(async () => {
     showSaveDialog: (opts) => dialog.showSaveDialog(mainWindow, opts),
   });
   registerSandboxIpc({ ipcMain, sandboxService });
+  registerSettingsIpc({ ipcMain, settingsService: new SettingsService() });
+  registerTranslationIpc({ ipcMain, translationService: new TranslationService() });
   await sandboxService.restore();
   createWindow();
 });
@@ -86,23 +92,6 @@ ipcMain.handle('is-full-screen', () => {
     return mainWindow.isFullScreen();
   }
   return false;
-});
-
-// ==================== SETTINGS ====================
-
-ipcMain.handle('get-settings', () => {
-  try {
-    return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
-  } catch { return {}; }
-});
-
-ipcMain.handle('save-settings', (event, settings) => {
-  try {
-    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
 });
 
 // ==================== PROJECTS ====================
@@ -767,47 +756,6 @@ ipcMain.handle('terminal:kill', (event, { id }) => {
 });
 
 // ==================== TRANSLATION CACHE ====================
-
-function getTranslationCachePath() {
-  return path.join(app.getPath('userData'), 'translations.json');
-}
-
-ipcMain.handle('translation:get-cache', () => {
-  try {
-    return JSON.parse(fs.readFileSync(getTranslationCachePath(), 'utf-8'));
-  } catch { return {}; }
-});
-
-ipcMain.handle('translation:save-cache', (event, cache) => {
-  try {
-    fs.writeFileSync(getTranslationCachePath(), JSON.stringify(cache, null, 2), 'utf-8');
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-});
-
-ipcMain.handle('translation:translate', async (event, text, sourceLang, targetLang) => {
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-    const html = await new Promise((resolve, reject) => {
-      const req = net.request(url);
-      req.on('response', (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => resolve(data));
-        res.on('error', reject);
-      });
-      req.on('error', reject);
-      req.end();
-    });
-    const parsed = JSON.parse(html);
-    const translated = parsed[0].map(s => s[0]).join('');
-    return { success: true, text: translated };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-});
 
 // ==================== KEYCHAIN ====================
 

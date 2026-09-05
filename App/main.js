@@ -3,36 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const { execSync, spawnSync } = require('child_process');
 const FlordeStorage = require('./storage');
-const { SandboxManager } = require('./sandbox/manager');
+const { SandboxService } = require('./main/services/sandbox-service');
+const { registerSandboxIpc } = require('./main/ipc/sandbox');
+const { getSettingsPath, getProjectsDir, getSandboxDir, getPluginsPath, isSafeProjectName, getProjectRoot, getProjectMeta, resolveSafe } = require('./main/services/shared');
 
 const _flordeStores = new Map(); // projectName -> FlordeStorage instance
 
 let mainWindow;
-let sandboxManager;
-let _settingsPath, _projectsDir, _sandboxDir, _pluginsPath;
-function getSettingsPath() { if (!_settingsPath) _settingsPath = path.join(app.getPath('userData'), 'settings.json'); return _settingsPath; }
-function getProjectsDir() { if (!_projectsDir) _projectsDir = path.join(app.getPath('userData'), 'projects'); return _projectsDir; }
-function isSafeProjectName(name) { return typeof name === 'string' && name.length > 0 && name.length <= 100 && !/[\/\\]/.test(name); }
-function getSandboxDir() { if (!_sandboxDir) _sandboxDir = path.join(app.getPath('userData'), 'sandbox'); return _sandboxDir; }
-function getSandboxImagesDir() { return path.join(getSandboxDir(), 'images'); }
-function getPluginsPath() { if (!_pluginsPath) _pluginsPath = path.join(app.getPath('userData'), 'plugins.json'); return _pluginsPath; }
-
-async function restoreSandboxBackend() {
-  if (!sandboxManager) return;
-  let saved;
-  try {
-    saved = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {};
-  } catch { return; }
-  const type = saved.type;
-  if (!type || type === 'none') return;
-  const result = await sandboxManager.trySwitchBackend(type);
-  if (result.ok && saved.network) {
-    try { await sandboxManager.setNetwork(saved.network); } catch {}
-  }
-  if (!result.ok) {
-    console.warn('[sandbox] Aktivierung von "' + type + '" fehlgeschlagen, starte mit "none": ' + result.error);
-  }
-}
+let sandboxService;
 
 const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'];
 
@@ -69,8 +47,14 @@ function createWindow() {
 app.whenReady().then(async () => {
   if (!fs.existsSync(getProjectsDir())) fs.mkdirSync(getProjectsDir(), { recursive: true });
   if (!fs.existsSync(getSandboxDir())) fs.mkdirSync(getSandboxDir(), { recursive: true });
-  sandboxManager = new SandboxManager(getSandboxDir());
-  await restoreSandboxBackend();
+  sandboxService = new SandboxService({
+    send: (channel, ...args) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
+    },
+    showSaveDialog: (opts) => dialog.showSaveDialog(mainWindow, opts),
+  });
+  registerSandboxIpc({ ipcMain, sandboxService });
+  await sandboxService.restore();
   createWindow();
 });
 
@@ -122,28 +106,6 @@ ipcMain.handle('save-settings', (event, settings) => {
 });
 
 // ==================== PROJECTS ====================
-
-function getProjectRoot(name) {
-  if (!isSafeProjectName(name)) return null;
-  const metaPath = path.join(getProjectsDir(), name, 'meta.json');
-  if (!fs.existsSync(metaPath)) return null;
-  try {
-    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-    if (meta.type === 'local') return meta.path;
-    return path.join(getProjectsDir(), name);
-  } catch { return null; }
-}
-
-function getProjectMeta(name) {
-  if (!isSafeProjectName(name)) return null;
-  const p = path.join(getProjectsDir(), name, 'meta.json');
-  if (!fs.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
 
 ipcMain.handle('list-projects', () => {
   if (!fs.existsSync(getProjectsDir())) return [];
@@ -215,12 +177,6 @@ ipcMain.handle('save-session', (event, name, data) => {
 });
 
 ipcMain.handle('get-project-root', (event, name) => getProjectRoot(name));
-
-function resolveSafe(root, filePath) {
-  const resolved = path.resolve(root, filePath);
-  if (!resolved.startsWith(path.resolve(root))) return null;
-  return resolved;
-}
 
 // ==================== FILE OPERATIONS ====================
 
@@ -344,189 +300,6 @@ ipcMain.handle('export-zip', async (event, name) => {
   }
 });
 
-// ==================== SANDBOX ====================
-
-ipcMain.handle('get-sandbox-dir', () => getSandboxDir());
-
-ipcMain.handle('sandbox-list-files', (event, sandboxPath) => {
-  const allowed = getSandboxDir();
-  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed) || !fs.existsSync(sandboxPath)) return [];
-  const files = [];
-  function walk(d, prefix) {
-    const entries = fs.readdirSync(d, { withFileTypes: true });
-    for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
-      if (e.isDirectory()) walk(path.join(d, e.name), prefix + e.name + '/');
-      else files.push(prefix + e.name);
-    }
-  }
-  walk(sandboxPath, '');
-  return files;
-});
-
-ipcMain.handle('sandbox-read-file', (event, sandboxPath, filePath) => {
-  const allowed = getSandboxDir();
-  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return null;
-  const full = resolveSafe(sandboxPath, filePath);
-  if (!full || !fs.existsSync(full)) return null;
-  return fs.readFileSync(full, 'utf-8');
-});
-
-ipcMain.handle('sandbox-write-file', (event, sandboxPath, filePath, content) => {
-  const allowed = getSandboxDir();
-  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return false;
-  const full = resolveSafe(sandboxPath, filePath);
-  if (!full) return false;
-  const dir = path.dirname(full);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(full, content, 'utf-8');
-  return true;
-});
-
-ipcMain.handle('sandbox-delete-file', (event, sandboxPath, filePath) => {
-  const allowed = getSandboxDir();
-  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return false;
-  const full = resolveSafe(sandboxPath, filePath);
-  if (!full) return false;
-  if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
-  return false;
-});
-
-ipcMain.handle('sandbox-exec', (event, sandboxPath, command) => {
-  const allowed = getSandboxDir();
-  if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
-  if (/[;&|`$<>!~{}()\n\\]/.test(command) || command.trimStart().startsWith('-')) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
-  try {
-    const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
-    return { ok: true, output };
-  } catch (e) {
-    return { ok: false, output: e.stderr || e.message, code: e.status };
-  }
-});
-
-// ==================== SANDBOX MANAGER ====================
-
-ipcMain.handle('sandbox:exec', async (event, command, options) => {
-  return sandboxManager.exec(command, options);
-});
-
-ipcMain.handle('sandbox:read-file', async (event, filePath) => {
-  return sandboxManager.readFile(filePath);
-});
-
-ipcMain.handle('sandbox:write-file', async (event, filePath, content) => {
-  return sandboxManager.writeFile(filePath, content);
-});
-
-ipcMain.handle('sandbox:list-files', async (event, dirPath) => {
-  return sandboxManager.listFiles(dirPath);
-});
-
-ipcMain.handle('sandbox:delete-file', async (event, filePath) => {
-  return sandboxManager.deleteFile(filePath);
-});
-
-ipcMain.handle('sandbox:switch', async (event, type) => {
-  return sandboxManager.trySwitchBackend(type);
-});
-
-ipcMain.handle('sandbox:detect', async () => {
-  return sandboxManager.detect();
-});
-
-ipcMain.handle('sandbox:recommend', async (event, spec) => {
-  return sandboxManager.recommend(spec);
-});
-
-ipcMain.handle('sandbox:status', async () => {
-  return { active: sandboxManager.activeType, backends: sandboxManager.backends };
-});
-
-ipcMain.handle('sandbox:vm-screenshot', async () => sandboxManager.screenshot());
-ipcMain.handle('sandbox:vm-snapshot', async (event, name) => sandboxManager.createSnapshot(name));
-ipcMain.handle('sandbox:vm-mouse', async (event, x, y, button) => sandboxManager.sendMouse(x, y, button));
-ipcMain.handle('sandbox:vm-key', async (event, key) => sandboxManager.sendKey(key));
-
-ipcMain.handle('sandbox:get-config', () => {
-  try { return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {}; } catch { return {}; }
-});
-
-ipcMain.handle('sandbox:set-config', (event, cfg) => {
-  try {
-    const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
-    settings.sandbox = { ...(settings.sandbox || {}), ...cfg };
-    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
-    return settings.sandbox;
-  } catch (e) { return { error: e.message }; }
-});
-
-ipcMain.handle('sandbox:set-network', async (event, network) => {
-  await sandboxManager.setNetwork(network);
-  return { ok: true, network };
-});
-
-const { getTemplate, listTemplates } = require('./sandbox/os-templates');
-
-ipcMain.handle('sandbox:list-templates', () => listTemplates());
-
-ipcMain.handle('sandbox:download-image', async (event, templateKey) => {
-  try {
-    const t = getTemplate(templateKey);
-    if (!t.url) return { ok: false, error: 'Kein Download-Link für ' + t.label + ' (bitte eigenes Image angeben)' };
-    const imagesDir = getSandboxImagesDir();
-    if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
-    const dest = path.join(imagesDir, t.image);
-    if (fs.existsSync(dest)) return { ok: true, path: dest, cached: true };
-    const res = await new Promise((resolve, reject) => {
-      const req = net.request(t.url);
-      req.on('response', resolve);
-      req.on('error', reject);
-      req.end();
-    });
-    if (res.statusCode !== 200) return { ok: false, error: 'HTTP ' + res.statusCode };
-    const total = parseInt(res.headers['content-length'] || '0', 10) || 0;
-    let received = 0;
-    const ws = fs.createWriteStream(dest);
-    await new Promise((resolve, reject) => {
-      res.on('data', (chunk) => {
-        received += chunk.length;
-        ws.write(chunk);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('sandbox:download-progress', { key: templateKey, received, total, pct: total ? Math.round(received / total * 100) : 0 });
-        }
-      });
-      res.on('end', () => { ws.end(); resolve(); });
-      res.on('error', reject);
-    });
-    return { ok: true, path: dest };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-const { VncStreamer } = require('./sandbox/vnc-stream');
-let _vncStream = null;
-
-ipcMain.handle('sandbox:vm-stream-start', async (event, opts) => {
-  try {
-    _vncStream = new VncStreamer(opts || { port: 5900 });
-    _vncStream.onFrame((frame) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('sandbox:vm-frame', {
-          width: frame.width, height: frame.height, buffer: frame.buffer,
-          jpeg: frame.buffer ? frame.buffer.toString('base64') : null,
-        });
-      }
-    });
-    await _vncStream.start();
-    return { ok: true };
-  } catch (e) { return { ok: false, error: e.message }; }
-});
-
-ipcMain.handle('sandbox:vm-stream-stop', () => {
-  if (_vncStream) _vncStream.stop();
-  _vncStream = null;
-  return { ok: true };
-});
-
 // ==================== FILE WATCHER ====================
 
 const _watchers = new Map();
@@ -556,25 +329,6 @@ ipcMain.handle('unwatch-project', (event, projectName) => {
     _watchers.delete(projectName);
   }
   return true;
-});
-
-// ==================== SANDBOX FILE DOWNLOAD ====================
-
-ipcMain.handle('download-sandbox-file', async (event, sourcePath) => {
-  const sandbox = getSandboxDir();
-  const full = resolveSafe(sandbox, sourcePath);
-  if (!full || !fs.existsSync(full)) return { ok: false, error: 'File not found' };
-  const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: path.basename(sourcePath),
-    filters: [{ name: 'All Files', extensions: ['*'] }],
-  });
-  if (result.canceled || !result.filePath) return { ok: false, error: 'Cancelled' };
-  try {
-    fs.copyFileSync(full, result.filePath);
-    return { ok: true, path: result.filePath };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
 });
 
 // ==================== DIALOGS ====================

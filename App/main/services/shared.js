@@ -60,6 +60,27 @@ function resolveSafe(root, filePath) {
   return resolved;
 }
 
+function getFlordeDir(name) {
+  if (!isSafeProjectName(name)) return null;
+  const root = getProjectRoot(name);
+  if (!root) return null;
+  const meta = getProjectMeta(name);
+  if (meta && meta.type === 'local') {
+    let current = path.resolve(root);
+    const stop = path.parse(current).root;
+    const markers = ['.git', '.hg', 'project.godot', 'package.json', 'CMakeLists.txt', '.sln', 'pom.xml', 'build.gradle'];
+    while (current && current !== stop) {
+      for (const marker of markers) {
+        if (fs.existsSync(path.join(current, marker))) return path.join(current, '.florde');
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  return path.join(root, '.florde');
+}
+
 module.exports = {
   getSettingsPath,
   getProjectsDir,
@@ -70,4 +91,5 @@ module.exports = {
   getProjectRoot,
   getProjectMeta,
   resolveSafe,
+  getFlordeDir,
 };

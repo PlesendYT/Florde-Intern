@@ -1,7 +1,7 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { getSettingsPath, getProjectsDir, getSandboxDir } = require('./main/services/shared');
+const { getProjectsDir, getSandboxDir } = require('./main/services/shared');
 const { SandboxService } = require('./main/services/sandbox-service');
 const { SettingsService } = require('./main/services/settings-service');
 const { TranslationService } = require('./main/services/translation-service');
@@ -63,7 +63,7 @@ app.whenReady().then(async () => {
     send: (channel, ...args) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
     },
-    showSaveDialog: (opts) => require('electron').dialog.showSaveDialog(mainWindow, opts),
+    showSaveDialog: (opts) => dialog.showSaveDialog(mainWindow, opts),
   });
 
   const settingsService = new SettingsService();

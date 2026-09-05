@@ -3660,12 +3660,14 @@ document.getElementById('btn-upload-plugin').addEventListener('click', () => {
     };
 
     try {
+      const _mkt = (typeof window !== 'undefined' && window.__marketplaceManifest) ? window.__marketplaceManifest : null;
       // If multiple files (folder via webkitdirectory), read each
       if (e.target.files.length > 1 || !file.name.toLowerCase().endsWith('.zip')) {
         for (const f of e.target.files) {
           const content = await f.text();
           if (f.name === 'manifest.json') {
-            try { Object.assign(pluginData, JSON.parse(content)); } catch (e) {}
+            const r = _mkt ? _mkt.parsePluginManifest(content, {}) : null;
+            if (r) { Object.assign(pluginData, r.data); } else { try { Object.assign(pluginData, JSON.parse(content)); } catch (err) {} }
           }
         }
       } else {
@@ -3674,12 +3676,14 @@ document.getElementById('btn-upload-plugin').addEventListener('click', () => {
         const extracted = extractZip(buffer);
         const manifestContent = extracted['manifest.json'] || extracted['hello-world/manifest.json'];
         if (manifestContent) {
-          try { Object.assign(pluginData, JSON.parse(manifestContent)); } catch (e) {}
+          const r = _mkt ? _mkt.parsePluginManifest(manifestContent, {}) : null;
+          if (r) { Object.assign(pluginData, r.data); } else { try { Object.assign(pluginData, JSON.parse(manifestContent)); } catch (err) {} }
         }
         pluginData._extractedFiles = extracted;
       }
 
-      pluginData.id = pluginData.id || 'local-' + Date.now();
+      if (_mkt) { Object.assign(pluginData, _mkt.ensurePluginId(pluginData)); }
+      else { pluginData.id = pluginData.id || 'local-' + Date.now(); }
       pluginRegistry.registerLocal(pluginData);
       renderPluginMarketplace();
       showNotification('success', 'Plugin loaded: ' + pluginData.name, '\u2713');

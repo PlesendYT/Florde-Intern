@@ -43,3 +43,7 @@ config/icon/icon.png
 docs/*
 .superpowers
 .florde
+
+# Git worktrees
+.worktrees
+worktrees

@@ -10,6 +10,8 @@ const { ShellService } = require('./main/services/shell-service');
 const { DbService } = require('./main/services/db-service');
 const { SystemService } = require('./main/services/system-service');
 const { MiscService } = require('./main/services/misc-service');
+const { PermissionStore } = require('./main/services/permission-store');
+const { PermissionGate, resolveToolCategory } = require('./main/services/permission-gate');
 const { registerSandboxIpc } = require('./main/ipc/sandbox');
 const { registerSettingsIpc } = require('./main/ipc/settings');
 const { registerTranslationIpc } = require('./main/ipc/translation');
@@ -65,6 +67,52 @@ app.whenReady().then(async () => {
     },
     showSaveDialog: (opts) => dialog.showSaveDialog(mainWindow, opts),
   });
+
+  const permissionStore = new PermissionStore(path.join(getSandboxDir(), 'permissions.db'));
+  permissionStore.init();
+
+  function execRuleToolType(info) {
+    const cat = resolveToolCategory(info.op);
+    if (cat === 'exec' && typeof info.command === 'string') {
+      const kw = info.command.trim().split(/\s+/)[0];
+      if (kw) return kw;
+    }
+    return cat;
+  }
+
+  let reqIdCounter = 0;
+  const permissionGate = new PermissionGate({
+    store: permissionStore,
+    askHandler: (info) => new Promise((resolve) => {
+      const requestId = 'req-' + (++reqIdCounter);
+      let settled = false;
+      let handler;
+      const finish = (decision) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          ipcMain.removeListener('sandbox:permission-respond', handler);
+          resolve(decision);
+        }
+      };
+      const timer = setTimeout(() => finish('block'), 120000);
+      handler = (_e, payload) => {
+        if (payload && payload.requestId === requestId && payload.decision && payload.decision !== 'ask') {
+          if (payload.persist === 'always') {
+            try {
+              if (payload.decision === 'allow' || payload.decision === 'block') {
+                permissionStore.set(info.project, execRuleToolType(info), payload.decision === 'allow' ? 'allow' : 'block');
+              }
+            } catch {}
+          }
+          finish(payload.decision);
+        }
+      };
+      ipcMain.on('sandbox:permission-respond', handler);
+      mainWindow.webContents.send('sandbox:permission-request', { ...info, requestId, category: resolveToolCategory(info.op), toolType: execRuleToolType(info) });
+    }),
+  });
+  sandboxService.setPermissionGate(permissionGate, permissionStore);
 
   const settingsService = new SettingsService();
   const translationService = new TranslationService();

@@ -3,6 +3,10 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { SandboxBackend } = require('../backend');
 
+function projectHash(project) {
+  return (project ? crypto.createHash('sha256').update(String(project)).digest('hex').substring(0, 12) : 'default');
+}
+
 class DockerBackend extends SandboxBackend {
   get type() { return 'docker'; }
   get label() { return 'Docker Sandbox'; }
@@ -12,10 +16,32 @@ class DockerBackend extends SandboxBackend {
   constructor(workspaceDir, options = {}) {
     super();
     this._workspaceDir = workspaceDir;
-    this._image = options.image || 'florde/sandbox:minimal';
+    this._image = options.image || 'florde/sandbox:bookworm';
+    this._project = options.project || null;
+    this.projectHash = projectHash(this._project);
+    this._customTools = options.customTools || [];
+    this._toolVolumes = [];
     this._containerId = null;
     this._containerName = null;
     this._network = options.network || 'bridge';
+  }
+
+  _buildArgs() {
+    const args = [];
+    if ((this._customTools || []).some(t => t.type === 'compiler' || t.name === 'gcc')) args.push('--build-arg', 'WITH_COMPILER=1');
+    if ((this._customTools || []).some(t => t.type === 'node' || t.name === 'nodejs')) args.push('--build-arg', 'WITH_NODE=1');
+    return args;
+  }
+
+  _ensureImage() {
+    const check = this._run(['image', 'inspect', this._image], 15000);
+    if (check.ok) return true;
+    const dockerfileDir = path.resolve(__dirname, '..', '..', 'docker', 'sandbox');
+    const buildArgs = this._buildArgs();
+    const args = ['build', '-t', this._image, '-f', path.join(dockerfileDir, 'Dockerfile')].concat(buildArgs, [dockerfileDir]);
+    const r = this._run(args, 180000);
+    if (!r.ok) throw new Error('Failed to build sandbox image: ' + r.stderr);
+    return true;
   }
 
   _resolvePath(filePath) {
@@ -57,20 +83,24 @@ class DockerBackend extends SandboxBackend {
     const containerName = this._generateContainerName();
     this._containerName = containerName;
 
-    // Pull image if not already present
-    const pullResult = this._run(['pull', this._image], 120000);
-    if (!pullResult.ok) {
-      const isRateLimited = pullResult.stderr.includes('rate') || pullResult.stderr.includes('too many requests');
-      if (!isRateLimited) {
-        // Image may already exist locally despite non-zero exit (e.g., tag resolution)
-      }
-    }
+    // Ensure image is built and create tool volumes
+    this._ensureImage();
+    this._toolVolumes = [];
+    const projVol = 'florde-sbx-' + this.projectHash + '-tools';
+    this._run(['volume', 'create', projVol], 15000);
+    this._toolVolumes.push({ name: projVol, target: '/opt/custom-tools' });
+    const globalVol = 'florde-tools-global';
+    this._run(['volume', 'create', globalVol], 15000);
+    this._toolVolumes.push({ name: globalVol, target: '/opt/global-tools' });
 
     // Create container
+    const volumeArgs = [];
+    for (const v of this._toolVolumes) { volumeArgs.push('-v', v.name + ':' + v.target); }
     const createResult = this._run([
       'create', '--name', containerName,
       '--network', this._network,
       '-v', `${this._workspaceDir}:/workspace`,
+      ...volumeArgs,
       this._image,
       'sleep', 'infinity',
     ]);

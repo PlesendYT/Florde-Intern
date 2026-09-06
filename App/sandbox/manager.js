@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { NoneBackend } = require('./backends/none');
 const { FirejailBackend } = require('./backends/firejail');
 const { DockerBackend } = require('./backends/docker');
@@ -6,9 +7,14 @@ const { VMWareBackend } = require('./backends/vmware');
 const { QEMUBackend } = require('./backends/qemu');
 const { SystemDetector } = require('./system-detector');
 
+function projectHash(project) {
+  return (project ? crypto.createHash('sha256').update(String(project)).digest('hex').substring(0, 12) : 'default');
+}
+
 class SandboxManager {
-  constructor(workspaceDir) {
+  constructor(workspaceDir, options = {}) {
     this._workspaceDir = workspaceDir;
+    this._project = options.project || null;
     this._backends = new Map();
     this._activeType = 'none';
     this._listeners = new Map();
@@ -16,8 +22,8 @@ class SandboxManager {
     // Register backends
     this._register('none', new NoneBackend(workspaceDir));
     this._register('firejail', new FirejailBackend(workspaceDir));
-    this._register('docker', new DockerBackend(workspaceDir));
-    this._register('podman', new PodmanBackend(workspaceDir));
+    this._register('docker', new DockerBackend(workspaceDir, { project: this._project }));
+    this._register('podman', new PodmanBackend(workspaceDir, { project: this._project }));
     this._register('vmware', new VMWareBackend(workspaceDir));
     this._register('qemu', new QEMUBackend(workspaceDir));
   }
@@ -29,6 +35,33 @@ class SandboxManager {
   get activeType() { return this._activeType; }
   get active() { return this._backends.get(this._activeType); }
   get backends() { return Array.from(this._backends.keys()); }
+
+  getProject() { return this._project; }
+
+  setProject(project) {
+    this._project = project;
+    const hash = projectHash(project);
+    for (const type of ['docker', 'podman']) {
+      const b = this._backends.get(type);
+      if (b && '_project' in b) {
+        b._project = project;
+        b.projectHash = hash;
+      }
+    }
+  }
+
+  setCustomTools(type, tools) {
+    if (this._backends.has(type)) {
+      const b = this._backends.get(type);
+      if ('_customTools' in b) b._customTools = [...(tools || [])];
+    }
+  }
+
+  getCustomTools(type) {
+    if (!this._backends.has(type)) return [];
+    const b = this._backends.get(type);
+    return ('_customTools' in b) ? [...b._customTools] : [];
+  }
 
   _emit(event, data) {
     const handlers = this._listeners.get(event);

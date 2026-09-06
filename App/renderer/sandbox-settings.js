@@ -36,6 +36,8 @@ const SandboxSettings = {
         <div id="sandbox-recommendation" style="margin-top:0.5rem;font-size:0.85rem;"></div>
         <button id="btn-sandbox-wizard" class="btn btn-small" style="margin-top:0.5rem;">Setup erneut starten</button>
         <div id="sandbox-vm-config" style="margin-top:0.75rem;"></div>
+        <div id="sandbox-custom-tools" style="margin-top:1rem;"></div>
+        <div id="sandbox-permission-rules" style="margin-top:1rem;"></div>
       </div>
     `;
 
@@ -80,6 +82,172 @@ const SandboxSettings = {
 
     document.getElementById('btn-sandbox-wizard')?.addEventListener('click', () => {
       if (typeof SandboxWizard !== 'undefined') SandboxWizard.open();
+    });
+
+    this._renderCustomTools(status);
+    this._renderPermissionRules(status);
+  },
+
+  async _renderCustomTools(status) {
+    const box = document.getElementById('sandbox-custom-tools');
+    if (!box) return;
+    const isContainer = status.active === 'docker' || status.active === 'podman';
+    if (!isContainer) { box.innerHTML = ''; return; }
+    const project = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+    if (!project) {
+      box.innerHTML = '<div style="font-size:0.85rem;color:var(--text3);">Öffne ein Projekt, um Custom-Tools pro Projekt zu konfigurieren.</div>';
+      return;
+    }
+    const tools = (await window.electronAPI.sandbox.getCustomTools?.(project)) || [];
+    const typeOpts = ['apt', 'deb', 'appimage'].map(t => `<option value="${t}">${t}</option>`).join('');
+    const rows = tools.map((tool, i) => `
+      <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.4rem;" data-tool-row="${i}">
+        <select class="ct-type" style="flex:1;padding:0.3rem;">${typeOpts.replace(`<option value="${tool.type}">`, `<option value="${tool.type}" selected>`) || typeOpts}</select>
+        <input class="ct-name" type="text" value="${(tool.name || '').replace(/"/g, '&quot;')}" placeholder="Tool-Name" style="flex:2;padding:0.3rem;" />
+        <label style="font-size:0.8rem;"><input class="ct-global" type="checkbox" ${tool.global ? 'checked' : ''} /> global</label>
+        <button class="btn btn-small ct-remove">×</button>
+      </div>`).join('');
+    box.innerHTML = `
+      <div style="font-weight:600;margin-bottom:0.4rem;">Custom Tools (pro Projekt)</div>
+      ${rows || '<div style="font-size:0.85rem;color:var(--text3);">Keine Custom-Tools konfiguriert.</div>'}
+      <button id="btn-ct-add" class="btn btn-small" style="margin-top:0.4rem;">Tool hinzufügen</button>`;
+
+    const collect = () => Array.from(box.querySelectorAll('[data-tool-row]')).map(row => ({
+      type: row.querySelector('.ct-type').value,
+      name: row.querySelector('.ct-name').value.trim(),
+      global: row.querySelector('.ct-global').checked,
+    }));
+
+    const save = async () => {
+      const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+      if (!curProject) return;
+      await window.electronAPI.sandbox.setCustomTools(curProject, collect().filter(t => t.name));
+    };
+
+    box.querySelector('#btn-ct-add')?.addEventListener('click', async () => {
+      tools.push({ type: 'apt', name: '', global: false });
+      await this._renderCustomTools(status);
+      const nameInput = box.querySelector('[data-tool-row]:last-of-type .ct-name');
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.addEventListener('change', save);
+      }
+    });
+    box.querySelectorAll('.ct-remove').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const row = e.target.closest('[data-tool-row]');
+        const idx = parseInt(row.dataset.toolRow, 10);
+        tools.splice(idx, 1);
+        await this._renderCustomTools(status);
+      });
+    });
+    box.querySelectorAll('.ct-name').forEach((input) => {
+      input.addEventListener('change', save);
+    });
+    box.querySelectorAll('.ct-type').forEach((sel) => {
+      sel.addEventListener('change', save);
+    });
+    box.querySelectorAll('.ct-global').forEach((cb) => {
+      cb.addEventListener('change', save);
+    });
+  },
+
+  // Permission-Regeln pro Projekt: pro Regel Tool-Typ, Pfad/Regex, Aktion (allow/ask/block)
+  // und "global"-Flag. 'ask' als Auswahl löscht die Regel (kein Eintrag = Default-Rückfrage).
+  async _renderPermissionRules(status) {
+    const box = document.getElementById('sandbox-permission-rules');
+    if (!box) return;
+    const project = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+    if (!project) {
+      box.innerHTML = '<div style="font-size:0.85rem;color:var(--text3);">Öffne ein Projekt, um Permission-Regeln pro Projekt zu konfigurieren.</div>';
+      return;
+    }
+    const all = (await window.electronAPI.sandbox.getPermissionRules?.(project)) || [];
+    const globals = all.filter(r => r.global);
+    const locals = all.filter(r => !r.global);
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const renderRow = (rule, idx, isGlobal) => {
+      const sel = rule.action === 'ask' ? 'ask' : (rule.action === 'block' ? 'block' : 'allow');
+      const pathVal = rule.path || '';
+      return `
+        <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.4rem;flex-wrap:wrap;" data-rule-row="${idx}" data-rule-global="${isGlobal ? 1 : 0}">
+          <span style="flex:0 0 110px;font-size:0.85rem;font-weight:600;">${esc(rule.tool_type)}</span>
+          <input class="pr-path" type="text" value="${esc(pathVal)}" placeholder="Pfad / Regex / backend:…" style="flex:2;min-width:160px;padding:0.3rem;" />
+          <select class="pr-action" style="flex:0 0 110px;padding:0.3rem;">
+            <option value="allow" ${sel === 'allow' ? 'selected' : ''}>allow</option>
+            <option value="ask" ${sel === 'ask' ? 'selected' : ''}>ask</option>
+            <option value="block" ${sel === 'block' ? 'selected' : ''}>block</option>
+          </select>
+          <label style="font-size:0.8rem;display:flex;align-items:center;gap:0.2rem;"><input class="pr-global" type="checkbox" ${rule.global ? 'checked' : ''} ${isGlobal ? 'disabled' : ''} /> global</label>
+          <button class="btn btn-small pr-remove">×</button>
+        </div>`;
+    };
+    const globalRows = globals.map((r, i) => renderRow(r, i, true)).join('');
+    const localRows = locals.map((r, i) => renderRow(r, i, false)).join('');
+    const header = (label, rows) => `
+      <div style="font-weight:600;margin:0.4rem 0 0.3rem;">${label}</div>
+      ${rows || '<div style="font-size:0.85rem;color:var(--text3);">Keine Regeln.</div>'}`;
+    box.innerHTML = `
+      <div style="font-weight:600;margin-bottom:0.4rem;">Permission-Regeln (pro Projekt)</div>
+      ${header('Global', globalRows)}
+      ${header('Projekt', localRows)}
+      <button id="btn-pr-add" class="btn btn-small" style="margin-top:0.4rem;">Regel hinzufügen</button>
+      <div style="font-size:0.75rem;color:var(--text3);margin-top:0.3rem;">„ask" ohne Eintrag = Default (Rückfrage). „ask" als Auswahl löscht die Regel.</div>`;
+
+    const ruleAt = (row) => {
+      const idx = parseInt(row.dataset.ruleRow, 10);
+      const isGlobal = row.dataset.ruleGlobal === '1';
+      const list = isGlobal ? globals : locals;
+      return list[idx];
+    };
+
+    const persist = async (row) => {
+      const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+      if (!curProject) return;
+      const rule = ruleAt(row);
+      if (!rule) return;
+      const action = row.querySelector('.pr-action').value;
+      const pathVal = row.querySelector('.pr-path').value.trim();
+      const isGlobalRow = row.dataset.ruleGlobal === '1';
+      if (action === 'ask') {
+        await window.electronAPI.sandbox.removePermissionRule?.({
+          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: isGlobalRow,
+        });
+        await this._renderPermissionRules(status);
+        return;
+      }
+      await window.electronAPI.sandbox.removePermissionRule?.({
+        project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: isGlobalRow,
+      });
+      await window.electronAPI.sandbox.setPermissionRule?.({
+        project: curProject, tool_type: rule.tool_type, action, path: pathVal, global: isGlobalRow,
+      });
+      await this._renderPermissionRules(status);
+    };
+
+    box.querySelector('#btn-pr-add')?.addEventListener('click', async () => {
+      const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+      if (!curProject) return;
+      await window.electronAPI.sandbox.setPermissionRule?.({
+        project: curProject, tool_type: 'exec', action: 'allow', path: '', global: false,
+      });
+      await this._renderPermissionRules(status);
+    });
+
+    box.querySelectorAll('[data-rule-row]').forEach((row) => {
+      row.querySelector('.pr-action')?.addEventListener('change', () => persist(row));
+      row.querySelector('.pr-path')?.addEventListener('change', () => persist(row));
+      row.querySelector('.pr-global')?.addEventListener('change', () => persist(row));
+      row.querySelector('.pr-remove')?.addEventListener('click', async () => {
+        const rule = ruleAt(row);
+        if (!rule) return;
+        const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+        if (!curProject) return;
+        await window.electronAPI.sandbox.removePermissionRule?.({
+          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: row.dataset.ruleGlobal === '1',
+        });
+        await this._renderPermissionRules(status);
+      });
     });
   },
 

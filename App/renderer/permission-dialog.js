@@ -6,6 +6,7 @@ window.PermissionDialog = {
     }
   },
   _show(info) {
+    const esc = (s) => (s || '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
     if (!info || (!info.command && !info.path && !info.op)) return;
     if (this._active) this._active.remove();
     const overlay = document.createElement('div');
@@ -15,9 +16,9 @@ window.PermissionDialog = {
     const riskColor = { critical: '#e53935', high: '#fb8c00', medium: '#fdd835', low: '#66bb6a', safe: '#81c784' }[info.risk] || '#fff';
     card.innerHTML = `
       <h3 style="margin:0 0 .6rem;">Genehmigung erforderlich</h3>
-      <div style="font-size:.8rem;color:#aaa;margin-bottom:.6rem;">Backend: <b>${info.backend || '-'}</b> &middot; Kategorie: <b>${info.category || info.op || '-'}</b></div>
-      <div style="font-size:.8rem;margin-bottom:.6rem;color:${riskColor};font-weight:600;">Risiko: ${info.risk || 'safe'}</div>
-      <pre style="background:#111;padding:.6rem;border-radius:4px;overflow:auto;white-space:pre-wrap;font-family:monospace;font-size:.85rem;">${(info.command || info.path || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre>
+      <div style="font-size:.8rem;color:#aaa;margin-bottom:.6rem;">Backend: <b>${esc(info.backend) || '-'}</b> &middot; Kategorie: <b>${esc(info.category || info.op) || '-'}</b></div>
+      <div style="font-size:.8rem;margin-bottom:.6rem;color:${riskColor};font-weight:600;">Risiko: ${esc(info.risk) || 'safe'}</div>
+      <pre style="background:#111;padding:.6rem;border-radius:4px;overflow:auto;white-space:pre-wrap;font-family:monospace;font-size:.85rem;">${esc(info.command || info.path)}</pre>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem;">
         <button data-d="allow" data-p="once" style="flex:1;background:#2e7d32;color:#fff;border:0;border-radius:4px;padding:.5rem;">Einmal erlauben</button>
         <button data-d="allow" data-p="always" style="flex:1;background:#1b5e20;color:#fff;border:0;border-radius:4px;padding:.5rem;">Immer erlauben</button>

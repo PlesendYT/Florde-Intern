@@ -17,6 +17,31 @@ class SandboxService {
     this._permissionStore = null;
     this._manager = new SandboxManager(options.sandboxDir || getSandboxDir());
     this._vncStream = null;
+    this._activeProject = null;
+  }
+
+  setProject(project) {
+    this._activeProject = project;
+    this._manager.setProject(project);
+  }
+
+  getCustomTools(project) {
+    try {
+      const s = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {};
+      return (s.customTools || {})[project] || [];
+    } catch { return []; }
+  }
+
+  setCustomTools(project, tools) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
+      const sandbox = settings.sandbox || {};
+      sandbox.customTools = sandbox.customTools || {};
+      sandbox.customTools[project] = tools;
+      settings.sandbox = sandbox;
+      fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   getSandboxDir() {
@@ -151,7 +176,12 @@ class SandboxService {
   }
 
   async switchBackend(type) {
-    return this._manager.trySwitchBackend(type);
+    const r = await this._manager.trySwitchBackend(type);
+    if (this._activeProject && (type === 'docker' || type === 'podman')) {
+      const t = this.getCustomTools(this._activeProject);
+      this._manager.setCustomTools(type, t);
+    }
+    return r;
   }
 
   async detect() {

@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPermissionRules: (project) => ipcRenderer.invoke('sandbox:get-permission-rules', project),
     setPermissionRule: (rule) => ipcRenderer.invoke('sandbox:set-permission-rule', rule),
     removePermissionRule: (rule) => ipcRenderer.invoke('sandbox:remove-permission-rule', rule),
+    getCustomTools: (project) => ipcRenderer.invoke('sandbox:get-custom-tools', project),
+    setCustomTools: (project, tools) => ipcRenderer.invoke('sandbox:set-custom-tools', project, tools),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),

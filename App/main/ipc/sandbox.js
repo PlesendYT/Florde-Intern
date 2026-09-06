@@ -37,6 +37,9 @@ function registerSandboxIpc({ ipcMain, sandboxService }) {
   ipcMain.handle('sandbox:get-permission-rules', (event, project) => sandboxService.getPermissionRules(project));
   ipcMain.handle('sandbox:set-permission-rule', (event, rule) => sandboxService.addPermissionRule(rule));
   ipcMain.handle('sandbox:remove-permission-rule', (event, rule) => sandboxService.removePermissionRule(rule));
+
+  ipcMain.handle('sandbox:get-custom-tools', (event, project) => sandboxService.getCustomTools(project));
+  ipcMain.handle('sandbox:set-custom-tools', (event, project, tools) => sandboxService.setCustomTools(project, tools));
 }
 
 module.exports = { registerSandboxIpc };

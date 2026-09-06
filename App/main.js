@@ -75,7 +75,7 @@ app.whenReady().then(async () => {
     const cat = resolveToolCategory(info.op);
     if (cat === 'exec' && typeof info.command === 'string') {
       const kw = info.command.trim().split(/\s+/)[0];
-      if (kw) return kw;
+      if (kw && kw !== 'exec') return kw;
     }
     return cat;
   }
@@ -98,7 +98,7 @@ app.whenReady().then(async () => {
       const timer = setTimeout(() => finish('block'), 120000);
       handler = (_e, payload) => {
         if (payload && payload.requestId === requestId && payload.decision && payload.decision !== 'ask') {
-          if (payload.persist === 'always') {
+          if (payload.persist === 'always' && info.project) {
             try {
               if (payload.decision === 'allow' || payload.decision === 'block') {
                 permissionStore.set(info.project, execRuleToolType(info), payload.decision === 'allow' ? 'allow' : 'block');
@@ -109,7 +109,9 @@ app.whenReady().then(async () => {
         }
       };
       ipcMain.on('sandbox:permission-respond', handler);
-      mainWindow.webContents.send('sandbox:permission-request', { ...info, requestId, category: resolveToolCategory(info.op), toolType: execRuleToolType(info) });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sandbox:permission-request', { ...info, requestId, category: resolveToolCategory(info.op), toolType: execRuleToolType(info) });
+      }
     }),
   });
   sandboxService.setPermissionGate(permissionGate, permissionStore);

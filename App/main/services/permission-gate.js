@@ -81,7 +81,7 @@ class PermissionGate {
     return null;
   }
 
-  async _resolveDecision({ project, backend, op, command, path, askHandler }) {
+  async _resolveDecision({ project, backend, op, command, path }) {
     const category = resolveToolCategory(op);
     const rules = this._rulesFor(project);
 

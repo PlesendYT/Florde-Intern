@@ -79,6 +79,22 @@ test('ask triggers askHandler and returns decision', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('options askHandler is preferred over constructor askHandler', async () => {
+  const { store, dir } = setup();
+  let constructorAsked = false;
+  let optionsAsked = false;
+  const gate = new PermissionGate({ store, askHandler: async () => { constructorAsked = true; return 'block'; } });
+  const r = await gate.evaluate({
+    project: 'p', backend: 'docker', op: 'exec', command: 'sudo ls',
+    askHandler: async () => { optionsAsked = true; return 'allow'; },
+  });
+  assert.equal(optionsAsked, true);
+  assert.equal(constructorAsked, false);
+  assert.equal(r.decision, 'allow');
+  store.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('checkAndRun runs run() on allow', async () => {
   const { store, dir } = setup();
   const gate = new PermissionGate({ store });

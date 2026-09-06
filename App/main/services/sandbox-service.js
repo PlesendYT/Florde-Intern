@@ -7,12 +7,15 @@ const { getTemplate, listTemplates } = require('../../sandbox/os-templates');
 const { VncStreamer } = require('../../sandbox/vnc-stream');
 const shared = require('./shared');
 const { getSettingsPath, getSandboxDir, getSandboxImagesDir, resolveSafe } = shared;
+const { assessCommandRisk } = require('./mainrisk');
 
 class SandboxService {
   constructor(options = {}) {
     this._send = options.send || (() => {});
     this._showSaveDialog = options.showSaveDialog || null;
-    this._manager = new SandboxManager(getSandboxDir());
+    this._permissionGate = null;
+    this._permissionStore = null;
+    this._manager = new SandboxManager(options.sandboxDir || getSandboxDir());
     this._vncStream = null;
   }
 
@@ -81,11 +84,34 @@ class SandboxService {
     return false;
   }
 
+  setPermissionGate(gate, store) {
+    this._permissionGate = gate;
+    this._permissionStore = store;
+  }
+
+  _setGateForTest(gate) { this._permissionGate = gate; }
+
+  getPermissionGate() { return this._permissionGate; }
+
   execSandboxCommand(sandboxPath, command) {
     const allowed = getSandboxDir();
     if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
     if (/[;&|`$<>!~{}()\n\\]/.test(command) || command.trimStart().startsWith('-')) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
     try {
+      if (this._permissionGate) {
+        // execSandboxCommand ist synchron (execSync); hier bewusst eine vereinfachte
+        // synchrone Regel-Prüfung (kein async evaluate möglich):
+        // - eine explizite 'exec'-Kategorie-Regel (pfadlos) blockt, wenn disallowed
+        // - critical/high-Risiko wird blockt, solange keine explizite allow-Regel existiert
+        const risk = assessCommandRisk(command);
+        const category = 'exec';
+        const rules = this._permissionStore ? this._permissionStore.getAllEffective(null) : [];
+        const catRule = rules.find(r => r.tool_type === category && (r.path === null || r.path === '' || r.path === undefined));
+        if (catRule && !catRule.allowed) return { ok: false, output: 'blocked: command not permitted', code: -1 };
+        if ((risk === 'critical' || risk === 'high') && (!catRule || !catRule.allowed)) {
+          return { ok: false, output: 'blocked: high-risk command requires approval (das Menu-Backend wartet auf den Gate)', code: -1 };
+        }
+      }
       const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
       return { ok: true, output };
     } catch (e) {
@@ -94,6 +120,17 @@ class SandboxService {
   }
 
   async exec(command, options) {
+    const project = (options && options.project) || null;
+    if (this._permissionGate) {
+      return this._permissionGate.checkAndRun({
+        project,
+        backend: this._manager.activeType,
+        op: 'exec',
+        command,
+        path: (options && options.cwd) || null,
+        run: () => this._manager.exec(command, options),
+      });
+    }
     return this._manager.exec(command, options);
   }
 
@@ -234,6 +271,23 @@ class SandboxService {
     } catch (e) {
       return { ok: false, error: e.message };
     }
+  }
+
+  addPermissionRule(rule) {
+    if (!this._permissionStore) return { ok: false, error: 'permission store not initialized' };
+    const r = this._permissionStore.set(rule.project, rule.tool_type, rule.action, { path: rule.path, global: rule.global });
+    return { ok: true, rule: r };
+  }
+
+  removePermissionRule(rule) {
+    if (!this._permissionStore) return { ok: false, error: 'permission store not initialized' };
+    const done = this._permissionStore.remove(rule.project, rule.tool_type, { path: rule.path, global: rule.global });
+    return { ok: done };
+  }
+
+  getPermissionRules(project) {
+    if (!this._permissionStore) return [];
+    return this._permissionStore.getAllEffective(project);
   }
 }
 

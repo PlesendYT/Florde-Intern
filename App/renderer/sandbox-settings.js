@@ -117,12 +117,19 @@ const SandboxSettings = {
     }));
 
     const save = async () => {
-      await window.electronAPI.sandbox.setCustomTools(project, collect().filter(t => t.name));
+      const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
+      if (!curProject) return;
+      await window.electronAPI.sandbox.setCustomTools(curProject, collect().filter(t => t.name));
     };
 
     box.querySelector('#btn-ct-add')?.addEventListener('click', async () => {
       tools.push({ type: 'apt', name: '', global: false });
       await this._renderCustomTools(status);
+      const nameInput = box.querySelector('[data-tool-row]:last-of-type .ct-name');
+      if (nameInput) {
+        nameInput.focus();
+        nameInput.addEventListener('change', save);
+      }
     });
     box.querySelectorAll('.ct-remove').forEach((btn) => {
       btn.addEventListener('click', async (e) => {

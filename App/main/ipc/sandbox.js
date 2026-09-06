@@ -33,6 +33,10 @@ function registerSandboxIpc({ ipcMain, sandboxService }) {
   ipcMain.handle('sandbox:vm-stream-stop', () => sandboxService.vmStreamStop());
 
   ipcMain.handle('download-sandbox-file', async (event, sourcePath) => sandboxService.downloadFile(sourcePath));
+
+  ipcMain.handle('sandbox:get-permission-rules', (event, project) => sandboxService.getPermissionRules(project));
+  ipcMain.handle('sandbox:set-permission-rule', (event, rule) => sandboxService.addPermissionRule(rule));
+  ipcMain.handle('sandbox:remove-permission-rule', (event, rule) => sandboxService.removePermissionRule(rule));
 }
 
 module.exports = { registerSandboxIpc };

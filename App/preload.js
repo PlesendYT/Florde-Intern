@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     vmStreamStop: () => ipcRenderer.invoke('sandbox:vm-stream-stop'),
     listTemplates: () => ipcRenderer.invoke('sandbox:list-templates'),
     downloadImage: (key) => ipcRenderer.invoke('sandbox:download-image', key),
+    getPermissionRules: (project) => ipcRenderer.invoke('sandbox:get-permission-rules', project),
+    setPermissionRule: (rule) => ipcRenderer.invoke('sandbox:set-permission-rule', rule),
+    removePermissionRule: (rule) => ipcRenderer.invoke('sandbox:remove-permission-rule', rule),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
@@ -210,4 +213,12 @@ contextBridge.exposeInMainWorld('onVmFrame', (cb) => {
 
 contextBridge.exposeInMainWorld('onDownloadProgress', (cb) => {
   ipcRenderer.on('sandbox:download-progress', (e, p) => cb(p));
+});
+
+contextBridge.exposeInMainWorld('onPermissionRequest', (cb) => {
+  ipcRenderer.on('sandbox:permission-request', (_e, info) => cb(info));
+});
+
+contextBridge.exposeInMainWorld('respondPermission', (decision) => {
+  ipcRenderer.send('sandbox:permission-respond', decision);
 });

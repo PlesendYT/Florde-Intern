@@ -13,7 +13,8 @@ export function createPermissionRules({ mcpTools = [] } = {}) {
     if (_rules[toolName] !== undefined) return _rules[toolName];
     const group = resolveGroup(toolName);
     if (group && _rules[group] !== undefined) return _rules[group];
-    return 'allow';
+    // Security (F9): secure default — unknown tools ask, never auto-allow.
+    return 'ask';
   }
 
   function set(toolName, level) {

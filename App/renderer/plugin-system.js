@@ -1,5 +1,13 @@
 // ==================== PLUGIN SYSTEM ====================
 
+// Security (F8): manifest/marketplace data is untrusted — always escape before
+// inserting into HTML. Local helper (no dependency on script.js load order).
+function _esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 class PluginRegistry {
   constructor() {
     this.plugins = new Map();
@@ -33,6 +41,7 @@ class PluginRegistry {
   }
 
   async installFromUrl(url) {
+    if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only http(s) plugin URLs allowed');
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Failed to fetch plugin manifest: ${resp.status}`);
     const manifest = await resp.json();
@@ -290,8 +299,18 @@ pluginRegistry.registerTool('web_fetch', async (args) => {
   if (typeof window._aiSources !== 'undefined') {
     window._aiSources.push({ type: 'fetch', url: args.url });
   }
+  // Security (F13): only http(s) targets. file:, data:, blob: etc. are rejected
+  // so web_fetch can never disclose local resources (esp. with webSecurity on).
+  let target;
   try {
-    const r = await fetchWithTimeout(args.url, {}, 30000);
+    target = new URL(String(args.url || ''));
+  } catch { return 'Error fetching URL: invalid URL'; }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    return 'Error fetching URL: only http(s) URLs are allowed';
+  }
+  if (String(args.url).length > 2000) return 'Error fetching URL: URL too long';
+  try {
+    const r = await fetchWithTimeout(target.toString(), {}, 30000);
     const text = await r.text();
     if (args.format === 'html') return text;
     const match = text.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
@@ -521,19 +540,25 @@ function renderPluginCard(plugin) {
   const div = document.createElement('div');
   div.className = 'plugin-card' + (plugin.enabled === false ? ' plugin-disabled' : '');
   const isBuiltin = plugin.builtin;
+  // Security (F8): manifest fields are untrusted (ZIP/marketplace controlled).
+  const pName = _esc(plugin.name), pVer = _esc(plugin.version || '1.0');
+  const pDesc = _esc(plugin.description || ''), pAuthor = _esc(plugin.author || 'Unknown');
+  const pId = _esc(plugin.id), pIcon = _esc(plugin.icon || '⚡');
+  const repoLink = plugin.repo && /^https?:\/\//i.test(plugin.repo)
+    ? ' · <a href="' + _esc(plugin.repo) + '" target="_blank" rel="noopener" style="color:var(--accent);">Repo ↗</a>' : '';
   div.innerHTML = `
     <div class="plugin-card-icon" style="background:${isBuiltin ? 'rgba(99,102,241,0.15)' : 'rgba(34,197,94,0.15)'}">
-      ${plugin.icon || '⚡'}
+      ${pIcon}
     </div>
     <div class="plugin-info">
-      <div class="plugin-name">${plugin.name} <span style="font-size:0.7rem;color:var(--text3);font-weight:400;">v${plugin.version || '1.0'}</span></div>
-      <div class="plugin-desc">${plugin.description || ''}</div>
-      <div class="plugin-author">${plugin.author || 'Unknown'}${isBuiltin ? ' · Built-in' : ''}${plugin.repo ? ' · <a href="'+plugin.repo+'" target="_blank" style="color:var(--accent);">Repo ↗</a>' : ''}</div>
+      <div class="plugin-name">${pName} <span style="font-size:0.7rem;color:var(--text3);font-weight:400;">v${pVer}</span></div>
+      <div class="plugin-desc">${pDesc}</div>
+      <div class="plugin-author">${pAuthor}${isBuiltin ? ' · Built-in' : ''}${repoLink}</div>
     </div>
     ${plugin.installed !== false
       ? `<span class="plugin-status ${plugin.enabled !== false ? 'enabled' : 'installed'}">${plugin.enabled !== false ? 'Enabled' : 'Disabled'}</span>
-         <button class="plugin-toggle" data-action="toggle" data-id="${plugin.id}">${plugin.enabled !== false ? 'Disable' : 'Enable'}</button>`
-      : `<button class="plugin-toggle" data-action="install" data-id="${plugin.id}">Install</button>`
+         <button class="plugin-toggle" data-action="toggle" data-id="${pId}">${plugin.enabled !== false ? 'Disable' : 'Enable'}</button>`
+      : `<button class="plugin-toggle" data-action="install" data-id="${pId}">Install</button>`
     }
   `;
   return div;
@@ -827,8 +852,9 @@ function renderPluginMarketplace() {
   const categories = [...new Set(allPlugins.map(p => p.category || 'uncategorized'))];
   const filterBar = document.createElement('div');
   filterBar.className = 'marketplace-categories';
+  // Security (F8): category names are manifest-controlled → escape.
   filterBar.innerHTML = '<button class="cat-filter active" data-cat="all">All (' + allPlugins.length + ')</button>' +
-    categories.map(c => '<button class="cat-filter" data-cat="' + c + '">' + c + ' (' + allPlugins.filter(p => (p.category || 'uncategorized') === c).length + ')</button>').join('');
+    categories.map(c => '<button class="cat-filter" data-cat="' + _esc(c) + '">' + _esc(c) + ' (' + allPlugins.filter(p => (p.category || 'uncategorized') === c).length + ')</button>').join('');
   container.appendChild(filterBar);
 
   const activeCat = filterBar.querySelector('.cat-filter.active')?.dataset.cat || 'all';
@@ -900,15 +926,17 @@ function setupAvailableSection() {
       return;
     }
     plugins.forEach(p => {
+      // Security (F8): community registry data is remote/untrusted → escape all fields.
+      const repoUrl = /^https?:\/\//i.test(p.repository || '') ? p.repository : '#';
       const card = document.createElement('div');
       card.className = 'plugin-card';
       card.innerHTML = '<div class="plugin-card-icon" style="background:rgba(34,197,94,0.15);">\u{1F310}</div>' +
         '<div class="plugin-info">' +
-          '<div class="plugin-name">' + p.name + ' <span style="font-size:0.7rem;color:var(--text3);">v' + p.version + '</span></div>' +
-          '<div class="plugin-desc">' + (p.description || '') + '</div>' +
-          '<div class="plugin-author">' + (p.author || 'Community') + ' \u00B7 ' + (p.downloads || 0) + ' downloads</div>' +
+          '<div class="plugin-name">' + _esc(p.name) + ' <span style="font-size:0.7rem;color:var(--text3);">v' + _esc(p.version) + '</span></div>' +
+          '<div class="plugin-desc">' + _esc(p.description || '') + '</div>' +
+          '<div class="plugin-author">' + _esc(p.author || 'Community') + ' \u00B7 ' + (parseInt(p.downloads, 10) || 0) + ' downloads</div>' +
         '</div>' +
-        '<button class="plugin-toggle community-install" data-url="' + p.repository + '">Install</button>';
+        '<button class="plugin-toggle community-install" data-url="' + _esc(repoUrl) + '">Install</button>';
       card.querySelector('.community-install')?.addEventListener('click', async () => {
         const btn = card.querySelector('.community-install');
         btn.textContent = 'Installing...';

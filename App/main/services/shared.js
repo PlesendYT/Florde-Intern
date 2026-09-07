@@ -55,8 +55,12 @@ function getProjectMeta(name) {
 }
 
 function resolveSafe(root, filePath) {
-  const resolved = path.resolve(root, filePath);
-  if (!resolved.startsWith(path.resolve(root))) return null;
+  if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 1000) return null;
+  if (/[\0]/.test(filePath)) return null;
+  const canonRoot = path.resolve(root);
+  const resolved = path.resolve(canonRoot, filePath);
+  if (resolved === canonRoot) return resolved;
+  if (!resolved.startsWith(canonRoot + path.sep)) return null;
   return resolved;
 }
 

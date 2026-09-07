@@ -43,10 +43,39 @@ class PermissionGate {
     if (!store) throw new Error('PermissionGate requires a store');
     this.store = store;
     this.askHandler = askHandler || null;
+    // Security (F32): compile each distinct user regex once and bound the
+    // tested input so a hostile pattern cannot burn CPU on every check.
+    this._regexCache = new Map();
   }
 
   _rulesFor(project) {
     return this.store.getAllEffective(project);
+  }
+
+  _compileRegex(src) {
+    if (this._regexCache.has(src)) return this._regexCache.get(src);
+    // Reject patterns that invite catastrophic backtracking or are unbounded.
+    if (typeof src !== 'string' || src.length === 0 || src.length > 300) {
+      this._regexCache.set(src, null);
+      return null;
+    }
+    if (/(\(.{0,4}\{.+\}|\*\?.*\*|\+.*\+.*\+|\(\?.*\)\{)/.test(src)) {
+      this._regexCache.set(src, null);
+      return null;
+    }
+    try {
+      const re = new RegExp(src);
+      this._regexCache.set(src, re);
+      // Bound cache size so distinct hostile patterns cannot grow memory.
+      if (this._regexCache.size > 200) {
+        const first = this._regexCache.keys().next().value;
+        this._regexCache.delete(first);
+      }
+      return re;
+    } catch {
+      this._regexCache.set(src, null);
+      return null;
+    }
   }
 
   _matchesRegex(rule, command) {
@@ -54,8 +83,12 @@ class PermissionGate {
     const p = rule.path || '';
     if (!p.startsWith('regex:')) return false;
     const src = p.substring('regex:'.length);
+    const re = this._compileRegex(src);
+    if (!re) return false;
+    const input = String(command);
+    if (input.length > 2000) return false;
     try {
-      return new RegExp(src).test(command);
+      return re.test(input);
     } catch { return false; }
   }
 

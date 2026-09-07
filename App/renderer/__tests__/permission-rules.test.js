@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { createPermissionRules } from '../domains/permission/rules.js';
 
-test('get defaults to allow for unknown tool', () => {
+test('get defaults to ask for unknown tool (secure default, F9)', () => {
   const p = createPermissionRules();
-  assert.strictEqual(p.get('nonesuch'), 'allow');
+  assert.strictEqual(p.get('nonesuch'), 'ask');
 });
 
 test('get returns explicit rule first', () => {

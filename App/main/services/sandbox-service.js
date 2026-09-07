@@ -166,20 +166,38 @@ class SandboxService {
     return this._manager.exec(command, options);
   }
 
-  async readFile(filePath) {
-    return this._manager.readFile(filePath);
+  _gateFor(op, filePath, project) {
+    if (!this._permissionGate) return null;
+    return {
+      project: project || this._activeProject || null,
+      backend: this._manager.activeType,
+      op,
+      // Regex rules match against the path for file operations.
+      command: filePath || '',
+      path: filePath || null,
+    };
   }
 
-  async writeFile(filePath, content) {
-    return this._manager.writeFile(filePath, content);
+  async _gatedFileOp(op, filePath, run, project) {
+    const spec = this._gateFor(op, filePath, project);
+    if (!spec) return run();
+    return this._permissionGate.checkAndRun({ ...spec, run });
   }
 
-  async listFiles(dirPath) {
-    return this._manager.listFiles(dirPath);
+  async readFile(filePath, project) {
+    return this._gatedFileOp('read_file', filePath, () => this._manager.readFile(filePath), project);
   }
 
-  async deleteFile(filePath) {
-    return this._manager.deleteFile(filePath);
+  async writeFile(filePath, content, project) {
+    return this._gatedFileOp('write_file', filePath, () => this._manager.writeFile(filePath, content), project);
+  }
+
+  async listFiles(dirPath, project) {
+    return this._gatedFileOp('list_files', dirPath, () => this._manager.listFiles(dirPath), project);
+  }
+
+  async deleteFile(filePath, project) {
+    return this._gatedFileOp('delete_file', filePath, () => this._manager.deleteFile(filePath), project);
   }
 
   async switchBackend(type) {

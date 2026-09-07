@@ -2139,3 +2139,12 @@ body.app-mode-editor .chat-panel { flex: 0 0 320px !important; width: 320px !imp
 
 /* VM live view: takeover button active state */
 #vm-btn-take.active { border:1px solid var(--accent); color:var(--accent); }
+
+/* Text tool-call badges (Ollama without native tools) + Gedanken collapsible */
+.tool-call-badge { display:flex; align-items:center; gap:0.4rem; margin:0.35rem 0; padding:0.35rem 0.6rem; background:rgba(124,58,237,0.12); border:1px solid rgba(124,58,237,0.35); border-radius:8px; font-size:0.82rem; }
+.tool-call-icon { flex-shrink:0; }
+.tool-call-args { color:var(--text2); font-size:0.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tool-send-message { margin:0.35rem 0; padding:0.4rem 0.7rem; border-left:3px solid var(--accent); background:rgba(124,58,237,0.08); border-radius:0 8px 8px 0; font-size:0.9rem; }
+.thoughts-block { margin:0.3rem 0; font-size:0.82rem; color:var(--text2); }
+.thoughts-block > summary { cursor:pointer; color:var(--text3); }
+.thoughts-body { margin-top:0.25rem; padding-left:0.5rem; border-left:2px solid var(--border); }

@@ -1238,7 +1238,8 @@ const PermissionManager = {
     if (this._rules[toolName] !== undefined) return this._rules[toolName];
     const group = this._resolveGroup(toolName);
     if (group && this._rules[group] !== undefined) return this._rules[group];
-    return 'allow';
+    // Security (F9): secure default — unknown tools ask, never auto-allow.
+    return 'ask';
   },
 
   setPermission(toolName, level) {
@@ -2448,6 +2449,27 @@ async function loadSettings() {
   const s = await window.electronAPI.getSettings();
   if (!s) return;
 
+  // Security (F11) migration: move any legacy plaintext *Key values from
+  // settings.json into the OS keychain once, then strip them from disk.
+  try {
+    if (window.electronAPI?.keychain) {
+      const legacyIds = ['openai','deepseek','mistral','anthropic','gemini','grok','opencodezen','opencodego','openrouter','custom'];
+      let migrated = false;
+      for (const id of legacyIds) {
+        const k = s[id + 'Key'];
+        if (typeof k === 'string' && k.length > 0) {
+          try { await window.electronAPI.keychain.store({ key: 'provider:' + id, value: k }); migrated = true; } catch {}
+          delete s[id + 'Key'];
+        }
+      }
+      if (migrated) {
+        const disk = { ...s };
+        for (const k of Object.keys(disk)) { if (/key$/i.test(k)) delete disk[k]; }
+        await window.electronAPI.saveSettings(disk);
+      }
+    }
+  } catch {}
+
   function setToggle(id) {
     const cb = document.querySelector('.provider-enabled[data-provider="' + id + '"]');
     if (cb) cb.checked = s[id + 'Enabled'] === true;
@@ -2478,18 +2500,23 @@ async function loadSettings() {
   for (const [id, [Ctor, keyField, modelField, defaultModel]] of Object.entries(providerCtors)) {
     if (!s[id + 'Enabled']) continue;
     const needsKey = id !== 'ollama' && id !== 'lmstudio' && id !== 'localai';
-    if (needsKey && !s[id + 'Key']) continue;
+    // Security (F11): keys live in the OS keychain, not settings.json.
+    let secret = s[id + 'Key'] || '';
+    if (needsKey && !secret && window.electronAPI?.keychain) {
+      try { secret = await window.electronAPI.keychain.retrieve({ key: 'provider:' + id }) || ''; } catch {}
+    }
+    if (needsKey && !secret) continue;
     const el = document.getElementById(keyField + '-' + id);
-    if (el) el.value = s[id + keyField.charAt(0).toUpperCase() + keyField.slice(1)] || '';
+    if (el) el.value = keyField === 'key' ? secret : (s[id + keyField.charAt(0).toUpperCase() + keyField.slice(1)] || '');
     const modelVal = s[id + modelField.charAt(0).toUpperCase() + modelField.slice(1)] || defaultModel;
     const modelEl = document.getElementById(modelField + '-' + id);
     if (modelEl) modelEl.value = modelVal;
     if (id === 'custom') {
-      providers[id] = new Ctor(s[id + 'Key'], modelVal, s.customUrl);
+      providers[id] = new Ctor(secret, modelVal, s.customUrl);
     } else if (id === 'ollama' || id === 'lmstudio' || id === 'localai') {
       providers[id] = new Ctor(s[id + 'Url'] || '', modelVal);
     } else {
-      providers[id] = new Ctor(s[id + 'Key'], modelVal);
+      providers[id] = new Ctor(secret, modelVal);
     }
     if (providers[id]) providers[id].temperature = parseFloat(s[id + 'Temp']) || 0.7;
   }
@@ -2695,6 +2722,13 @@ async function validateAndSaveSettings() {
   for (const p of providersToTest) {
     const statusEl = document.getElementById('status-' + p.id);
     if (p.id === 'ollama') {
+      // Skip validation when the Ollama provider is disabled (was validated even when off)
+      const ollamaCb = document.querySelector('.provider-enabled[data-provider="ollama"]');
+      if (ollamaCb && !ollamaCb.checked) {
+        if (statusEl) { statusEl.textContent = ''; statusEl.className = 'key-status'; }
+        results.push({ id: 'ollama', valid: true, skipped: true });
+        continue;
+      }
       const url = document.getElementById('url-ollama').value || 'http://localhost:11434';
       results.push(await testLocalProvider('ollama', url));
       continue;
@@ -2778,7 +2812,13 @@ async function validateAndSaveSettings() {
   settings.detailedActivity = getToggle('detailed-activity');
 
   localStorage.setItem('florde-capability-cache', JSON.stringify(capabilityCache));
-  await saveSettingsToDisk(settings);
+  // Security (F11): never persist API keys in settings.json (plaintext).
+  // Keys live in the OS keychain only; settings keep models/URLs/flags.
+  const diskSettings = { ...settings };
+  for (const k of Object.keys(diskSettings)) {
+    if (/key$/i.test(k)) delete diskSettings[k];
+  }
+  await saveSettingsToDisk(diskSettings);
 
   // Apply language immediately
   if (typeof I18n !== 'undefined') {
@@ -3937,7 +3977,7 @@ function renderTreeNode(node, parent, path) {
     details.open = true;
     const summary = document.createElement('summary');
     summary.className = 'tree-item';
-    summary.innerHTML = `<span class="icon">\u{1F4C1}</span><span class="name">${node.name}</span>`;
+    summary.innerHTML = `<span class="icon">\u{1F4C1}</span><span class="name">${escapeHtml(node.name)}</span>`;
     summary.addEventListener('click', (e) => {
       e.preventDefault();
       details.open = !details.open;
@@ -3951,8 +3991,11 @@ function renderTreeNode(node, parent, path) {
   } else {
     const item = document.createElement('div');
     item.className = 'tree-item' + (openTabs[activeTabIndex] === node.path ? ' active' : '');
-    item.innerHTML = `<span class="icon">\u{1F4C4}</span><span class="name">${node.name}</span>`;
+    item.innerHTML = `<span class="icon">\u{1F4C4}</span><span class="name">${escapeHtml(node.name)}</span>`;
     item.addEventListener('click', async () => {
+      // Bugfix: im Chat-Modus ist der Editor versteckt — Dateiklick muss den
+      // Editor-Modus aktivieren, sonst ist die Datei "nicht wechselbar".
+      try { if (typeof EditorMode !== 'undefined' && EditorMode.getMode() === 'chat') EditorMode.setMode('editor'); } catch {}
       const existing = openTabs.indexOf(node.path);
       if (existing >= 0) switchTab(existing);
       else await openTab(node.path, true);
@@ -5258,6 +5301,22 @@ function formatToolActivity(name, args) {
   return label + ' ' + arg;
 }
 
+// Bugs "Ollama Tool Calls werden nicht gelisted" + "Ollama schreibt in Tool
+// Calls immernoch Nachrichten": Text-Tool-Calls (Ollama ohne native Tools)
+// werden sichtbar im Chat gelistet; send_message rendert als Zitat, umgeben-
+// der Plaudertext landet einklappbar unter "Gedanken" statt zu verschwinden.
+function renderTextToolBadge(name, args) {
+  const safe = (v) => escapeHtml(String(v == null ? '' : v));
+  if (name === 'send_message' && args && typeof args.message === 'string') {
+    return '<blockquote class="tool-send-message"><strong>' + safe(args.message) + '</strong></blockquote>';
+  }
+  const summary = args && typeof args === 'object'
+    ? Object.entries(args).slice(0, 3).map(([k, v]) => safe(k) + ': ' + safe(String(v)).slice(0, 80)).join(' · ')
+    : '';
+  return '<div class="tool-call-badge"><span class="tool-call-icon">🔧</span> <strong>' +
+    safe(name) + '</strong>' + (summary ? ' <span class="tool-call-args">' + summary + '</span>' : '') + '</div>';
+}
+
 async function summarizeChat() {
   const totalChars = chatHistory.reduce((s, m) => s + (m.content || '').length, 0);
   if (totalChars < SUMMARY_THRESHOLD) return;
@@ -5955,8 +6014,10 @@ async function sendMessage(text) {
           const toolNames = processedCalls.map(t => t.function.name).join(', ');
           startAnim('*Running tools', ' (' + toolNames + ')*');
 
-          // strip tool brackets from display
+          // strip tool JSON from text display, but LIST tool calls visibly
+          // (Hoch: calls must stay listed; Mittel: chatter -> Gedanken)
           let displayContent = finalContent;
+          const toolBadges = [];
           for (const toolCall of processedCalls) {
             const args = toolCall.args;
             const name = toolCall.function.name;
@@ -6002,6 +6063,7 @@ async function sendMessage(text) {
             if (toolCall._raw) {
               displayContent = displayContent.replace(toolCall._raw, '');
             }
+            toolBadges.push(renderTextToolBadge(name, args));
             startAnim('*Running tools', ' (' + toolNames + ')*');
             resetRequestTimeout(timeoutMinutes, onTimeout);
           }
@@ -6019,7 +6081,15 @@ async function sendMessage(text) {
           toolRounds++;
           startAnim('*Waiting for AI*');
           finalContent = displayContent;
-          contentDiv.innerHTML = formatMessageContent(displayContent);
+          // Visible chat: remaining chatter collapsible as Gedanken, tool calls listed.
+          const chatter = displayContent.trim();
+          let chatHtml = '';
+          if (chatter) {
+            chatHtml += '<details class="thoughts-block"><summary>Gedanken</summary><div class="thoughts-body">' +
+              formatMessageContent(chatter) + '</div></details>';
+          }
+          chatHtml += toolBadges.join('');
+          contentDiv.innerHTML = chatHtml || formatMessageContent(displayContent);
         } else {
           break;
         }

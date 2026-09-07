@@ -1,22 +1,44 @@
 const ApiKeyManager = {
   _keys: {},
   _listeners: [],
+  _keychain: null,
 
-  init() {
-    try {
-      this._keys = JSON.parse(localStorage.getItem('florde-api-keys') || '{}');
-    } catch { this._keys = {}; }
-    // Set default status for saved keys
+  _kc() {
+    if (!this._keychain && window.electronAPI?.keychain) this._keychain = window.electronAPI.keychain;
+    return this._keychain;
+  },
+
+  async init() {
+    // Security (F30): secrets live in the OS keychain, never in localStorage.
+    // Migrate legacy localStorage entries once, then wipe them.
+    let legacy = {};
+    try { legacy = JSON.parse(localStorage.getItem('florde-api-keys') || '{}'); } catch { legacy = {}; }
+    const kc = this._kc();
     for (const svc of ['publicwww', 'virustotal', 'urlscanio']) {
-      if (this._keys[svc]?.key && !this._keys[svc]?.status) {
-        this._keys[svc].status = 'disconnected';
+      let key = '';
+      if (kc) {
+        try { key = await kc.retrieve({ key: 'service:' + svc }) || ''; } catch {}
       }
+      if (!key && legacy[svc]?.key) {
+        key = legacy[svc].key;
+        if (kc && key) { try { await kc.store({ key: 'service:' + svc, value: key }); } catch {} }
+      }
+      this._keys[svc] = { key, status: key ? 'disconnected' : 'disconnected' };
     }
+    try { localStorage.removeItem('florde-api-keys'); } catch {}
     this._notify();
   },
 
   _save() {
-    localStorage.setItem('florde-api-keys', JSON.stringify(this._keys));
+    // Statuses are memory-only; secrets go straight to the keychain.
+    try {
+      const kc = this._kc();
+      for (const [svc, entry] of Object.entries(this._keys)) {
+        if (!kc) break;
+        if (entry.key) kc.store({ key: 'service:' + svc, value: entry.key }).catch(() => {});
+        else kc.delete({ key: 'service:' + svc }).catch(() => {});
+      }
+    } catch {}
   },
 
   _notify() {

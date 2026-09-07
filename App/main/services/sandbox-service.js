@@ -1,13 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const net = require('electron').net;
-const { execSync } = require('child_process');
 const { SandboxManager } = require('../../sandbox/manager');
 const { getTemplate, listTemplates } = require('../../sandbox/os-templates');
 const { VncStreamer } = require('../../sandbox/vnc-stream');
 const shared = require('./shared');
 const { getSettingsPath, getSandboxDir, getSandboxImagesDir, resolveSafe } = shared;
-const { assessCommandRisk } = require('./mainrisk');
 
 class SandboxService {
   constructor(options = {}) {
@@ -118,36 +116,23 @@ class SandboxService {
 
   getPermissionGate() { return this._permissionGate; }
 
-  execSandboxCommand(sandboxPath, command) {
+  // Legacy string-command entry point. Routes through the active backend
+  // (container/VM jails support shell syntax there) AND the permission gate —
+  // never executes on the host via string-interpolated execSync.
+  async execSandboxCommand(sandboxPath, command) {
     const allowed = getSandboxDir();
-    if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
+    if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) {
+      return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
+    }
     if (typeof command !== 'string' || command.length === 0 || command.length > 2000) {
       return { ok: false, output: 'Rejected: invalid command', code: -1 };
     }
-    // Legacy string-command path: deny shell metacharacters outright
-    // (backtick, $(), etc.) — privileged execution goes via exec() + gate.
-    if (/[;&|`$<>!~{}()\n\\]/.test(command) || /`/.test(command) || command.trimStart().startsWith('-')) {
-      return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
-    }
     try {
-      if (this._permissionGate) {
-        // execSandboxCommand ist synchron (execSync); hier bewusst eine vereinfachte
-        // synchrone Regel-Prüfung (kein async evaluate möglich):
-        // - eine explizite 'exec'-Kategorie-Regel (pfadlos) blockt, wenn disallowed
-        // - critical/high-Risiko wird blockt, solange keine explizite allow-Regel existiert
-        const risk = assessCommandRisk(command);
-        const category = 'exec';
-        const rules = this._permissionStore ? this._permissionStore.getAllEffective(null) : [];
-        const catRule = rules.find(r => r.tool_type === category && (r.path === null || r.path === '' || r.path === undefined));
-        if (catRule && !catRule.allowed) return { ok: false, output: 'blocked: command not permitted', code: -1 };
-        if ((risk === 'critical' || risk === 'high') && (!catRule || !catRule.allowed)) {
-          return { ok: false, output: 'blocked: high-risk command requires approval (das Menu-Backend wartet auf den Gate)', code: -1 };
-        }
-      }
-      const output = execSync(command, { cwd: allowed, timeout: 30000, encoding: 'utf-8' });
-      return { ok: true, output };
+      const result = await this.exec(command, { project: this._activeProject });
+      if (result && typeof result === 'object' && 'output' in result) return result;
+      return { ok: true, output: String(result == null ? '' : result), code: 0 };
     } catch (e) {
-      return { ok: false, output: e.stderr || e.message, code: e.status };
+      return { ok: false, output: e.message, code: e.status || -1 };
     }
   }
 

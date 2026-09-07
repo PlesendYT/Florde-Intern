@@ -123,7 +123,8 @@ const GitPanel = {
           div.style.cssText = 'padding:2px 8px;font-size:0.8rem;cursor:pointer;display:flex;gap:6px;';
           const labels = { M: 'M', A: 'A', D: 'D', '??': 'U', R: 'R', C: 'C' };
           const colors = { M: 'var(--accent,#6366f1)', A: 'var(--success,#22c55e)', D: 'var(--error,#ef4444)', '??': 'var(--text3)', R: 'var(--warning,#f59e0b)', C: 'var(--warning,#f59e0b)' };
-          div.innerHTML = '<span style="color:' + (colors[code] || 'var(--text3)') + ';width:16px;text-align:center;">' + (labels[code] || code) + '</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + file + '</span>';
+          // Security (F16): file paths are filesystem-controlled → escape.
+          div.innerHTML = '<span style="color:' + (colors[code] || 'var(--text3)') + ';width:16px;text-align:center;">' + _gesc(labels[code] || code) + '</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _gesc(file) + '</span>';
           listEl.appendChild(div);
         }
       }
@@ -186,11 +187,20 @@ const GitPanel = {
       const msg = (parts[1] || '').trim();
       const author = (parts[2] || '').trim();
       const date = (parts[3] || '').trim();
+      // Security (F16): commit message/author/hash are git-controlled → escape.
+      if (!/^[0-9a-f]{4,64}$/i.test(hash)) return '';
       return '<div class="git-change-item" data-hash="' + hash + '" style="padding:2px 8px;font-size:0.8rem;cursor:pointer;display:flex;gap:6px;align-items:center;">' +
         '<span style="color:var(--accent,#6366f1);font-family:monospace;">' + hash.substring(0, 7) + '</span>' +
-        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' + (msg || '').replace(/</g, '&lt;') + '</span>' +
-        '<span style="color:var(--text3);font-size:0.7rem;white-space:nowrap;">' + author + '</span>' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' + _gesc(msg) + '</span>' +
+        '<span style="color:var(--text3);font-size:0.7rem;white-space:nowrap;">' + _gesc(author) + '</span>' +
         '</div>';
     }).join('');
   }
 };
+
+// Security (F16): local escaper (no dependency on script.js load order).
+function _gesc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}

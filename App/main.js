@@ -81,39 +81,60 @@ app.whenReady().then(async () => {
     return cat;
   }
 
-  let reqIdCounter = 0;
+  // Security (F10): in-flight permission prompts, keyed by request fingerprint.
+  const pendingPermission = new Map();
+
+  const { randomBytes } = require('crypto');
   const permissionGate = new PermissionGate({
     store: permissionStore,
-    askHandler: (info) => new Promise((resolve) => {
-      const requestId = 'req-' + (++reqIdCounter);
-      let settled = false;
-      let handler;
-      const finish = (decision) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
+    askHandler: (info) => {
+      // Security (F10): serialize identical concurrent requests onto one
+      // dialog (no duplicate approvals), cap pending requests, correlate
+      // responses with unpredictable IDs so one response can never settle
+      // another request.
+      const fingerprint = JSON.stringify([info.project || null, info.op || null, info.command || null, info.path || null]);
+      if (pendingPermission.has(fingerprint)) return pendingPermission.get(fingerprint);
+      if (pendingPermission.size >= 10) return Promise.resolve('block');
+      const promise = new Promise((resolve) => {
+        const requestId = 'req-' + randomBytes(16).toString('hex');
+        let settled = false;
+        let handler;
+        const cleanup = () => {
           ipcMain.removeListener('sandbox:permission-respond', handler);
-          resolve(decision);
-        }
-      };
-      const timer = setTimeout(() => finish('block'), 120000);
-      handler = (_e, payload) => {
-        if (payload && payload.requestId === requestId && payload.decision && payload.decision !== 'ask') {
-          if (payload.persist === 'always' && info.project) {
-            try {
-              if (payload.decision === 'allow' || payload.decision === 'block') {
-                permissionStore.set(info.project, execRuleToolType(info), payload.decision === 'allow' ? 'allow' : 'block');
-              }
-            } catch {}
+          if (pendingPermission.get(fingerprint) === promise) pendingPermission.delete(fingerprint);
+        };
+        const finish = (decision) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            cleanup();
+            resolve(decision);
           }
-          finish(payload.decision);
+        };
+        const timer = setTimeout(() => finish('block'), 120000);
+        if (timer.unref) timer.unref();
+        handler = (_e, payload) => {
+          if (payload && payload.requestId === requestId && payload.decision && payload.decision !== 'ask') {
+            if (payload.persist === 'always' && info.project) {
+              try {
+                if (payload.decision === 'allow' || payload.decision === 'block') {
+                  permissionStore.set(info.project, execRuleToolType(info), payload.decision === 'allow' ? 'allow' : 'block');
+                }
+              } catch {}
+            }
+            finish(payload.decision);
+          }
+        };
+        ipcMain.on('sandbox:permission-respond', handler);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('sandbox:permission-request', { ...info, requestId, category: resolveToolCategory(info.op), toolType: execRuleToolType(info) });
+        } else {
+          finish('block');
         }
-      };
-      ipcMain.on('sandbox:permission-respond', handler);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('sandbox:permission-request', { ...info, requestId, category: resolveToolCategory(info.op), toolType: execRuleToolType(info) });
-      }
-    }),
+      });
+      pendingPermission.set(fingerprint, promise);
+      return promise;
+    },
   });
   sandboxService.setPermissionGate(permissionGate, permissionStore);
 

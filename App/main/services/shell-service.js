@@ -386,7 +386,7 @@ class ShellService {
           }
         }
       }
-      const proc = spawn(bin, cleanArgs, {
+      const proc = spawn(bin, cleanArgs, { // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process — bin is allowlisted (F5), args validated, shell:false
         env: { ...process.env, ...safeEnv },
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,

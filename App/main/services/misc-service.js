@@ -8,8 +8,26 @@ class MiscService {
     this._browserWindow = null;
   }
 
+  // Security (F19): capability-scoped keychain access. Only namespaced keys
+  // are reachable via IPC so a compromised renderer/plugin cannot read or
+  // overwrite arbitrary secrets. Namespaces: provider:* (LLM keys),
+  // service:* (third-party service keys), app:* (connected-app tokens),
+  // route:* (AI-router route keys).
+  static _KEY_RE = /^(provider|service|app|route):[A-Za-z0-9._-]{1,100}$/;
+
+  _assertKeychainKey(key) {
+    if (typeof key !== 'string' || !MiscService._KEY_RE.test(key)) {
+      throw new Error('Keychain key not allowed');
+    }
+    return key;
+  }
+
   keychainStore({ key, value }) {
     try {
+      this._assertKeychainKey(key);
+      if (typeof value !== 'string' || value.length === 0 || value.length > 10000) {
+        return { success: false, error: 'Invalid secret value' };
+      }
       if (!safeStorage.isEncryptionAvailable()) {
         return { success: false, error: 'OS keychain not available on this system' };
       }
@@ -26,6 +44,7 @@ class MiscService {
   }
 
   keychainRetrieve({ key }) {
+    try { this._assertKeychainKey(key); } catch { return null; }
     if (!safeStorage.isEncryptionAvailable()) return null;
     const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
     try {
@@ -37,6 +56,7 @@ class MiscService {
   }
 
   keychainDelete({ key }) {
+    try { this._assertKeychainKey(key); } catch { return; }
     const keychainPath = path.join(app.getPath('userData'), 'keychain.json');
     try {
       const keychain = JSON.parse(fs.readFileSync(keychainPath, 'utf8'));

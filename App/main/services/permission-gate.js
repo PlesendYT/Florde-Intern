@@ -59,7 +59,14 @@ class PermissionGate {
       this._regexCache.set(src, null);
       return null;
     }
-    if (/(\(.{0,4}\{.+\}|\*\?.*\*|\+.*\+.*\+|\(\?.*\)\{)/.test(src)) {
+    // Strip escapes and character classes, then reject nested quantifiers
+    // like (a+)+ / (.*)* / (\w+){1,10} — the classic ReDoS shape.
+    const stripped = src.replace(/\\./g, '').replace(/\[[^\]]*\]/g, '');
+    if (/\([^()]*[+*][^()]*\)\s*(\+|\*|\{)/.test(stripped)) {
+      this._regexCache.set(src, null);
+      return null;
+    }
+    if (/\{\d+,\d*\}/.test(stripped) && /(\+|\*)/.test(stripped)) {
       this._regexCache.set(src, null);
       return null;
     }

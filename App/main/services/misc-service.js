@@ -53,7 +53,20 @@ class MiscService {
     } catch (e) { return []; }
   }
 
+  _assertHttpUrl(url) {
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2000) {
+      throw new Error('Invalid URL');
+    }
+    let parsed;
+    try { parsed = new URL(url); } catch { throw new Error('Invalid URL'); }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Only http(s) URLs allowed');
+    }
+    return url;
+  }
+
   openBrowser(url) {
+    if (url) this._assertHttpUrl(url);
     if (this._browserWindow && !this._browserWindow.isDestroyed()) {
       this._browserWindow.show();
       this._browserWindow.focus();
@@ -70,8 +83,9 @@ class MiscService {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        webSecurity: false,
-        allowFileAccess: true,
+        webSecurity: true,
+        allowFileAccess: false,
+        allowRunningInsecureContent: false,
         preload: path.join(__dirname, '../../preload/browser-preload.js'),
       },
     });
@@ -86,6 +100,7 @@ class MiscService {
   }
 
   browserNavigate(url) {
+    this._assertHttpUrl(url);
     if (this._browserWindow && !this._browserWindow.isDestroyed()) this._browserWindow.loadURL(url);
   }
 
@@ -132,7 +147,10 @@ class MiscService {
   handleNavReload() { this.browserReload(); }
   handleNavUrl(url) { this.browserNavigate(url); }
   handleNavExternal(url) {
-    if (url) shell.openExternal(url.startsWith('http') ? url : 'https://' + url);
+    if (!url) return;
+    const target = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    try { this._assertHttpUrl(target); } catch { return; }
+    shell.openExternal(target);
   }
 
   attachNavSyncHandler() {

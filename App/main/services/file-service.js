@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const { dialog, app } = require('electron');
 const shared = require('./shared');
 const { getProjectRoot, getProjectMeta, getProjectsDir, isSafeProjectName } = shared;
@@ -181,18 +181,22 @@ class FileService {
       filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
     });
     if (result.canceled || !result.filePath) return false;
-    if (/[;&|`$<>!~{}()\\]/.test(result.filePath)) return false;
+    if (/[\0\n\r]/.test(result.filePath)) return false;
+    if (path.resolve(result.filePath) === path.resolve(root)) return false;
     try {
       if (process.platform === 'win32') {
         const tmpScript = path.join(app.getPath('temp'), 'florde-zip-' + Date.now() + '.ps1');
         const psScript = `param([string]$src,[string]$dst)\nCompress-Archive -Path "$src\\*" -DestinationPath "$dst" -Force`;
         fs.writeFileSync(tmpScript, psScript, 'utf-8');
-        execSync(`powershell -NoProfile -File "${tmpScript}" "${root}" "${result.filePath}"`, { timeout: 30000 });
+        const r = spawnSync('powershell', ['-NoProfile', '-File', tmpScript, root, result.filePath], { timeout: 30000 });
         fs.rmSync(tmpScript, { force: true });
+        if (r.error) throw r.error;
       } else if (process.platform === 'darwin') {
-        execSync(`ditto -c -k --sequesterRsrc --keepParent "${result.filePath}" "${root}"`, { timeout: 30000 });
+        const r = spawnSync('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', result.filePath, root], { timeout: 30000 });
+        if (r.error) throw r.error;
       } else {
-        execSync(`cd "${root}" && zip -r "${result.filePath}" .`, { timeout: 30000 });
+        const r = spawnSync('zip', ['-r', result.filePath, '.'], { cwd: root, timeout: 30000, shell: false });
+        if (r.error) throw r.error;
       }
       return true;
     } catch (e) {

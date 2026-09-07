@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { net, safeStorage } = require('electron');
-const { spawn, spawnSync, execSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 let ptySpawn = null;
 try { ptySpawn = require('node-pty').spawn; } catch { ptySpawn = null; }
@@ -45,87 +45,169 @@ class ShellService {
   }
 
   // ============= GIT =============
+  // Security (F1-F4): never build shell strings. All git invocations use
+  // spawnSync with shell:false plus strict allowlist validation.
+  _gitRun(repoPath, args, timeout = 10000) {
+    if (typeof repoPath !== 'string' || !repoPath || /[\0\n\r]/.test(repoPath)) {
+      throw new Error('Invalid repo path');
+    }
+    const resolved = path.resolve(repoPath);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      throw new Error('Repo path does not exist');
+    }
+    const r = spawnSync('git', args, { cwd: resolved, timeout, encoding: 'utf-8', shell: false });
+    if (r.error) throw r.error;
+    return r;
+  }
+
+  _assertGitRef(name) {
+    if (typeof name !== 'string' || name.length === 0 || name.length > 100) {
+      throw new Error('Invalid git ref');
+    }
+    if (/[\0\n\r\s;|&$`<>"'\\!(){}\[\]*?~#]/.test(name)) throw new Error('Invalid git ref');
+    if (name.startsWith('-') || name.startsWith('/') || name.includes('..') || name.includes('//')) {
+      throw new Error('Invalid git ref');
+    }
+    return name;
+  }
+
+  _assertRepoFile(repoPath, filePath) {
+    if (typeof filePath !== 'string' || !filePath || filePath.length > 500) {
+      throw new Error('Invalid file path');
+    }
+    if (/[\0\n\r]/.test(filePath)) throw new Error('Invalid file path');
+    if (path.isAbsolute(filePath)) throw new Error('Absolute paths not allowed');
+    const resolved = path.resolve(repoPath, filePath);
+    const root = path.resolve(repoPath) + path.sep;
+    if (resolved !== path.resolve(repoPath) && !resolved.startsWith(root)) {
+      throw new Error('Path escapes repo');
+    }
+    return filePath;
+  }
+
   gitStatus(repoPath) {
     try {
-      const out = execSync('git status --porcelain', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out.trim();
+      const r = this._gitRun(repoPath, ['status', '--porcelain']);
+      return (r.stdout || '').trim();
     } catch { return ''; }
   }
 
   gitDiff(repoPath) {
     try {
-      const out = execSync('git diff', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out;
+      const r = this._gitRun(repoPath, ['diff']);
+      return r.stdout || '';
     } catch { return ''; }
   }
 
   gitCommit(repoPath, name, description) {
     try {
-      const out = execSync(`git commit -m "${name.replace(/"/g, '\\"')}" -m "${description.replace(/"/g, '\\"')}"`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return { ok: true, output: out };
+      const title = String(name || '');
+      const body = String(description || '');
+      if (/[\0]/.test(title + body)) return { ok: false, error: 'Invalid commit message' };
+      if (title.length > 500 || body.length > 5000) return { ok: false, error: 'Commit message too long' };
+      const r = this._gitRun(repoPath, ['commit', '-m', title, '-m', body]);
+      if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
+      return { ok: true, output: r.stdout };
     } catch (e) { return { ok: false, error: e.stderr || e.message }; }
   }
 
   gitBranchList(repoPath) {
     try {
-      const out = execSync('git branch -a', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      const r = this._gitRun(repoPath, ['branch', '-a']);
+      return (r.stdout || '').trim().split('\n').map(l => l.trim()).filter(Boolean);
     } catch { return []; }
   }
 
   gitBranchCreate(repoPath, name) {
     try {
-      execSync(`git branch ${name}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+      this._assertGitRef(name);
+      const r = this._gitRun(repoPath, ['branch', name]);
+      if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
       return { ok: true };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
   gitBranchDelete(repoPath, name) {
     try {
-      execSync(`git branch -d ${name}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+      this._assertGitRef(name);
+      const r = this._gitRun(repoPath, ['branch', '-d', name]);
+      if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
       return { ok: true };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
   gitCheckout(repoPath, name) {
     try {
-      execSync(`git checkout ${name}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
+      this._assertGitRef(name);
+      const r = this._gitRun(repoPath, ['checkout', name]);
+      if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
       return { ok: true };
     } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  static _GIT_EXEC_ALLOW = new Set([
+    'status', 'diff', 'log', 'branch', 'blame', 'show', 'ls-files',
+    'rev-parse', 'remote', 'tag', 'stash', 'checkout', 'add', 'commit',
+    'reset', 'clean', 'fetch', 'describe',
+  ]);
+
   gitExec(repoPath, args) {
     try {
-      const out = execSync(`git ${args.join(' ')}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return { ok: true, output: out };
+      if (!Array.isArray(args) || args.length === 0 || args.length > 20) {
+        return { ok: false, error: 'Invalid git args' };
+      }
+      const [sub, ...rest] = args.map(String);
+      if (!ShellService._GIT_EXEC_ALLOW.has(sub)) return { ok: false, error: 'Git subcommand not allowed' };
+      for (const a of args.map(String)) {
+        if (a.length > 300 || /[\0\n\r;|&$`<>"'\\!(){}\[\]*?~#]/.test(a)) {
+          return { ok: false, error: 'Invalid git argument' };
+        }
+      }
+      // Dangerous flags never via generic exec
+      if (rest.includes('--exec') || rest.includes('--upload-pack') || rest.includes('--receive-pack')) {
+        return { ok: false, error: 'Flag not allowed' };
+      }
+      const r = this._gitRun(repoPath, args.map(String));
+      if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
+      return { ok: true, output: r.stdout };
     } catch (e) { return { ok: false, error: e.stderr || e.message }; }
   }
 
   gitLog(repoPath, limit = 50) {
     try {
-      const out = execSync(`git log --oneline -n ${limit}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out.trim().split('\n').filter(Boolean);
+      const n = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
+      const r = this._gitRun(repoPath, ['log', '--oneline', '-n', String(n)]);
+      return (r.stdout || '').trim().split('\n').filter(Boolean);
     } catch { return []; }
   }
 
   gitBlame(repoPath, filePath) {
     try {
-      const out = execSync(`git blame ${filePath}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out;
+      this._assertRepoFile(repoPath, filePath);
+      const r = this._gitRun(repoPath, ['blame', '--', filePath]);
+      return r.stdout || '';
     } catch { return ''; }
   }
 
   gitDiffFile(repoPath, filePath) {
     try {
-      const out = execSync(`git diff ${filePath}`, { cwd: repoPath, timeout: 10000, encoding: 'utf-8' });
-      return out;
+      this._assertRepoFile(repoPath, filePath);
+      const r = this._gitRun(repoPath, ['diff', '--', filePath]);
+      return r.stdout || '';
     } catch { return ''; }
   }
 
   gitPush(repoPath, remote = 'origin', branch) {
     try {
-      const b = branch || execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' }).trim();
-      const r = spawnSync('git', ['push', remote, b], { cwd: repoPath, timeout: 30000, encoding: 'utf-8', shell: false });
+      let b = branch;
+      if (!b) {
+        const r0 = this._gitRun(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+        b = (r0.stdout || '').trim();
+      }
+      this._assertGitRef(b);
+      const allowedRemote = /^[A-Za-z0-9._-]+$/;
+      const rmt = allowedRemote.test(String(remote)) ? String(remote) : 'origin';
+      const r = spawnSync('git', ['push', rmt, b], { cwd: path.resolve(repoPath), timeout: 30000, encoding: 'utf-8', shell: false });
       if (r.error) throw r.error;
       if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
       return { ok: true };
@@ -134,8 +216,15 @@ class ShellService {
 
   gitPull(repoPath, remote = 'origin', branch) {
     try {
-      const b = branch || execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, timeout: 10000, encoding: 'utf-8' }).trim();
-      const r = spawnSync('git', ['pull', remote, b], { cwd: repoPath, timeout: 30000, encoding: 'utf-8', shell: false });
+      let b = branch;
+      if (!b) {
+        const r0 = this._gitRun(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+        b = (r0.stdout || '').trim();
+      }
+      this._assertGitRef(b);
+      const allowedRemote = /^[A-Za-z0-9._-]+$/;
+      const rmt = allowedRemote.test(String(remote)) ? String(remote) : 'origin';
+      const r = spawnSync('git', ['pull', rmt, b], { cwd: path.resolve(repoPath), timeout: 30000, encoding: 'utf-8', shell: false });
       if (r.error) throw r.error;
       if (r.status !== 0) return { ok: false, error: r.stderr || r.stdout };
       return { ok: true };
@@ -267,12 +356,40 @@ class ShellService {
   }
 
   // ============= MCP SERVER SPAWN =============
+  // Security (F5): never spawn with shell:true. Executable allowlist +
+  // validated arg array, shell:false on all platforms.
+  static _MCP_ALLOW_BIN = new Set([
+    'node', 'python', 'python3', 'npx', 'uvx', 'bun', 'deno',
+  ]);
+
   mcpStartServer(id, command, args, env) {
     try {
-      const proc = spawn(command, args, {
-        env: { ...process.env, ...env },
+      const bin = String(command || '').trim();
+      if (!bin || /[\0\n\r\s;|&$`<>"'\\!(){}\[\]*?~#]/.test(bin)) {
+        return { ok: false, error: 'Invalid MCP executable' };
+      }
+      const base = bin.split('/').pop().split('\\').pop().replace(/\.exe$/i, '');
+      if (!ShellService._MCP_ALLOW_BIN.has(base)) {
+        return { ok: false, error: 'MCP executable not allowed: ' + base };
+      }
+      if (!Array.isArray(args)) args = [];
+      if (args.length > 50) return { ok: false, error: 'Too many MCP args' };
+      const cleanArgs = args.map(String);
+      for (const a of cleanArgs) {
+        if (a.length > 1000 || /[\0\n\r]/.test(a)) return { ok: false, error: 'Invalid MCP argument' };
+      }
+      const safeEnv = {};
+      if (env && typeof env === 'object') {
+        for (const [k, v] of Object.entries(env)) {
+          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) && typeof v === 'string' && v.length <= 5000) {
+            safeEnv[k] = v;
+          }
+        }
+      }
+      const proc = spawn(bin, cleanArgs, {
+        env: { ...process.env, ...safeEnv },
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: process.platform === 'win32'
+        shell: false,
       });
       this._mcpServerProcesses.set(id, proc);
       proc.stdout.on('data', () => {});

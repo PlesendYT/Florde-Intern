@@ -121,7 +121,14 @@ class SandboxService {
   execSandboxCommand(sandboxPath, command) {
     const allowed = getSandboxDir();
     if (!sandboxPath || path.resolve(sandboxPath) !== path.resolve(allowed)) return { ok: false, output: 'Access denied: invalid sandbox path', code: -1 };
-    if (/[;&|`$<>!~{}()\n\\]/.test(command) || command.trimStart().startsWith('-')) return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
+    if (typeof command !== 'string' || command.length === 0 || command.length > 2000) {
+      return { ok: false, output: 'Rejected: invalid command', code: -1 };
+    }
+    // Legacy string-command path: deny shell metacharacters outright
+    // (backtick, $(), etc.) — privileged execution goes via exec() + gate.
+    if (/[;&|`$<>!~{}()\n\\]/.test(command) || /`/.test(command) || command.trimStart().startsWith('-')) {
+      return { ok: false, output: 'Rejected: command contains unsafe characters', code: -1 };
+    }
     try {
       if (this._permissionGate) {
         // execSandboxCommand ist synchron (execSync); hier bewusst eine vereinfachte

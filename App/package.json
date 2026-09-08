@@ -28,8 +28,8 @@
     "@electron/rebuild": "^4.2.0",
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-node-resolve": "^16.0.3",
-    "electron": "^30.0.0",
-    "electron-builder": "^24.0.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0"
   },
   "build": {

@@ -58,18 +58,9 @@ class McpClient {
   }
 
   async _connectStdio() {
-    const { spawn } = window.__mcpSpawn || {};
-    if (!spawn) throw new Error('MCP stdio not available (requires preload bridge)');
-    this._process = spawn(this.command, this.args, {
-      env: { ...process.env, ...this.env },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-    const decoder = new TextDecoder();
-    this._buffer = '';
-    this._process.stdout.on('data', (chunk) => this._onData(decoder.decode(chunk, { stream: true })));
-    this._process.stderr.on('data', () => {});
-    this._process.on('exit', () => { this._connected = false; });
-    await new Promise(r => setTimeout(r, 500));
+    // Security (b-03): renderer-side spawning was removed. stdio MCP servers
+    // run via the main process ('MCP: Start server' uses mcp:start-server).
+    throw new Error('MCP stdio is only available via the main process (mcp:start-server IPC). Configure the server in Settings → MCP.');
   }
 
   async _connectSSE() {

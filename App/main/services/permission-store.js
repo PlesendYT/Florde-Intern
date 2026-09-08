@@ -41,6 +41,12 @@ class PermissionStore {
     if (!cols.includes('global')) {
       this.db.exec(`ALTER TABLE permissions ADD COLUMN global INTEGER NOT NULL DEFAULT 0`);
     }
+    // Security (b-05): renderer-created __global__ rules were spoofable via IPC
+    // and could disable the gate for all projects. Global rules are no longer
+    // creatable via IPC — purge any that exist so only project-scoped rules apply.
+    try {
+      this.db.prepare(`DELETE FROM permissions WHERE project = ?`).run(GLOBAL_PROJECT);
+    } catch {}
     return this;
   }
 

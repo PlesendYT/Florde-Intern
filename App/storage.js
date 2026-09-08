@@ -13,7 +13,28 @@ class FlordeStorage {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    this.db = new Database(this.dbPath);
+    // Security/robustness (b-25): busy timeout instead of instant SQLITE_BUSY,
+    // integrity check on open (corrupt files are quarantined, not silently used).
+    let db;
+    try {
+      db = new Database(this.dbPath);
+      db.pragma('busy_timeout = 5000');
+      const check = db.pragma('quick_check', { simple: true });
+      if (check !== 'ok') throw new Error('integrity check failed: ' + check);
+    } catch (e) {
+      try { if (db) db.close(); } catch {}
+      const backup = this.dbPath + '.corrupt-' + Date.now();
+      try {
+        if (fs.existsSync(this.dbPath)) fs.renameSync(this.dbPath, backup);
+        for (const suffix of ['-wal', '-shm', '-journal']) {
+          try { if (fs.existsSync(this.dbPath + suffix)) fs.renameSync(this.dbPath + suffix, backup + suffix); } catch {}
+        }
+      } catch {}
+      console.error('[storage] database corrupt, quarantined to ' + backup + ' — starting fresh:', e.message);
+      db = new Database(this.dbPath);
+      db.pragma('busy_timeout = 5000');
+    }
+    this.db = db;
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 

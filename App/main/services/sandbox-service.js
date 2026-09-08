@@ -31,11 +31,26 @@ class SandboxService {
   }
 
   setCustomTools(project, tools) {
+    // Security (b-05 adjacent): custom tools become container entrypoint
+    // scripts — validate shape server-side so IPC cannot inject garbage.
+    const { isSafeProjectName } = shared;
+    if (!isSafeProjectName(project)) return { ok: false, error: 'invalid project' };
+    if (!Array.isArray(tools) || tools.length > 50) return { ok: false, error: 'invalid tools' };
+    const clean = [];
+    for (const t of tools) {
+      if (!t || typeof t !== 'object') return { ok: false, error: 'invalid tool' };
+      if (!['apt', 'deb', 'appimage'].includes(t.type)) return { ok: false, error: 'invalid tool type' };
+      if (typeof t.name !== 'string' || !/^[A-Za-z0-9._~:,/-]{1,200}$/.test(t.name)) {
+        return { ok: false, error: 'invalid tool name' };
+      }
+      if (/[;&|`$<>!(){}\n\\]/.test(t.name)) return { ok: false, error: 'invalid tool name' };
+      clean.push({ type: t.type, name: t.name, global: t.global === true });
+    }
     try {
       const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
       const sandbox = settings.sandbox || {};
       sandbox.customTools = sandbox.customTools || {};
-      sandbox.customTools[project] = tools;
+      sandbox.customTools[project] = clean;
       settings.sandbox = sandbox;
       fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
       return { ok: true };
@@ -186,6 +201,24 @@ class SandboxService {
   }
 
   async switchBackend(type) {
+    const allowed = new Set(['none', 'firejail', 'docker', 'podman', 'vmware', 'qemu']);
+    if (!allowed.has(type)) return { ok: false, error: 'unknown backend: ' + type };
+    // Security (b-09): switching to weak isolation (none/firejail) requires
+    // explicit approval — the blacklist filter is not a security boundary.
+    if ((type === 'none' || type === 'firejail') && this._permissionGate) {
+      try {
+        await this._permissionGate.checkAndRun({
+          project: this._activeProject || null,
+          backend: this._manager.activeType,
+          op: 'switch_backend',
+          command: type,
+          path: null,
+          run: async () => true,
+        });
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
     const r = await this._manager.trySwitchBackend(type);
     if (this._activeProject && (type === 'docker' || type === 'podman')) {
       const t = this.getCustomTools(this._activeProject);
@@ -313,15 +346,48 @@ class SandboxService {
     }
   }
 
+  // Security (b-05): permission rules via IPC are strictly project-scoped.
+  // global:true is rejected — otherwise any renderer/plugin could disable the
+  // gate for all projects. tool_type/action/path are allowlisted.
+  static _RULE_TOOL_RE = /^[a-z][a-z0-9_-]{0,40}$/;
+  static _RULE_CATEGORIES = new Set([
+    'exec', 'file-read', 'file-write', 'file-delete', 'file-list',
+    'vm-snapshot', 'vm-input', 'browser', 'git', 'terminal', 'mcp',
+  ]);
+
+  _validateRule(rule) {
+    if (!rule || typeof rule !== 'object') return 'invalid rule';
+    if (rule.global) return 'global rules not allowed via IPC';
+    const { isSafeProjectName } = shared;
+    if (!isSafeProjectName(rule.project)) return 'invalid project';
+    if (typeof rule.tool_type !== 'string' || !SandboxService._RULE_TOOL_RE.test(rule.tool_type)) {
+      return 'invalid tool_type';
+    }
+    if (!['allow', 'ask', 'block'].includes(rule.action)) return 'invalid action';
+    if (rule.path !== undefined && (typeof rule.path !== 'string' || rule.path.length > 300)) {
+      return 'invalid path';
+    }
+    return null;
+  }
+
   addPermissionRule(rule) {
     if (!this._permissionStore) return { ok: false, error: 'permission store not initialized' };
-    const r = this._permissionStore.set(rule.project, rule.tool_type, rule.action, { path: rule.path, global: rule.global });
+    const err = this._validateRule(rule);
+    if (err) return { ok: false, error: err };
+    const r = this._permissionStore.set(rule.project, rule.tool_type, rule.action, { path: rule.path || '', global: false });
     return { ok: true, rule: r };
   }
 
   removePermissionRule(rule) {
     if (!this._permissionStore) return { ok: false, error: 'permission store not initialized' };
-    const done = this._permissionStore.remove(rule.project, rule.tool_type, { path: rule.path, global: rule.global });
+    if (!rule || typeof rule !== 'object') return { ok: false };
+    if (rule.global) return { ok: false, error: 'global rules not allowed via IPC' };
+    const { isSafeProjectName } = shared;
+    if (!isSafeProjectName(rule.project)) return { ok: false };
+    if (typeof rule.tool_type !== 'string' || !SandboxService._RULE_TOOL_RE.test(rule.tool_type)) {
+      return { ok: false };
+    }
+    const done = this._permissionStore.remove(rule.project, rule.tool_type, { path: rule.path || '', global: false });
     return { ok: done };
   }
 

@@ -142,6 +142,9 @@ app.whenReady().then(async () => {
   const translationService = new TranslationService();
   const fileService = new FileService({ getMainWindow });
   const shellService = new ShellService();
+  if (typeof shellService.setPermissionGate === 'function') {
+    shellService.setPermissionGate(permissionGate);
+  }
   const dbService = new DbService();
   const systemService = new SystemService({ getMainWindow });
   const miscService = new MiscService({ getMainWindow });

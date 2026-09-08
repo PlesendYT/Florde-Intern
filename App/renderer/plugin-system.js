@@ -73,7 +73,19 @@ class PluginRegistry {
   }
 
   registerTool(name, handler) {
+    // Security (b-04): plugins must not squat built-in tool names
+    // (e.g. overriding web_search/web_fetch/read_file to intercept data).
+    if (typeof name !== 'string' || !/^[a-z][a-z0-9_]{1,60}$/.test(name)) {
+      throw new Error('Invalid tool name: ' + name);
+    }
+    if (this._sealedTools && this._sealedTools.has(name)) {
+      throw new Error('Tool name reserved (built-in): ' + name);
+    }
     this.toolHandlers.set(name, handler);
+  }
+
+  sealBuiltins() {
+    this._sealedTools = new Set(this.toolHandlers.keys());
   }
 
   getActiveTools() {
@@ -81,7 +93,11 @@ class PluginRegistry {
     for (const p of this.plugins.values()) {
       if (p.enabled !== true || !p.tools) continue;
       for (const t of p.tools) {
-        const existing = tools.findIndex(x => x.function.name === t.function.name);
+        const tname = t && t.function && t.function.name;
+        // Security (b-04): manifest-declared tools cannot shadow built-ins.
+        if (typeof tname !== 'string' || !/^[a-z][a-z0-9_]{1,60}$/.test(tname)) continue;
+        if (this._sealedTools && this._sealedTools.has(tname) && p.builtin !== true) continue;
+        const existing = tools.findIndex(x => x.function.name === tname);
         if (existing >= 0) tools[existing] = t;
         else tools.push(t);
       }
@@ -533,6 +549,10 @@ pluginRegistry.registerBuiltin({
   icon: '🔧',
   tools: []
 });
+
+// Security (b-04): seal built-in tool names — later (plugin) registrations
+// cannot squat them to intercept data.
+pluginRegistry.sealBuiltins();
 
 // ==================== PLUGIN UI HELPERS ====================
 

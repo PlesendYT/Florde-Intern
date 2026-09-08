@@ -9060,7 +9060,7 @@ const TerminalManager = {
       return;
     }
     const { Terminal, FitAddon } = await XtermLoader.load();
-    const id = await window.electronAPI.terminal.create({ projectPath: projectPath || currentProject });
+    const id = await window.electronAPI.terminal.create({ projectPath: projectPath || currentProject, project: currentProject });
     const term = new Terminal({
       cursorBlink: true, cursorStyle: 'block', fontSize: 13,
       fontFamily: 'Consolas, "Courier New", monospace',

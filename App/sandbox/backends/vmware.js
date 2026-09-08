@@ -5,6 +5,11 @@ const os = require('os');
 const { SandboxBackend } = require('../backend');
 const { VNCClient } = require('../vnc-client');
 
+// Security (b-08/b-33): POSIX single-quote for guest-shell interpolation.
+function _shQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 const KEY_MAP = {
   enter: 0xff0d, backspace: 0xff08, tab: 0xff09,
   escape: 0xff1b, space: 0x0020,
@@ -144,16 +149,21 @@ class VMWareBackend extends SandboxBackend {
 
   async writeFile(filePath, content) {
     if (!this._initialized) await this.init();
-    const hostPath = path.join(os.tmpdir(), `vmware-file-${Date.now()}`);
+    const crypto = require('crypto');
+    const hostPath = path.join(os.tmpdir(), `vmware-file-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`);
     fs.writeFileSync(hostPath, content, 'utf-8');
-    const r = this._run(['copyFileFromHostToGuest', this._vmxPath, hostPath, filePath]);
-    fs.rmSync(hostPath);
-    if (!r.ok) throw new Error('Failed to write file: ' + r.stderr);
+    try {
+      const r = this._run(['copyFileFromHostToGuest', this._vmxPath, hostPath, filePath]);
+      if (!r.ok) throw new Error('Failed to write file: ' + r.stderr);
+    } finally {
+      // Security (b-33): temp file must not linger on failure.
+      try { fs.rmSync(hostPath, { force: true }); } catch {}
+    }
   }
 
   async listFiles(dirPath) {
     if (!this._initialized) await this.init();
-    const r = await this.exec(`ls -1 ${dirPath}`);
+    const r = await this.exec(`ls -1 ${_shQuote(dirPath || '.')}`);
     if (!r.ok) throw new Error('Failed to list files');
     return r.output.split('\n').filter(Boolean);
   }

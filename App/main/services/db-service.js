@@ -26,9 +26,11 @@ class DbService {
     if (!projectName) return null;
     let store = this._stores.get(projectName);
     if (store) return store;
-    const root = getProjectRoot(projectName);
-    if (!root) return null;
-    const flordeDir = path.join(root, '.florde');
+    // Security (b-24): single source of truth for the .florde dir.
+    // _getStore previously used root/.florde directly while _flordeDirFor
+    // resolves via project markers — two different database.db paths.
+    const flordeDir = this._flordeDirFor(projectName);
+    if (!flordeDir) return null;
     store = new FlordeStorage(path.join(flordeDir, 'database.db'));
     try {
       store.init();
@@ -182,16 +184,76 @@ class DbService {
     return store.getAll(namespace);
   }
 
+  // Security (b-06): raw SQL over IPC is restricted to a fixed statement
+  // shape over known tables. No stacked statements, no PRAGMA/ATTACH/DDL.
+  static _SQL_TABLES = new Set([
+    'kv_store', 'audit_log', 'feature_timeline', 'permissions',
+    'layout_states', 'todos', 'notes', 'decisions',
+    'time_sessions', 'time_summary',
+  ]);
+
+  static _checkSql(sql, kind) {
+    if (typeof sql !== 'string' || sql.length === 0 || sql.length > 5000) return 'invalid sql';
+    if (/[\0]/.test(sql)) return 'invalid sql';
+    const t = sql.trim();
+    if (/;/.test(t.slice(0, -1)) || /;\s*$/.test(t)) {
+      // Forbid stacked statements entirely (trailing semicolon included).
+      return 'stacked statements not allowed';
+    }
+    const up = t.toUpperCase();
+    if (kind === 'query') {
+      if (!/^SELECT\b/.test(up)) return 'only SELECT allowed';
+    } else {
+      if (!/^(INSERT|UPDATE|DELETE)\b/.test(up)) return 'only INSERT/UPDATE/DELETE allowed';
+    }
+    if (/\b(PRAGMA|ATTACH|DETACH|VACUUM|REINDEX|CREATE|DROP|ALTER|TRUNCATE|GRANT|REPLACE\s+INTO\s+sqlite_)\b/.test(up)) {
+      return 'statement not allowed';
+    }
+    // Every referenced table must be a known app table.
+    const tables = new Set();
+    for (const m of t.matchAll(/\b(?:FROM|INTO|UPDATE|TABLE)\s+([A-Za-z_][A-Za-z0-9_]*)/gi)) {
+      tables.add(m[1].toLowerCase());
+    }
+    for (const m of t.matchAll(/\bJOIN\s+([A-Za-z_][A-Za-z0-9_]*)/gi)) {
+      tables.add(m[1].toLowerCase());
+    }
+    if (tables.size === 0) return 'no table referenced';
+    for (const tb of tables) {
+      if (!DbService._SQL_TABLES.has(tb)) return 'unknown table: ' + tb;
+    }
+    return null;
+  }
+
+  static _checkParams(params) {
+    if (params === undefined) return [];
+    if (!Array.isArray(params) || params.length > 100) return null;
+    for (const p of params) {
+      if (p !== null && typeof p !== 'string' && typeof p !== 'number' && typeof p !== 'boolean') {
+        return null;
+      }
+      if (typeof p === 'string' && p.length > 100000) return null;
+    }
+    return params;
+  }
+
   query(projectName, sql, params) {
+    const err = DbService._checkSql(sql, 'query');
+    if (err) throw new Error('query rejected: ' + err);
+    const clean = DbService._checkParams(params);
+    if (clean === null) throw new Error('query rejected: invalid params');
     const store = this._getStore(projectName);
     if (!store) return [];
-    return store.query(sql, params || []);
+    return store.query(sql, clean);
   }
 
   run(projectName, sql, params) {
+    const err = DbService._checkSql(sql, 'run');
+    if (err) throw new Error('run rejected: ' + err);
+    const clean = DbService._checkParams(params);
+    if (clean === null) throw new Error('run rejected: invalid params');
     const store = this._getStore(projectName);
     if (!store) return null;
-    return store.run(sql, params || []);
+    return store.run(sql, clean);
   }
 
   close(projectName) {

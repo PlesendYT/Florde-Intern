@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
-let mcpSpawn = null;
-try { mcpSpawn = { spawn: require('child_process').spawn }; } catch (e) { mcpSpawn = { spawn: null }; }
+// Security (b-03): child_process.spawn is NEVER exposed to the renderer.
+// MCP servers start exclusively via the main-process 'mcp:start-server' IPC
+// (allowlisted in ShellService.mcpStartServer).
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
@@ -114,8 +115,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-
-  __mcpSpawn: mcpSpawn,
 
   browser: {
     open: (url) => ipcRenderer.invoke('browser:open', url),

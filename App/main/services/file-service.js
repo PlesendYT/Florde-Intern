@@ -39,6 +39,9 @@ class FileService {
     if (!isSafeProjectName(name)) return { ok: false, error: 'invalid name' };
     const dir = path.join(getProjectsDir(), name);
     if (fs.existsSync(dir)) return { ok: false, error: 'exists' };
+    // Security (b-02): never mount sensitive host dirs as local projects.
+    const mountCheck = shared.assertSafeMountRoot(folderPath);
+    if (!mountCheck.ok) return { ok: false, error: mountCheck.error };
     if (!fs.existsSync(folderPath)) return { ok: false, error: 'path not found' };
     fs.mkdirSync(dir, { recursive: true });
     const meta = { name, type: 'local', path: folderPath, createdAt: Date.now() };
@@ -49,7 +52,12 @@ class FileService {
 
   deleteProject(name) {
     if (!isSafeProjectName(name)) return { ok: false, error: 'invalid name' };
-    const dir = path.join(getProjectsDir(), name);
+    const projectsRoot = path.resolve(getProjectsDir());
+    const dir = path.resolve(getProjectsDir(), name);
+    // Security (b-01): canonical containment — dir must stay inside projectsRoot.
+    if (dir !== path.join(projectsRoot, name) || !dir.startsWith(projectsRoot + path.sep)) {
+      return { ok: false, error: 'invalid name' };
+    }
     if (!fs.existsSync(dir)) return { ok: false, error: 'not found' };
     const meta = getProjectMeta(name);
     let flordePath = null;

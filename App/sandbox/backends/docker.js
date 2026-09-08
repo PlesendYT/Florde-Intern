@@ -7,6 +7,11 @@ function projectHash(project) {
   return (project ? crypto.createHash('sha256').update(String(project)).digest('hex').substring(0, 12) : 'default');
 }
 
+// Security (b-07/b-08): POSIX single-quote for guest-shell interpolation.
+function _shQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 class DockerBackend extends SandboxBackend {
   get type() { return 'docker'; }
   get label() { return 'Docker Sandbox'; }
@@ -146,7 +151,9 @@ class DockerBackend extends SandboxBackend {
     if (dir) {
       this._run(['exec', this._containerName, 'mkdir', '-p', dir]);
     }
-    const result = this._run(['exec', '-i', this._containerName, 'sh', '-c', `cat > ${target}`], 10000, content);
+    // Security (b-07): target is guest-shell-quoted — _resolvePath only jails
+    // the prefix, metacharacters would break out of `cat > ...` otherwise.
+    const result = this._run(['exec', '-i', this._containerName, 'sh', '-c', `cat > ${_shQuote(target)}`], 10000, content);
     if (!result.ok) throw new Error('Failed to write file');
   }
 

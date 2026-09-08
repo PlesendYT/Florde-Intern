@@ -135,6 +135,16 @@ class PermissionGate {
       if (d) return { ...d, risk: assessCommandRisk(command || ''), category: cand };
     }
 
+    // Security (b-09/b-10): high-capability ops ask by default even without
+    // rules — interactive shells and weak-isolation switches must never be
+    // silent. Explicit allow-rules still apply above.
+    if (category === 'terminal') {
+      return { decision: 'ask', source: 'op-default', risk: 'high', category };
+    }
+    if (category === 'switch_backend' && (command === 'none' || command === 'firejail')) {
+      return { decision: 'ask', source: 'op-default', risk: 'high', category };
+    }
+
     const risk = assessCommandRisk(command || '');
     return { decision: riskDefault(risk), source: 'risk-default', risk };
   }

@@ -15,7 +15,14 @@ function getProjectsDir() {
 }
 
 function isSafeProjectName(name) {
-  return typeof name === 'string' && name.length > 0 && name.length <= 100 && !/[\/\\]/.test(name);
+  // Security (b-01): '..' and '.' passed the old check (only '/' was tested),
+  // allowing deletion of the whole projects dir. Reject them plus NUL/control
+  // chars and names that could escape path.join.
+  if (typeof name !== 'string' || name.length === 0 || name.length > 100) return false;
+  if (/[\/\\\0-\x1f\x7f]/.test(name)) return false;
+  if (name === '.' || name === '..') return false;
+  if (name !== name.trim()) return false;
+  return true;
 }
 
 function getSandboxDir() {
@@ -85,6 +92,57 @@ function getFlordeDir(name) {
   return path.join(root, '.florde');
 }
 
+// Security (b-02): block mounting sensitive host locations as local projects.
+// Returns {ok:true, root} with the canonical path, or {ok:false, error}.
+function assertSafeMountRoot(folderPath) {
+  if (typeof folderPath !== 'string' || folderPath.length === 0 || folderPath.length > 1000) {
+    return { ok: false, error: 'invalid path' };
+  }
+  if (/[\0]/.test(folderPath)) return { ok: false, error: 'invalid path' };
+  let canon;
+  try {
+    canon = fs.realpathSync(path.resolve(folderPath));
+  } catch {
+    return { ok: false, error: 'path not found' };
+  }
+  let stat;
+  try {
+    stat = fs.statSync(canon);
+  } catch {
+    return { ok: false, error: 'path not found' };
+  }
+  if (!stat.isDirectory()) return { ok: false, error: 'not a directory' };
+  const lower = canon.toLowerCase();
+  if (process.platform === 'win32') {
+    const drive = path.parse(canon).root.toLowerCase();
+    if (lower === drive) return { ok: false, error: 'drive root not allowed' };
+    const blocked = [
+      (process.env.SystemRoot || 'C:\\Windows').toLowerCase(),
+      path.join(drive, 'Program Files').toLowerCase(),
+      path.join(drive, 'Program Files (x86)').toLowerCase(),
+      path.join(drive, 'ProgramData').toLowerCase(),
+    ];
+    for (const b of blocked) {
+      if (lower === b || lower.startsWith(b + '\\')) {
+        return { ok: false, error: 'system directory not allowed' };
+      }
+    }
+  } else {
+    if (canon === '/') return { ok: false, error: 'filesystem root not allowed' };
+    const first = canon.split('/').filter(Boolean)[0] || '';
+    if (['etc', 'proc', 'sys', 'dev', 'boot', 'root', 'run', 'var'].includes(first)) {
+      // Allow project-like subdirs (e.g. /var/www/app) but never the top itself
+      // or ultra-sensitive trees (ssh keys, shadow, kernel interfaces).
+      if (canon.split('/').filter(Boolean).length <= 2 || ['etc', 'proc', 'sys', 'dev', 'root'].includes(first)) {
+        return { ok: false, error: 'system directory not allowed' };
+      }
+    }
+    const home = (process.env.HOME || '').toLowerCase();
+    if (home && lower === home) return { ok: false, error: 'home root not allowed (pick a subfolder)' };
+  }
+  return { ok: true, root: canon };
+}
+
 module.exports = {
   getSettingsPath,
   getProjectsDir,
@@ -96,4 +154,5 @@ module.exports = {
   getProjectMeta,
   resolveSafe,
   getFlordeDir,
+  assertSafeMountRoot,
 };

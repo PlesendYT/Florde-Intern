@@ -152,8 +152,9 @@ const SandboxSettings = {
     });
   },
 
-  // Permission-Regeln pro Projekt: pro Regel Tool-Typ, Pfad/Regex, Aktion (allow/ask/block)
-  // und "global"-Flag. 'ask' als Auswahl löscht die Regel (kein Eintrag = Default-Rückfrage).
+  // Permission-Regeln pro Projekt: pro Regel Tool-Typ, Pfad/Regex, Aktion (allow/ask/block).
+  // Security (b-05): Regeln sind strikt projektbezogen — globale Regeln sind
+  // per IPC nicht mehr erstellbar. 'ask' als Auswahl löscht die Regel.
   async _renderPermissionRules(status) {
     const box = document.getElementById('sandbox-permission-rules');
     if (!box) return;
@@ -162,15 +163,13 @@ const SandboxSettings = {
       box.innerHTML = '<div style="font-size:0.85rem;color:var(--text3);">Öffne ein Projekt, um Permission-Regeln pro Projekt zu konfigurieren.</div>';
       return;
     }
-    const all = (await window.electronAPI.sandbox.getPermissionRules?.(project)) || [];
-    const globals = all.filter(r => r.global);
-    const locals = all.filter(r => !r.global);
+    const all = ((await window.electronAPI.sandbox.getPermissionRules?.(project)) || []).filter(r => !r.global);
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const renderRow = (rule, idx, isGlobal) => {
+    const renderRow = (rule, idx) => {
       const sel = rule.action === 'ask' ? 'ask' : (rule.action === 'block' ? 'block' : 'allow');
       const pathVal = rule.path || '';
       return `
-        <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.4rem;flex-wrap:wrap;" data-rule-row="${idx}" data-rule-global="${isGlobal ? 1 : 0}">
+        <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.4rem;flex-wrap:wrap;" data-rule-row="${idx}">
           <span style="flex:0 0 110px;font-size:0.85rem;font-weight:600;">${esc(rule.tool_type)}</span>
           <input class="pr-path" type="text" value="${esc(pathVal)}" placeholder="Pfad / Regex / backend:…" style="flex:2;min-width:160px;padding:0.3rem;" />
           <select class="pr-action" style="flex:0 0 110px;padding:0.3rem;">
@@ -178,27 +177,19 @@ const SandboxSettings = {
             <option value="ask" ${sel === 'ask' ? 'selected' : ''}>ask</option>
             <option value="block" ${sel === 'block' ? 'selected' : ''}>block</option>
           </select>
-          <label style="font-size:0.8rem;display:flex;align-items:center;gap:0.2rem;"><input class="pr-global" type="checkbox" ${rule.global ? 'checked' : ''} ${isGlobal ? 'disabled' : ''} /> global</label>
           <button class="btn btn-small pr-remove">×</button>
         </div>`;
     };
-    const globalRows = globals.map((r, i) => renderRow(r, i, true)).join('');
-    const localRows = locals.map((r, i) => renderRow(r, i, false)).join('');
-    const header = (label, rows) => `
-      <div style="font-weight:600;margin:0.4rem 0 0.3rem;">${label}</div>
-      ${rows || '<div style="font-size:0.85rem;color:var(--text3);">Keine Regeln.</div>'}`;
+    const localRows = all.map((r, i) => renderRow(r, i)).join('');
     box.innerHTML = `
       <div style="font-weight:600;margin-bottom:0.4rem;">Permission-Regeln (pro Projekt)</div>
-      ${header('Global', globalRows)}
-      ${header('Projekt', localRows)}
+      ${localRows || '<div style="font-size:0.85rem;color:var(--text3);">Keine Regeln.</div>'}
       <button id="btn-pr-add" class="btn btn-small" style="margin-top:0.4rem;">Regel hinzufügen</button>
       <div style="font-size:0.75rem;color:var(--text3);margin-top:0.3rem;">„ask" ohne Eintrag = Default (Rückfrage). „ask" als Auswahl löscht die Regel.</div>`;
 
     const ruleAt = (row) => {
       const idx = parseInt(row.dataset.ruleRow, 10);
-      const isGlobal = row.dataset.ruleGlobal === '1';
-      const list = isGlobal ? globals : locals;
-      return list[idx];
+      return all[idx];
     };
 
     const persist = async (row) => {
@@ -208,19 +199,18 @@ const SandboxSettings = {
       if (!rule) return;
       const action = row.querySelector('.pr-action').value;
       const pathVal = row.querySelector('.pr-path').value.trim();
-      const isGlobalRow = row.dataset.ruleGlobal === '1';
       if (action === 'ask') {
         await window.electronAPI.sandbox.removePermissionRule?.({
-          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: isGlobalRow,
+          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: false,
         });
         await this._renderPermissionRules(status);
         return;
       }
       await window.electronAPI.sandbox.removePermissionRule?.({
-        project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: isGlobalRow,
+        project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: false,
       });
       await window.electronAPI.sandbox.setPermissionRule?.({
-        project: curProject, tool_type: rule.tool_type, action, path: pathVal, global: isGlobalRow,
+        project: curProject, tool_type: rule.tool_type, action, path: pathVal, global: false,
       });
       await this._renderPermissionRules(status);
     };
@@ -237,14 +227,13 @@ const SandboxSettings = {
     box.querySelectorAll('[data-rule-row]').forEach((row) => {
       row.querySelector('.pr-action')?.addEventListener('change', () => persist(row));
       row.querySelector('.pr-path')?.addEventListener('change', () => persist(row));
-      row.querySelector('.pr-global')?.addEventListener('change', () => persist(row));
       row.querySelector('.pr-remove')?.addEventListener('click', async () => {
         const rule = ruleAt(row);
         if (!rule) return;
         const curProject = (typeof currentProject !== 'undefined' && currentProject) ? currentProject : null;
         if (!curProject) return;
         await window.electronAPI.sandbox.removePermissionRule?.({
-          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: row.dataset.ruleGlobal === '1',
+          project: curProject, tool_type: rule.tool_type, path: rule.path || '', global: false,
         });
         await this._renderPermissionRules(status);
       });

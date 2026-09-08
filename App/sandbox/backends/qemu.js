@@ -5,6 +5,11 @@ const os = require('os');
 const { SandboxBackend } = require('../backend');
 const { VNCClient } = require('../vnc-client');
 
+// Security (b-08): POSIX single-quote for guest-shell interpolation.
+function _shQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 class QEMUBackend extends SandboxBackend {
   get type() { return 'qemu'; }
   get label() { return 'QEMU/KVM Sandbox'; }
@@ -184,14 +189,14 @@ class QEMUBackend extends SandboxBackend {
 
   async listFiles(dirPath) {
     if (!this._initialized) await this.init();
-    const r = await this.exec(`ls -1 ${dirPath}`);
+    const r = await this.exec(`ls -1 ${_shQuote(dirPath || '.')}`);
     if (!r.ok) throw new Error('Failed to list files');
     return r.output.split('\n').filter(Boolean);
   }
 
   async deleteFile(filePath) {
     if (!this._initialized) await this.init();
-    await this.exec(`rm -f ${filePath}`);
+    await this.exec(`rm -f ${_shQuote(filePath)}`);
   }
 
   async destroy() {

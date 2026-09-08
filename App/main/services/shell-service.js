@@ -356,22 +356,48 @@ class ShellService {
   }
 
   // ============= MCP SERVER SPAWN =============
-  // Security (F5): never spawn with shell:true. Executable allowlist +
-  // validated arg array, shell:false on all platforms.
+  // Security (F5/b-14): never spawn with shell:true. Only bare runtime names
+  // from a fixed allowlist, resolved via PATH (no / or \ tricks, no tmp-dir
+  // binaries). npx/uvx are excluded: they fetch remote code on demand.
   static _MCP_ALLOW_BIN = new Set([
-    'node', 'python', 'python3', 'npx', 'uvx', 'bun', 'deno',
+    'node', 'python', 'python3', 'bun', 'deno',
   ]);
+
+  _resolveMcpBin(bin) {
+    const name = String(bin || '').trim();
+    if (!name || name.length > 100 || /[\0\n\r\s;|&$`<>"'\\!(){}\[\]*?~#\/]/.test(name)) {
+      throw new Error('Invalid MCP executable');
+    }
+    if (!ShellService._MCP_ALLOW_BIN.has(name)) {
+      throw new Error('MCP executable not allowed: ' + name);
+    }
+    const probe = process.platform === 'win32' ? 'where' : 'which';
+    const r = spawnSync(probe, [name], { encoding: 'utf-8', shell: false, timeout: 5000 });
+    const resolved = (r.stdout || '').split('\n').map(s => s.trim()).filter(Boolean)[0];
+    if (!resolved) throw new Error('MCP executable not found on PATH: ' + name);
+    let st;
+    try {
+      st = fs.statSync(resolved);
+    } catch {
+      throw new Error('MCP executable not accessible');
+    }
+    if (!st.isFile()) throw new Error('MCP executable not a file');
+    try {
+      fs.accessSync(resolved, fs.constants.X_OK);
+    } catch {
+      throw new Error('MCP executable not executable');
+    }
+    const low = resolved.toLowerCase();
+    const tmp = (require('os').tmpdir() || '').toLowerCase();
+    if ((tmp && (low === tmp || low.startsWith(tmp + path.sep))) || low.includes('/dev/shm/')) {
+      throw new Error('MCP executable in temp dir not allowed');
+    }
+    return resolved;
+  }
 
   mcpStartServer(id, command, args, env) {
     try {
-      const bin = String(command || '').trim();
-      if (!bin || /[\0\n\r\s;|&$`<>"'\\!(){}\[\]*?~#]/.test(bin)) {
-        return { ok: false, error: 'Invalid MCP executable' };
-      }
-      const base = bin.split('/').pop().split('\\').pop().replace(/\.exe$/i, '');
-      if (!ShellService._MCP_ALLOW_BIN.has(base)) {
-        return { ok: false, error: 'MCP executable not allowed: ' + base };
-      }
+      const bin = this._resolveMcpBin(command);
       if (!Array.isArray(args)) args = [];
       if (args.length > 50) return { ok: false, error: 'Too many MCP args' };
       const cleanArgs = args.map(String);
@@ -412,28 +438,92 @@ class ShellService {
   }
 
   // ============= TERMINAL =============
-  terminalCreate({ projectPath }, sender) {
+  setPermissionGate(gate) { this._permissionGate = gate || null; }
+
+  // Security (b-10): pinned shell binaries (no $SHELL override), cwd must be
+  // inside a project root or the sandbox dir, creation goes through the gate.
+  _resolveShellBin() {
+    if (process.platform === 'win32') return 'powershell.exe';
+    for (const cand of ['/bin/bash', '/bin/sh']) {
+      try {
+        fs.accessSync(cand, fs.constants.X_OK);
+        const st = fs.statSync(cand);
+        if (st.isFile()) return cand;
+      } catch {}
+    }
+    throw new Error('No usable shell found');
+  }
+
+  _assertTerminalCwd(projectPath) {
+    if (typeof projectPath !== 'string' || !projectPath) {
+      throw new Error('Terminal requires a project path');
+    }
+    const { getProjectsDir, getSandboxDir, getProjectRoot, isSafeProjectName } = require('./shared');
+    // Callers pass either a filesystem path or a project name — resolve names.
+    let candidate = projectPath;
+    if (isSafeProjectName(projectPath)) {
+      const root = getProjectRoot(projectPath);
+      if (root) candidate = root;
+    }
+    const canon = path.resolve(candidate);
+    const roots = [path.resolve(getProjectsDir()), path.resolve(getSandboxDir())];
+    // Also allow resolved local-project roots (user-picked folders).
+    try {
+      const names = fs.readdirSync(getProjectsDir(), { withFileTypes: true })
+        .filter(d => d.isDirectory()).map(d => d.name).filter(isSafeProjectName).slice(0, 200);
+      for (const n of names) {
+        const r = getProjectRoot(n);
+        if (r) roots.push(path.resolve(r));
+      }
+    } catch {}
+    const ok = roots.some(rt => canon === rt || canon.startsWith(rt + path.sep));
+    if (!ok) throw new Error('Terminal cwd outside allowed roots');
+    let st;
+    try {
+      st = fs.statSync(canon);
+    } catch {
+      throw new Error('Terminal cwd does not exist');
+    }
+    if (!st.isDirectory()) throw new Error('Terminal cwd not a directory');
+    return canon;
+  }
+
+  async terminalCreate({ projectPath, project } = {}, sender) {
     if (!ptySpawn) return null;
-    const id = ++this._terminalIdCounter;
-    const shellBin = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
-    const pty = ptySpawn(shellBin, [], {
-      name: 'xterm-color', cols: 80, rows: 24,
-      cwd: projectPath || process.cwd(),
-      env: process.env
-    });
-    pty.onData(data => {
-      if (sender && !sender.isDestroyed()) {
-        sender.send('terminal:data', { id, data });
-      }
-    });
-    pty.onExit(() => {
-      delete this._terminalProcesses[id];
-      if (sender && !sender.isDestroyed()) {
-        sender.send('terminal:exit', { id });
-      }
-    });
-    this._terminalProcesses[id] = pty;
-    return id;
+    const cwd = this._assertTerminalCwd(projectPath);
+    const shellBin = this._resolveShellBin();
+    const run = () => {
+      const id = ++this._terminalIdCounter;
+      const pty = ptySpawn(shellBin, [], {
+        name: 'xterm-color', cols: 80, rows: 24,
+        cwd,
+        env: process.env
+      });
+      pty.onData(data => {
+        if (sender && !sender.isDestroyed()) {
+          sender.send('terminal:data', { id, data });
+        }
+      });
+      pty.onExit(() => {
+        delete this._terminalProcesses[id];
+        if (sender && !sender.isDestroyed()) {
+          sender.send('terminal:exit', { id });
+        }
+      });
+      this._terminalProcesses[id] = pty;
+      return id;
+    };
+    if (this._permissionGate) {
+      return this._permissionGate.checkAndRun({
+        project: project || null,
+        backend: 'host-terminal',
+        op: 'terminal',
+        command: 'open interactive shell in ' + cwd,
+        path: cwd,
+        run,
+      });
+    }
+    return run();
   }
 
   terminalResize({ id, cols, rows }) {

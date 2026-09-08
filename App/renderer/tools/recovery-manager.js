@@ -70,7 +70,9 @@ class RecoveryManager {
 
   attemptRecovery(loopAnalysis, loopDetector) {
     this._recoveryAttempts++;
-    if (this._recoveryAttempts >= this._maxAttempts) {
+    // Security (b-27): off-by-one — with maxAttempts=3 the 3rd attempt must
+    // still run; only the 4th (beyond the budget) is critical.
+    if (this._recoveryAttempts > this._maxAttempts) {
       return { critical: true };
     }
 
@@ -189,9 +191,18 @@ class RecoveryManager {
   }
 
   configure(options) {
-    if (options.autoRecovery !== undefined) this._autoRecoveryEnabled = options.autoRecovery;
-    if (options.recoveryDelay !== undefined) this._recoveryDelay = options.recoveryDelay;
-    if (options.maxAttempts !== undefined) this._maxAttempts = options.maxAttempts;
+    if (!options || typeof options !== 'object') return;
+    // Security (b-27): clamp to sane ranges — 0/negative/huge values must not
+    // disable or blow up recovery.
+    if (options.autoRecovery !== undefined) this._autoRecoveryEnabled = options.autoRecovery === true;
+    if (options.recoveryDelay !== undefined) {
+      const d = Number(options.recoveryDelay);
+      this._recoveryDelay = Number.isFinite(d) ? Math.min(3600000, Math.max(0, d)) : 120000;
+    }
+    if (options.maxAttempts !== undefined) {
+      const m = Math.floor(Number(options.maxAttempts));
+      this._maxAttempts = Number.isFinite(m) ? Math.min(10, Math.max(1, m)) : 3;
+    }
     this._save();
   }
 

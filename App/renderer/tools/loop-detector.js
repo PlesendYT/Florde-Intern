@@ -116,7 +116,9 @@ class LoopDetector {
     }
     if (event.type === 'build' && event.result) {
       const buildOk = this._parseBuildResult(event.result);
-      if (buildOk !== null) this._metrics.buildSuccess = buildOk ? this._metrics.buildSuccess + 1 : this._metrics.buildSuccess;
+      // Security (b-26): success streak — failures reset it, otherwise the
+      // metric only grows and error escalation never reflects recovery.
+      if (buildOk !== null) this._metrics.buildSuccess = buildOk ? this._metrics.buildSuccess + 1 : 0;
     }
     if (event.type === 'tool_call' || event.type === 'command') {
       const tools = this._history.filter(e => e.type === 'tool_call' || e.type === 'command');
@@ -183,13 +185,31 @@ class LoopDetector {
     if (errored.length < threshold) return 0;
     const freq = {};
     for (const e of errored) freq[e.errorFingerprint] = (freq[e.errorFingerprint] || 0) + 1;
-    for (const [fp, count] of Object.entries(freq)) {
+    let best = 0;
+    for (const [, count] of Object.entries(freq)) {
       if (count >= threshold) {
-        const prevMetrics = this._metrics.errorFingerprint;
-        if (prevMetrics !== fp) return Math.min(0.25, count * 0.06);
+        // Security (b-26): no prevMetrics gate (it suppressed every repeat
+        // after the first) and no 0.25 cap — sustained identical failures
+        // must be able to escalate the score toward critical.
+        best = Math.max(best, Math.min(1, count * 0.12));
       }
     }
-    return 0;
+    return best;
+  }
+
+  // Security (b-26): consecutive identical failures escalate regardless of
+  // the weighted score — 8+ confirm, 15+ critical.
+  _consecutiveErrorCount() {
+    let count = 0;
+    let fp = null;
+    for (let i = this._history.length - 1; i >= 0; i--) {
+      const e = this._history[i];
+      if (!e.errorFingerprint) break;
+      if (fp === null) fp = e.errorFingerprint;
+      if (e.errorFingerprint !== fp) break;
+      count++;
+    }
+    return count;
   }
 
   _detectRevertLoop() {
@@ -368,7 +388,15 @@ class LoopDetector {
     const goalDistanceIncrease = this._detectRabbitHole();
     const signals = { sameActions, sameError, noTestImprovement, repeatedFileChanges, revertBehavior, contextRepetition, goalDistanceIncrease };
     const score = this._computeScore(signals);
-    const status = this._scoreToStatus(score);
+    let status = this._scoreToStatus(score);
+    // Security (b-26): escalation floor — sustained identical failures reach
+    // confirmed/critical even if the weighted score lags behind.
+    const consec = this._consecutiveErrorCount();
+    if (consec >= 15 && (status === 'normal' || status === 'possible' || status === 'confirmed')) {
+      status = 'critical';
+    } else if (consec >= 8 && (status === 'normal' || status === 'possible')) {
+      status = 'confirmed';
+    }
     let type = null;
     if (sameActions > 0.15) type = 'exact_loop';
     else if (sameError > 0.2) type = 'error_loop';

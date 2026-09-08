@@ -79,8 +79,10 @@ const DiffView = {
   },
 
   render() {
-    const changes = this._changes;
-    if (!changes || changes.length === 0) return '';
+    // Security (b-38): render is pure — it snapshots instead of draining
+    // this._changes. Call clear() explicitly when the section is consumed.
+    const changes = [...(this._changes || [])];
+    if (changes.length === 0) return '';
     let totalAdded = 0, totalRemoved = 0;
     for (const c of changes) {
       totalAdded += c.linesAdded || 0;
@@ -95,8 +97,11 @@ const DiffView = {
       <button onclick="DiffView.copyAll('full')">&#128203; Copy All (Full)</button>
     </div>`;
     html += `</div>`;
-    this._changes = [];
     return html;
+  },
+
+  clear() {
+    this._changes = [];
   },
 
   copyDiff(path) {

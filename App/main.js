@@ -157,7 +157,7 @@ app.whenReady().then(async () => {
       return promise;
     },
   });
-  sandboxService.setPermissionGate(permissionGate, permissionStore);
+  sandboxService.setPermissionGate(permissionGate, permissionStore, { failClosed: true });
 
   const settingsService = new SettingsService();
   const translationService = new TranslationService();

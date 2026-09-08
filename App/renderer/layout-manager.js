@@ -222,24 +222,29 @@ const LayoutManager = {
     else this.activate();
   },
 
+  // Security (b-37): single load precedence everywhere — localStorage first
+  // (freshest, written synchronously on save), then DB, then built-in default.
+  // _loadDefaultLayout previously preferred DB while load() preferred
+  // localStorage (divergent), and reset() never touched the DB.
+  async _loadLayoutState(name, projectName) {
+    try {
+      const saved = localStorage.getItem(`florde-layout-${name}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    try {
+      const rows = await window.electronAPI.flordeDb?.query?.(projectName,
+        'SELECT state_json FROM layout_states WHERE name = ?', [name]);
+      if (rows && rows.length > 0) return JSON.parse(rows[0].state_json);
+    } catch {}
+    return null;
+  },
+
   async _loadDefaultLayout() {
     const api = this._api;
     if (!api) return;
-    try {
-      const dbRows = await window.electronAPI?.flordeDb?.query?.('florde', "SELECT state_json FROM layout_states WHERE name = 'default' LIMIT 1");
-      if (dbRows && dbRows.length > 0) {
-        api.fromJSON(JSON.parse(dbRows[0].state_json));
-        return;
-      }
-    } catch {}
-    try {
-      const saved = localStorage.getItem('florde-layout-default');
-      if (saved) {
-        api.fromJSON(JSON.parse(saved));
-        return;
-      }
-    } catch (e) {
-      console.warn('LayoutManager: failed to load saved layout', e);
+    const state = await this._loadLayoutState('default', 'florde');
+    if (state) {
+      try { api.fromJSON(state); return; } catch (e) { console.warn('LayoutManager: saved default layout invalid', e); }
     }
     this._resetLayout();
   },
@@ -276,22 +281,9 @@ const LayoutManager = {
     const api = this._api;
     if (!api) return;
     const projectName = name.replace(/^project-/, '');
-    try {
-      const saved = localStorage.getItem(`florde-layout-${name}`);
-      if (saved) {
-        api.fromJSON(JSON.parse(saved));
-        return;
-      }
-      try {
-        const rows = await window.electronAPI.flordeDb?.query?.(projectName,
-          'SELECT state_json FROM layout_states WHERE name = ?', [name]);
-        if (rows && rows.length > 0) {
-          api.fromJSON(JSON.parse(rows[0].state_json));
-          return;
-        }
-      } catch (e) { /* SQLite fallback failed */ }
-    } catch (e) {
-      console.warn('LayoutManager: failed to load layout', name, e);
+    const state = await this._loadLayoutState(name, projectName);
+    if (state) {
+      try { api.fromJSON(state); return; } catch (e) { console.warn('LayoutManager: failed to load layout', name, e); }
     }
     this._resetLayout();
   },
@@ -306,8 +298,19 @@ const LayoutManager = {
     else if (toggle) toggle.classList.add('on');
   },
 
-  reset() {
-    localStorage.removeItem('florde-layout-default');
+  async reset() {
+    // Security (b-37): reset must clear BOTH stores, not just localStorage.
+    try {
+      const doomed = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('florde-layout-')) doomed.push(k);
+      }
+      doomed.forEach(k => localStorage.removeItem(k));
+    } catch {}
+    try {
+      await window.electronAPI.flordeDb?.run?.('florde', 'DELETE FROM layout_states WHERE name = ?', ['default']);
+    } catch {}
     this.deactivate();
     this._resetLayout();
     this.activate();

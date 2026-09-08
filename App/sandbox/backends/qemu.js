@@ -46,6 +46,10 @@ class QEMUBackend extends SandboxBackend {
 
   async init() {
     if (this._initialized) return;
+    // Security (b-31): verify the hypervisor CLI exists before marking ready.
+    if (!(await this.isAvailable())) {
+      throw new Error('QEMU backend not available: virsh not found or libvirtd unreachable');
+    }
     this._initialized = true;
   }
 
@@ -130,14 +134,26 @@ class QEMUBackend extends SandboxBackend {
     this._run(['send-key', this._domainName, '--keycode', `KEY_${key.toUpperCase()}`]);
   }
 
+  // Security (b-32): snapshot names reach the virsh CLI — strict charset,
+  // plus state checks (domain must be selected).
+  _assertSnapshotName(name) {
+    if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) {
+      throw new Error('Invalid snapshot name');
+    }
+    if (!this._domainName) throw new Error('No VM domain selected');
+    return name;
+  }
+
   async createSnapshot(name) {
     if (!this._initialized) throw new Error('VM not initialized');
+    this._assertSnapshotName(name);
     const r = this._run(['snapshot-create-as', this._domainName, name]);
     if (!r.ok) throw new Error('Failed to create snapshot: ' + r.stderr);
   }
 
   async revertSnapshot(name) {
     if (!this._initialized) throw new Error('VM not initialized');
+    this._assertSnapshotName(name);
     const r = this._run(['snapshot-revert', this._domainName, name]);
     if (!r.ok) throw new Error('Failed to revert snapshot: ' + r.stderr);
   }
@@ -200,11 +216,15 @@ class QEMUBackend extends SandboxBackend {
   }
 
   async destroy() {
-    if (this._initialized) {
-      this._run(['destroy', this._domainName]);
-      this._run(['undefine', this._domainName]);
+    // Security (b-33): finally-guard, null-safe domain.
+    try {
+      if (this._initialized && this._domainName) {
+        this._run(['destroy', this._domainName]);
+        this._run(['undefine', this._domainName]);
+      }
+    } finally {
+      this._initialized = false;
     }
-    this._initialized = false;
   }
 }
 

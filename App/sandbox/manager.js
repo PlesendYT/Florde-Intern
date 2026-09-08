@@ -78,7 +78,18 @@ class SandboxManager {
     if (handlers) this._listeners.set(event, handlers.filter(f => f !== fn));
   }
 
-  async switchBackend(type) {
+  // Security (b-33): serialize backend switches — parallel switches could
+  // run two backends (and containers) concurrently. The stored lock is
+  // rejection-isolated so one failed switch does not poison later ones.
+  switchBackend(type) {
+    const run = (this._switchLock || Promise.resolve())
+      .catch(() => {})
+      .then(() => this._switchBackendInner(type));
+    this._switchLock = run.catch(() => {});
+    return run;
+  }
+
+  async _switchBackendInner(type) {
     if (!this._backends.has(type)) throw new Error('Unknown backend: ' + type);
     if (this._activeType === type) return;
 

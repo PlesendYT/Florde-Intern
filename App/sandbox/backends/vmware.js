@@ -59,6 +59,10 @@ class VMWareBackend extends SandboxBackend {
 
   async init() {
     if (this._initialized) return;
+    // Security (b-31): verify vmrun exists before marking ready.
+    if (!(await this.isAvailable())) {
+      throw new Error('VMware backend not available: vmrun not found');
+    }
     this._initialized = true;
   }
 
@@ -125,26 +129,42 @@ class VMWareBackend extends SandboxBackend {
     }
   }
 
+  // Security (b-32): snapshot names reach the vmrun CLI — strict charset,
+  // plus state checks (vmx must be selected).
+  _assertSnapshotName(name) {
+    if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(name)) {
+      throw new Error('Invalid snapshot name');
+    }
+    if (!this._vmxPath) throw new Error('No VM selected');
+    return name;
+  }
+
   async createSnapshot(name) {
     if (!this._initialized) throw new Error('VM not initialized');
+    this._assertSnapshotName(name);
     const r = this._run(['snapshot', this._vmxPath, name]);
     if (!r.ok) throw new Error('Failed to create snapshot: ' + r.stderr);
   }
 
   async revertSnapshot(name) {
     if (!this._initialized) throw new Error('VM not initialized');
+    this._assertSnapshotName(name);
     const r = this._run(['revertToSnapshot', this._vmxPath, name]);
     if (!r.ok) throw new Error('Failed to revert snapshot: ' + r.stderr);
   }
 
   async readFile(filePath) {
     if (!this._initialized) await this.init();
-    const hostPath = path.join(os.tmpdir(), `vmware-file-${Date.now()}`);
+    const crypto = require('crypto');
+    const hostPath = path.join(os.tmpdir(), `vmware-file-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`);
     const r = this._run(['copyFileFromGuestToHost', this._vmxPath, filePath, hostPath]);
-    if (!r.ok) throw new Error('Failed to read file: ' + r.stderr);
-    const content = fs.readFileSync(hostPath, 'utf-8');
-    fs.rmSync(hostPath);
-    return content;
+    try {
+      if (!r.ok) throw new Error('Failed to read file: ' + r.stderr);
+      return fs.readFileSync(hostPath, 'utf-8');
+    } finally {
+      // Security (b-33): temp file must not linger on failure.
+      try { fs.rmSync(hostPath, { force: true }); } catch {}
+    }
   }
 
   async writeFile(filePath, content) {
@@ -175,10 +195,15 @@ class VMWareBackend extends SandboxBackend {
   }
 
   async destroy() {
-    if (this._initialized) {
-      await this.stopVM();
+    // Security (b-33): finally-guard so ein fehlgeschlagenes stopVM den
+    // Backend-State nicht halb-zerstört zurücklässt.
+    try {
+      if (this._initialized) {
+        await this.stopVM();
+      }
+    } finally {
+      this._initialized = false;
     }
-    this._initialized = false;
   }
 }
 

@@ -232,6 +232,28 @@ class ShellService {
   }
 
   // ============= DOCKER =============
+  // Security (b-35): container ids/names and compose paths are IPC-controlled —
+  // strict shapes so no flags or option injection reaches the docker CLI.
+  static _DOCKER_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+
+  _assertDockerId(id) {
+    if (typeof id !== 'string' || !ShellService._DOCKER_ID_RE.test(id)) {
+      throw new Error('Invalid docker id');
+    }
+    return id;
+  }
+
+  _assertComposeFile(filePath) {
+    if (typeof filePath !== 'string' || filePath.length === 0 || filePath.length > 500) {
+      throw new Error('Invalid compose file');
+    }
+    if (/[\0\n\r]/.test(filePath)) throw new Error('Invalid compose file');
+    if (!/\.ya?ml$/i.test(filePath)) throw new Error('Compose file must be .yml/.yaml');
+    const resolved = path.resolve(filePath);
+    if (!fs.existsSync(resolved)) throw new Error('Compose file not found');
+    return resolved;
+  }
+
   _dockerExec(args, timeout = 30000, cwd) {
     try {
       const opts = { timeout, encoding: 'utf-8' };
@@ -271,38 +293,56 @@ class ShellService {
   }
 
   dockerStart(id) {
-    const r = this._dockerExec(['start', id]);
-    return r.ok ? { ok: true } : { ok: false, error: r.error };
+    try {
+      const r = this._dockerExec(['start', this._assertDockerId(id)]);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerStop(id) {
-    const r = this._dockerExec(['stop', id]);
-    return r.ok ? { ok: true } : { ok: false, error: r.error };
+    try {
+      const r = this._dockerExec(['stop', this._assertDockerId(id)]);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerRestart(id) {
-    const r = this._dockerExec(['restart', id]);
-    return r.ok ? { ok: true } : { ok: false, error: r.error };
+    try {
+      const r = this._dockerExec(['restart', this._assertDockerId(id)]);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerLogs(id, lines = 50) {
-    const r = this._dockerExec(['logs', '--tail', String(lines), id]);
-    return r.ok ? { ok: true, logs: r.stdout } : { ok: false, error: r.error };
+    try {
+      const n = Math.min(1000, Math.max(1, parseInt(lines, 10) || 50));
+      const r = this._dockerExec(['logs', '--tail', String(n), this._assertDockerId(id)]);
+      return r.ok ? { ok: true, logs: r.stdout } : { ok: false, error: r.error };
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerComposeUp(filePath) {
-    const dir = path.dirname(filePath);
-    return this._dockerExec(['compose', '-f', filePath, 'up', '-d'], 30000, dir);
+    try {
+      const file = this._assertComposeFile(filePath);
+      const dir = path.dirname(file);
+      return this._dockerExec(['compose', '-f', file, 'up', '-d'], 30000, dir);
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerComposeDown(filePath) {
-    const dir = path.dirname(filePath);
-    return this._dockerExec(['compose', '-f', filePath, 'down'], 30000, dir);
+    try {
+      const file = this._assertComposeFile(filePath);
+      const dir = path.dirname(file);
+      return this._dockerExec(['compose', '-f', file, 'down'], 30000, dir);
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   dockerComposeLogs(filePath) {
-    const dir = path.dirname(filePath);
-    return this._dockerExec(['compose', '-f', filePath, 'logs', '--tail=100'], 30000, dir);
+    try {
+      const file = this._assertComposeFile(filePath);
+      const dir = path.dirname(file);
+      return this._dockerExec(['compose', '-f', file, 'logs', '--tail=100'], 30000, dir);
+    } catch (e) { return { ok: false, error: e.message }; }
   }
 
   // ============= OLLAMA =============

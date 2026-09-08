@@ -15,7 +15,7 @@ class FirejailBackend extends SandboxBackend {
     super();
     this._workspaceDir = workspaceDir;
     this._profilePath = path.join(os.homedir(), '.config', 'florde', 'firejail.profile');
-
+    this._network = 'none';
   }
 
   async isAvailable() {
@@ -27,7 +27,19 @@ class FirejailBackend extends SandboxBackend {
     }
   }
 
-  async init() {
+  // Security (b-30): setNetwork previously did nothing (profile hardcoded
+  // 'none' at init). Now it persists the mode and regenerates the profile.
+  static _NETWORK_MODES = new Set(['none', 'localhost', 'lo', 'project', 'projects', 'all', 'eth0']);
+
+  setNetwork(network) {
+    const mode = String(network || 'none').toLowerCase();
+    if (!FirejailBackend._NETWORK_MODES.has(mode)) throw new Error('Unknown network mode: ' + network);
+    this._network = mode;
+    if (this._initialized) this._writeProfile();
+    return this._network;
+  }
+
+  _writeProfile() {
     const profile = `# florde firejail profile
 read-only /
 private-dev
@@ -37,19 +49,28 @@ seccomp
 noroot
 whitelist ${this._workspaceDir}
 netfilter
-${this._networkRule('none')}
+${this._networkRule(this._network)}
 `;
     fs.mkdirSync(path.dirname(this._profilePath), { recursive: true });
     fs.writeFileSync(this._profilePath, profile);
+  }
+
+  async init() {
+    this._writeProfile();
     this._initialized = true;
   }
 
   _networkRule(network) {
+    // Fail-closed: unknown modes get 'net none', never full network.
     switch (network) {
       case 'none': return 'net none';
-      case 'localhost': return 'net lo';
-      case 'project': return 'net lo';
-      default: return '';
+      case 'localhost':
+      case 'lo':
+      case 'project':
+      case 'projects': return 'net lo';
+      case 'all':
+      case 'eth0': return 'net eth0';
+      default: return 'net none';
     }
   }
 

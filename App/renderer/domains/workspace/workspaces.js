@@ -21,9 +21,11 @@ export function createWorkspaces() {
   }
 
   function newWorkspace(path, name) {
+    // Security (b-28): seed() creates path:null workspaces — null must not crash.
+    const safePath = path == null ? '' : String(path);
     const id = 'ws-' + Date.now() + '-' + (_seq++);
-    const displayName = name || path.split(/[/\\]/).pop();
-    _workspaces.push({ id, name: displayName, path });
+    const displayName = name || safePath.split(/[/\\]/).pop() || 'Workspace';
+    _workspaces.push({ id, name: displayName, path: safePath || null });
     _activeWorkspaceId = id;
     return id;
   }

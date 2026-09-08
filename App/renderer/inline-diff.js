@@ -7,11 +7,17 @@ function createDiffState(fileName, originalText, newText) {
   return { fileName, originalText, currentText: newText, accepted: new Set() };
 }
 
+function _lineKey(hunkId, x) {
+  // Security (b-39): key by hunk+line, never by text — identical duplicate
+  // lines otherwise collide (accepting one accepts all copies).
+  return hunkId + ':' + x.line + ':' + x.text.length;
+}
+
 function pendingHunks(state) {
   const hunks = computeHunks(state.originalText, state.currentText);
   const out = [];
   for (const h of hunks) {
-    const added = h.added.filter(x => !state.accepted.has(x.text));
+    const added = h.added.filter(x => !state.accepted.has(_lineKey(h.id, x)));
     if (added.length === 0) continue;
     out.push({ ...h, added });
   }
@@ -31,7 +37,7 @@ function acceptHunk(state, hunkId) {
   const s = _clone(state);
   const hunk = computeHunks(s.originalText, s.currentText).find(h => h.id === hunkId);
   if (!hunk) return s;
-  hunk.added.forEach(x => s.accepted.add(x.text));
+  hunk.added.forEach(x => s.accepted.add(_lineKey(hunk.id, x)));
   return s;
 }
 
@@ -40,13 +46,14 @@ function acceptLine(state, hunkId, lineNo) {
   const hunk = computeHunks(s.originalText, s.currentText).find(h => h.id === hunkId);
   if (!hunk) return s;
   const line = hunk.added.find(x => x.line === lineNo);
-  if (line) s.accepted.add(line.text);
+  if (line) s.accepted.add(_lineKey(hunk.id, line));
   return s;
 }
 
 function acceptAll(state) {
   const s = _clone(state);
-  _addedTexts(s).forEach(t => s.accepted.add(t));
+  computeHunks(s.originalText, s.currentText)
+    .forEach(h => h.added.forEach(x => s.accepted.add(_lineKey(h.id, x))));
   return s;
 }
 

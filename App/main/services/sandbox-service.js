@@ -13,6 +13,10 @@ class SandboxService {
     this._showSaveDialog = options.showSaveDialog || null;
     this._permissionGate = null;
     this._permissionStore = null;
+    // Security (b-34): fail closed. Production sets failClosed:true via
+    // setPermissionGate(..., { failClosed: true }); without a gate, gated
+    // ops throw instead of silently running.
+    this._failClosed = options.failClosed === true;
     this._manager = new SandboxManager(options.sandboxDir || getSandboxDir());
     this._vncStream = null;
     this._activeProject = null;
@@ -122,9 +126,19 @@ class SandboxService {
     return false;
   }
 
-  setPermissionGate(gate, store) {
+  setPermissionGate(gate, store, opts = {}) {
     this._permissionGate = gate;
     this._permissionStore = store;
+    if (opts.failClosed === true) this._failClosed = true;
+  }
+
+  _requireGate(op) {
+    if (!this._permissionGate && this._failClosed) {
+      const err = new Error(`blocked: permission gate unavailable for ${op}`);
+      err.code = 'GATE_UNAVAILABLE';
+      throw err;
+    }
+    return this._permissionGate;
   }
 
   _setGateForTest(gate) { this._permissionGate = gate; }
@@ -153,7 +167,8 @@ class SandboxService {
 
   async exec(command, options) {
     const project = (options && options.project) || null;
-    if (this._permissionGate) {
+    const gate = this._requireGate('exec');
+    if (gate) {
       return this._permissionGate.checkAndRun({
         project,
         backend: this._manager.activeType,
@@ -167,7 +182,8 @@ class SandboxService {
   }
 
   _gateFor(op, filePath, project) {
-    if (!this._permissionGate) return null;
+    const gate = this._requireGate(op);
+    if (!gate) return null;
     return {
       project: project || this._activeProject || null,
       backend: this._manager.activeType,
@@ -203,20 +219,24 @@ class SandboxService {
   async switchBackend(type) {
     const allowed = new Set(['none', 'firejail', 'docker', 'podman', 'vmware', 'qemu']);
     if (!allowed.has(type)) return { ok: false, error: 'unknown backend: ' + type };
-    // Security (b-09): switching to weak isolation (none/firejail) requires
-    // explicit approval — the blacklist filter is not a security boundary.
-    if ((type === 'none' || type === 'firejail') && this._permissionGate) {
-      try {
-        await this._permissionGate.checkAndRun({
-          project: this._activeProject || null,
-          backend: this._manager.activeType,
-          op: 'switch_backend',
-          command: type,
-          path: null,
-          run: async () => true,
-        });
-      } catch (e) {
-        return { ok: false, error: e.message };
+    // Security (b-09/b-34): switching to weak isolation (none/firejail)
+    // requires explicit approval — the blacklist filter is not a boundary.
+    // Without a gate in fail-closed mode this throws instead of proceeding.
+    if (type === 'none' || type === 'firejail') {
+      this._requireGate('switch_backend');
+      if (this._permissionGate) {
+        try {
+          await this._permissionGate.checkAndRun({
+            project: this._activeProject || null,
+            backend: this._manager.activeType,
+            op: 'switch_backend',
+            command: type,
+            path: null,
+            run: async () => true,
+          });
+        } catch (e) {
+          return { ok: false, error: e.message };
+        }
       }
     }
     const r = await this._manager.trySwitchBackend(type);
@@ -309,8 +329,19 @@ class SandboxService {
   }
 
   async vmStreamStart(opts) {
+    // Security (b-36): VNC target is IPC-controlled — loopback hosts and
+    // valid ports only, otherwise this is an SSRF primitive.
     try {
-      this._vncStream = new VncStreamer(opts || { port: 5900 });
+      const o = opts && typeof opts === 'object' ? opts : {};
+      const host = String(o.host || o.hostname || '127.0.0.1');
+      const port = Number(o.port || 5900);
+      if (!['127.0.0.1', 'localhost', '::1'].includes(host.toLowerCase())) {
+        return { ok: false, error: 'VNC host must be loopback' };
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return { ok: false, error: 'Invalid VNC port' };
+      }
+      this._vncStream = new VncStreamer({ ...o, host, port });
       this._vncStream.onFrame((frame) => {
         this._send('sandbox:vm-frame', {
           width: frame.width, height: frame.height, buffer: frame.buffer,

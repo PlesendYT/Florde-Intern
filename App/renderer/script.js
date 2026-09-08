@@ -6202,6 +6202,8 @@ async function sendMessage(text) {
             _wrapper.innerHTML = diffHtml;
             _lastMsg.appendChild(_wrapper.firstElementChild);
             _chatContainer.scrollTop = _chatContainer.scrollHeight;
+            // Section consumed — clear explicitly (render itself is pure).
+            if (typeof DiffView.clear === 'function') DiffView.clear();
           }
         }
       }

@@ -34,12 +34,20 @@ describe('pendingHunks', () => {
 });
 
 describe('acceptHunk', () => {
-  it('adds added line texts to accepted', () => {
+  it('marks added lines accepted by hunk+line key (b-39)', () => {
     const s = createDiffState('f.js', OLD, NEW);
     const s2 = acceptHunk(s, 0);
-    assert.ok(s2.accepted.has('NEW1'));
-    assert.ok(s2.accepted.has('NEW2'));
+    assert.strictEqual(s2.accepted.size, 2);
     assert.strictEqual(pendingHunks(s2).length, 0);
+  });
+  it('duplicate identical lines do not collide (b-39)', () => {
+    const s = createDiffState('f.js', 'a\nb', 'a\nSAME\nx\nSAME\nb');
+    const before = pendingHunks(s);
+    assert.strictEqual(before[0].added.length, 3);
+    // accept only the first SAME (line 2)
+    const s2 = acceptLine(s, 0, 2);
+    const pending = pendingHunks(s2);
+    assert.deepStrictEqual(pending[0].added.map(x => x.text), ['x', 'SAME']);
   });
 });
 
@@ -47,8 +55,7 @@ describe('acceptLine', () => {
   it('accepts only the given added line', () => {
     const s = createDiffState('f.js', OLD, NEW);
     const s2 = acceptLine(s, 0, 2);
-    assert.ok(s2.accepted.has('NEW1'));
-    assert.ok(!s2.accepted.has('NEW2'));
+    assert.strictEqual(s2.accepted.size, 1);
     const pending = pendingHunks(s2);
     assert.deepStrictEqual(pending[0].added.map(x => x.text), ['NEW2']);
   });

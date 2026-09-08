@@ -173,13 +173,28 @@ class DockerBackend extends SandboxBackend {
   }
 
   async destroy() {
-    if (this._containerName) {
-      this._run(['stop', this._containerName]);
-      this._run(['rm', '-f', this._containerName]);
+    // Security (b-33): state reset in finally — a failed stop/rm must not
+    // leave a half-destroyed backend marked initialized.
+    // NOTE: named tool volumes persist by design (custom tools survive
+    // container recreation); see removeVolumes() for explicit cleanup.
+    try {
+      if (this._containerName) {
+        this._run(['stop', this._containerName]);
+        this._run(['rm', '-f', this._containerName]);
+      }
+    } finally {
       this._containerName = null;
       this._containerId = null;
+      this._initialized = false;
     }
-    this._initialized = false;
+  }
+
+  // Explicit cleanup for orphaned per-project tool volumes (b-33).
+  async removeVolumes() {
+    for (const v of this._toolVolumes || []) {
+      try { this._run(['volume', 'rm', '-f', v.name]); } catch {}
+    }
+    this._toolVolumes = [];
   }
 }
 

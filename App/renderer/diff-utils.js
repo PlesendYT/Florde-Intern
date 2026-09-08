@@ -27,6 +27,19 @@ function lcsDiff(aLines, bLines) {
 function computeHunks(oldText, newText) {
   const aLines = splitLines(oldText);
   const bLines = splitLines(newText);
+  // Security (b-40): LCS is O(n*m) memory/time — cap the input product and
+  // fall back to a single whole-file hunk instead of hanging the renderer.
+  if (aLines.length * bLines.length > 2500000) {
+    const cap = (arr, base) => arr.slice(0, 2000).map((text, i) => ({ line: base + i, text }));
+    return [{
+      id: 0,
+      startLine: 1,
+      endLine: bLines.length,
+      added: cap(bLines, 1),
+      removed: cap(aLines, 1),
+      truncated: true,
+    }];
+  }
   const ops = lcsDiff(aLines, bLines);
   const hunks = [];
   let aIdx = 1, bIdx = 1;

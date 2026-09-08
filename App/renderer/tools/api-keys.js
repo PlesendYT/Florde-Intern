@@ -102,6 +102,12 @@ const ApiKeyManager = {
     ];
   },
 
+  _esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  },
+
   render(container) {
     if (!container) return;
     container.innerHTML = '<div style="padding:0.5rem 0.75rem;font-weight:600;border-bottom:1px solid var(--border);background:var(--bg2);font-size:0.8rem;">API Keys</div>';
@@ -112,23 +118,26 @@ const ApiKeyManager = {
       const statusLabels = { connected: 'Verbunden', disconnected: 'Getrennt', checking: 'Prüfe' };
       const row = document.createElement('div');
       row.style.cssText = 'padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.8rem;';
+      // Security (b-23): key value is secret + untrusted for markup — escape.
       row.innerHTML = `
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
-          <span style="font-weight:500;">${svc.label}</span>
+          <span style="font-weight:500;">${this._esc(svc.label)}</span>
           <span id="api-status-${svc.id}" style="font-size:0.7rem;color:${statusColors[entry.status] || '#ef4444'};">
             ${statusLabels[entry.status] || 'Getrennt'}
           </span>
         </div>
         <div style="display:flex;gap:0.3rem;align-items:center;">
-          <input id="api-input-${svc.id}" type="password" placeholder="${svc.needs}"
+          <input id="api-input-${svc.id}" type="password" placeholder="${this._esc(svc.needs)}"
             style="flex:1;padding:0.3rem 0.5rem;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:4px;font-size:0.75rem;"
-            value="${entry.key || ''}">
+            value="">
           <button id="api-toggle-${svc.id}" title="Schlüssel anzeigen/verstecken"
             style="background:none;border:none;color:var(--text3);cursor:pointer;padding:2px 4px;font-size:0.8rem;">👁</button>
           <button id="api-save-${svc.id}" style="background:var(--bg3);border:1px solid var(--border);color:var(--text1);border-radius:4px;padding:0.3rem 0.6rem;cursor:pointer;font-size:0.75rem;">Speichern</button>
         </div>
       `;
       container.appendChild(row);
+      // Secret via DOM property, never through HTML markup (b-23).
+      try { row.querySelector('#api-input-' + svc.id).value = entry.key || ''; } catch {}
 
       row.querySelector('#api-toggle-' + svc.id).onclick = () => {
         const inp = row.querySelector('#api-input-' + svc.id);

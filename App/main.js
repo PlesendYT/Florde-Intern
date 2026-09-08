@@ -25,6 +25,20 @@ let mainWindow;
 
 const DEV_SERVER_URL = process.env['ELECTRON_RENDERER_URL'];
 
+function resolvePreload(file) {
+  // Security/dev (b-12): build layout is out/main -> out/preload; dev layout
+  // is App/main.js -> App/preload.js. Pick whichever exists.
+  const candidates = [
+    path.join(__dirname, '../preload', file),
+    path.join(__dirname, 'preload', file),
+    path.join(__dirname, file),
+  ];
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch {}
+  }
+  return candidates[0];
+}
+
 function createWindow() {
   Menu.setApplicationMenu(null);
   const isMac = process.platform === 'darwin';
@@ -38,7 +52,7 @@ function createWindow() {
     titleBarOverlay: isMac ? undefined : { color: '#12121a', symbolColor: '#e0e0e0', height: 36 },
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.js'),
+      preload: resolvePreload('preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
@@ -114,6 +128,13 @@ app.whenReady().then(async () => {
         const timer = setTimeout(() => finish('block'), 120000);
         if (timer.unref) timer.unref();
         handler = (_e, payload) => {
+          // Security (b-11): only the main window may answer permission
+          // prompts — other windows/frames cannot approve.
+          try {
+            if (mainWindow && !mainWindow.isDestroyed() && _e && _e.sender !== mainWindow.webContents) {
+              return;
+            }
+          } catch {}
           if (payload && payload.requestId === requestId && payload.decision && payload.decision !== 'ask') {
             if (payload.persist === 'always' && info.project) {
               try {

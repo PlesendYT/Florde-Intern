@@ -85,6 +85,18 @@ class MiscService {
     return url;
   }
 
+  _resolvePreload(file) {
+    const candidates = [
+      path.join(__dirname, '../../preload', file),
+      path.join(__dirname, '../preload', file),
+      path.join(__dirname, file),
+    ];
+    for (const c of candidates) {
+      try { if (fs.existsSync(c)) return c; } catch {}
+    }
+    return candidates[0];
+  }
+
   openBrowser(url) {
     if (url) this._assertHttpUrl(url);
     if (this._browserWindow && !this._browserWindow.isDestroyed()) {
@@ -106,7 +118,7 @@ class MiscService {
         webSecurity: true,
         allowFileAccess: false,
         allowRunningInsecureContent: false,
-        preload: path.join(__dirname, '../../preload/browser-preload.js'),
+        preload: this._resolvePreload('browser-preload.js'),
       },
     });
     this._browserWindow.on('closed', () => {

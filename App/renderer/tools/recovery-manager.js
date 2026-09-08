@@ -39,8 +39,11 @@ class RecoveryManager {
   }
 
   _save() {
+    // Security (b-22): merge instead of replace — the settings UI stores
+    // sibling loopDetection fields (enabled, sensitivity, ...) that must survive.
     const settings = JSON.parse(localStorage.getItem('florde-settings') || '{}');
     settings.loopDetection = {
+      ...(settings.loopDetection || {}),
       recoveryAttempts: this._recoveryAttempts,
       maxAttempts: this._maxAttempts,
       lastStrategy: this._lastStrategy,

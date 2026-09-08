@@ -3537,6 +3537,11 @@ async function openProject(name) {
   tabLanguages = {};
   tabDirty = {};
   activeTabIndex = -1;
+  // Drop pending autosaves of the previous project (b-18/b-41).
+  try {
+    for (const t of Object.values(autoSaveTimers)) clearTimeout(t);
+    for (const k of Object.keys(autoSaveTimers)) delete autoSaveTimers[k];
+  } catch {}
   // Bugfix "readonly editor ist noch da": stale DiffViewer-Inhalte vom
   // vorherigen Projekt dürfen nicht sichtbar bleiben.
   try { if (typeof DiffViewer !== 'undefined') DiffViewer.hide(); } catch {}
@@ -3791,16 +3796,24 @@ async function saveAllTabs() {
   logToTerminal('All files saved', 'success');
 }
 
-async function saveCurrentFile() {
-  const name = getActiveFileName();
+async function saveFileByName(name) {
   if (!name) return;
-  tabContents[name] = editor ? editor.getValue() : '';
+  // If this file is currently shown, flush the live editor value first.
+  if (editor && getActiveFileName() === name) {
+    tabContents[name] = editor.getValue();
+  }
   tabDirty[name] = false;
   if (currentProject) {
-    await window.electronAPI.projectWriteFile(currentProject, name, tabContents[name]);
+    await window.electronAPI.projectWriteFile(currentProject, name, tabContents[name] || '');
   }
   renderTabs();
   logToTerminal(`Saved: ${name}`, 'success');
+}
+
+async function saveCurrentFile() {
+  const name = getActiveFileName();
+  if (!name) return;
+  await saveFileByName(name);
 }
 
 function getActiveFileName() {
@@ -3833,10 +3846,19 @@ function renderTabs() {
   });
 }
 
-let autoSaveTimer;
+// Security/correctness (b-16/b-18): tab switches are serialized through a
+// queue (no interleaved cross-tab overwrites) and autosave timers are
+// per-file (switching tabs never drops another tab's pending save).
+let _switchQueue = Promise.resolve();
+const autoSaveTimers = {};
 const modelDisposables = new Map();
 
-async function switchTab(index) {
+function switchTab(index) {
+  _switchQueue = _switchQueue.then(() => _switchTabInner(index)).catch(e => console.error('switchTab failed:', e));
+  return _switchQueue;
+}
+
+async function _switchTabInner(index) {
   if (index < 0 || index >= openTabs.length) return;
   if (activeTabIndex >= 0 && activeTabIndex < openTabs.length && editor) {
     tabContents[openTabs[activeTabIndex]] = editor.getValue();
@@ -3860,8 +3882,8 @@ async function switchTab(index) {
         tabDirty[name] = true;
         if (activeTabIndex === openTabs.indexOf(name)) renderTabs();
         if (currentProjectType === 'local') {
-          clearTimeout(autoSaveTimer);
-          autoSaveTimer = setTimeout(() => saveCurrentFile(), 1000);
+          clearTimeout(autoSaveTimers[name]);
+          autoSaveTimers[name] = setTimeout(() => saveFileByName(name), 1000);
         }
       });
       modelDisposables.set(name, disposable);
@@ -3882,7 +3904,11 @@ async function closeTab(index) {
     if (index < 0 || index >= openTabs.length) return;
     const name = openTabs[index];
     if (tabDirty[name] && !confirm(`"${name}" has unsaved changes. Close anyway?`)) return;
-    if (currentProjectType === 'local') await saveCurrentFile();
+    // Security (b-17): save the CLOSED file explicitly — saveCurrentFile()
+    // would persist the foreground tab instead.
+    if (currentProjectType === 'local' && tabDirty[name]) await saveFileByName(name);
+    clearTimeout(autoSaveTimers[name]);
+    delete autoSaveTimers[name];
     const disposable = modelDisposables.get(name);
     if (disposable) { disposable.dispose(); modelDisposables.delete(name); }
     const model = monaco.editor.getModels().find(m => m.uri.path === '/' + name);
@@ -4681,6 +4707,22 @@ function clearActivity() {
   if (el) el.remove();
 }
 
+// Security (b-19): AI writes must not silently discard the user's unsaved
+// tab edits. Stash dirty content (capped) and warn loudly.
+function _stashDirtyTab(filePath, op) {
+  try {
+    if (!filePath || !tabDirty[filePath]) return;
+    window._aiOverwriteBackups = window._aiOverwriteBackups || {};
+    const keys = Object.keys(window._aiOverwriteBackups);
+    if (keys.length >= 20) delete window._aiOverwriteBackups[keys[0]];
+    window._aiOverwriteBackups[filePath] = {
+      content: tabContents[filePath],
+      op, at: new Date().toISOString(),
+    };
+    logToTerminal(`AI ${op} overwrote unsaved changes in ${filePath} — your version was stashed (see DiffViewer)`, 'warn');
+  } catch {}
+}
+
 async function executeToolCall(name, args) {
   const project = currentProject;
   const type = currentProjectType;
@@ -4709,6 +4751,7 @@ async function executeToolCall(name, args) {
         const written = [];
         for (const [filePath, content] of Object.entries(args.files)) {
           const sp = sanitizePath(filePath);
+          _stashDirtyTab(sp, 'batch write');
           let _batchOldContent = '';
           try { _batchOldContent = await window.electronAPI.projectReadFile(project, sp) || ''; } catch (e) {}
           await window.electronAPI.projectWriteFile(project, sp, content);
@@ -4738,6 +4781,7 @@ async function executeToolCall(name, args) {
         return 'Batch written ' + written.length + ' files: ' + written.join(', ');
       }
       const _writePath = sanitizePath(args.path);
+      _stashDirtyTab(_writePath, 'write');
       addAuditEntry('local', 'Write_File: ' + _writePath);
       AuditLog.log({ type: 'file_write', action: 'File written', status: 'auto', summary: 'File ' + _writePath + ' written', details: { file: _writePath }, source: 'AI' });
       logToTerminal('Write_File: ' + _writePath, 'info');
@@ -4771,6 +4815,10 @@ async function executeToolCall(name, args) {
       if (!args || !args.path) throw new Error('path required for delete_file');
       if (!project) throw new Error('No project open');
       const delPath = sanitizePath(args.path);
+      // Security (b-20): parity with the manual path — AI deletes confirm too.
+      if (!confirm('AI wants to delete "' + delPath + '"? This cannot be undone.')) {
+        throw new Error('Delete cancelled by user');
+      }
       addAuditEntry('local', 'Delete_File: ' + delPath);
       AuditLog.log({ type: 'file_write', action: 'File deleted', status: 'auto', summary: 'File ' + delPath + ' deleted', details: { file: delPath }, source: 'AI' });
       logToTerminal('Delete_File: ' + delPath, 'info');
@@ -4831,6 +4879,7 @@ async function executeToolCall(name, args) {
       logToTerminal('Edit_File: ' + sanitizePath(args.path), 'info');
       {
         const efPath = sanitizePath(args.path);
+        _stashDirtyTab(efPath, 'edit');
         let content = await window.electronAPI.projectReadFile(project, efPath);
         const _efOldContent = content;
         const oldStr = args.oldString;
@@ -9617,9 +9666,28 @@ document.getElementById('btn-start-mcp-server')?.addEventListener('click', async
   renderMcpServers();
 });
 
-window.addEventListener('beforeunload', () => {
+window.addEventListener('beforeunload', (e) => {
   for (const client of _mcpClients.values()) client.disconnect();
   if (_ollamaStatusTimer) clearInterval(_ollamaStatusTimer);
+  // Security (b-21): never silently drop unsaved work on reload/close.
+  // beforeunload is synchronous — persist dirty sandbox tabs directly.
+  try {
+    const dirty = Object.keys(tabDirty || {}).filter(n => tabDirty[n] && openTabs.includes(n));
+    if (dirty.length > 0) {
+      for (const n of dirty) {
+        try {
+          if (editor && getActiveFileName() === n) tabContents[n] = editor.getValue();
+          if (currentProject && window.electronAPI?.projectWriteFile) {
+            // Note: async IPC in beforeunload is best-effort; the prompt below
+            // still protects the user when the save did not complete.
+            window.electronAPI.projectWriteFile(currentProject, n, tabContents[n] || '');
+          }
+        } catch {}
+      }
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  } catch {}
 });
 
 initEditorTools();

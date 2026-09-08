@@ -220,6 +220,21 @@ contextBridge.exposeInMainWorld('onPermissionRequest', (cb) => {
   ipcRenderer.on('sandbox:permission-request', (_e, info) => cb(info));
 });
 
-contextBridge.exposeInMainWorld('respondPermission', (decision) => {
-  ipcRenderer.send('sandbox:permission-respond', decision);
+contextBridge.exposeInMainWorld('respondPermission', (payload) => {
+  // Security (b-11): normalize to the {requestId, decision, persist} shape the
+  // main handler correlates. Raw strings stay supported for compat.
+  let out;
+  if (payload && typeof payload === 'object' && typeof payload.decision === 'string') {
+    out = {
+      requestId: typeof payload.requestId === 'string' ? payload.requestId : null,
+      decision: payload.decision,
+      persist: payload.persist === 'always' ? 'always' : 'once',
+    };
+  } else if (typeof payload === 'string') {
+    out = { requestId: null, decision: payload, persist: 'once' };
+  } else {
+    return;
+  }
+  if (!['allow', 'block'].includes(out.decision)) return;
+  ipcRenderer.send('sandbox:permission-respond', out);
 });

@@ -1,220 +1,113 @@
-\# Florde
-
-
-
-\## Offer: AI Coding Agent for Zero-to-Code Creation
-
-
-
-\*\*Product Name (working):\*\* Florde
-
-
-
----
-
-
-
-\## Core Promise
-
-
-
-Build real software (apps, tools, simple games) from natural language while learning how the code actually works step-by-step.
-
-
-
-You don’t just get code — you understand it.
-
-
-
----
-
-
-
-\## Clear Outcome Promise
-
-
-
-Within minutes, users can:
-
-
-
-\- describe an idea in plain language
-
-\- receive a working Python/Electron-based project
-
-\- see the full code generated automatically
-
-\- get real-time explanations of what every part does
-
-\- modify the project by talking to the AI
-
-
-
----
-
-
-
-\## Guarantee
-
-
-
-“If you cannot generate your first working project within 30 minutes of setup, you get full access extension until it works — or a full refund.”
-
-
-
-This removes risk for:
-
-
-
-\- beginners who fear complexity
-
-\- users unsure if they can actually build something
-
-\- skeptics of AI coding tools
-
-
-
----
-
-
-
-\## Bonuses (Objection Handling)
-
-
-
-\### Bonus 1: “Project Starter Library”
-
-
-
-Prebuilt templates:
-
-
-
-\- To-Do App
-
-\- Simple Game Engine Starter
-
-\- Business Website Generator
-
-\- Automation Scripts Pack
-
-
-
-Removes objection: “I don’t even know what to build.”
-
-
-
----
-
-
-
-\### Bonus 2: “Code Explained Mode”
-
-
-
-Every generated project includes:
-
-
-
-\- line-by-line explanation
-
-\- simplified “what this does” summaries
-
-\- visual flow breakdown (logic steps)
-
-
-
-Removes objection: “I’ll get code but won’t understand it.”
-
-
-
----
-
-
-
-\### Bonus 3: “Fix-It AI Debug Assistant”
-
-
-
-\- paste broken code
-
-\- AI explains the error
-
-\- auto-fixes it step-by-step
-
-
-
-Removes objection: “What if it breaks or I get stuck?”
-
-
-
----
-
-
-
-\## Scarcity Angle (Internal Mechanism)
-
-
-
-\*\*Founding Access Phase (limited build cohort):\*\*
-
-
-
-\- Only first 500 users get lifetime early access pricing
-
-\- After that: shift to subscription model + higher price tier
-
-\- Early users influence roadmap (feature voting priority)
-
-
-
-Optional framing:
-
-
-
-“We are limiting early access to ensure model stability and fast feedback loops.”
-
-
-
----
-
-
-
-\## Positioning Summary
-
-
-
-Not just a coding tool.
-
-
-
-It is:
-
-
-
-\- a software generator
-
-\- a coding tutor
-
-\- a debug assistant
-
-
-
-combined into one AI system
-
-
-
----
-
-
-
-\## Pricing
-
-
-
-\- Premium tier: first 5–10× more expensive (early adopters / founders tier) 199 Euro
-
-\- Middle anchor price (main commercial plan) 49 Euro
-
-\- Cheap version (entry / limited features) 19 Euro
-
+# **Florde**  
+## **Allgemeine Informationen**  
+**Name:** Florde  
+  **Autor:** Plesend  
+  **Autor-Kontakt:** Plesend@proton.me  
+  **Projekt-Kontakt:** Florde@outlook.de  
+  **Status:** Beta  
+  **Discord:** discord.gg/Z2nREpXN4t   
+## **Grundprinzip**  
+Florde ist eine **Privacy-First-AI-Agent-Umgebung** für Softwareentwicklung und die Arbeit mit KI-Agenten.  
+ Ein zentraler Grundsatz von Florde ist:  
+ **Sicherheit und Kontrolle des Users stehen an erster Stelle. Bequemlichkeit geht niemals auf Kosten von Transparenz.  
+ **Der User soll nachvollziehen und kontrollieren können, welche Aktionen eine KI ausführt und welche Berechtigungen sie dafür besitzt.  
+ Florde ist deshalb nicht darauf ausgelegt, dass eine KI möglichst viele Aktionen automatisch und ohne Rückfrage ausführt. Stattdessen gibt es Kontroll- und Berechtigungssysteme, die den User in den Entscheidungsprozess einbeziehen.   
+## **Entwicklungsumgebung**  
+Florde beinhaltet eine integrierte Entwicklungsumgebung.  
+ Dazu gehören unter anderem:   
+- Monaco Editor   
+- Datei-Explorer   
+- mehrere Editor-Tabs   
+- Terminal   
+- Git-Integration   
+- Projektverwaltung   
+- KI-Chat   
+- KI-Agenten   
+- Diff-Ansichten   
+- Code- und Projektwerkzeuge  
+ Die IDE basiert auf **Monaco**.  
+## **KI-Agenten**  
+Florde ist auf die Verwendung von KI-Agenten ausgelegt.  
+ Agenten können abhängig von ihren Berechtigungen Werkzeuge verwenden und Aufgaben innerhalb eines Projekts ausführen.  
+ Dazu gehören beispielsweise Dateioperationen, Terminalaktionen und weitere integrierte Werkzeuge.  
+ Florde besitzt ein **Permission Gate**, das Berechtigungen für entsprechende Aktionen kontrolliert.  
+ KI-generierte Änderungen sollen für den User nachvollziehbar bleiben und nicht einfach als undurchsichtige Änderungen am Projekt erscheinen.   
+## **Lokale KI**  
+Florde unterstützt lokale KI-Modelle.  
+ Eine wichtige Integration ist **Ollama**.  
+ Über die Ollama-Integration können lokale Modelle in Florde verwendet werden. Florde unterstützt dabei auch **Tool Calling**, sodass ein lokales Modell mit den verfügbaren Werkzeugen der Umgebung arbeiten kann.  
+ Dadurch ist Florde nicht ausschließlich auf externe KI-Provider angewiesen.   
+## **MCP**  
+Florde besitzt einen eigenen **MCP-Client**.  
+ Unterstützte Verbindungsarten bzw. Transportmöglichkeiten umfassen:   
+- stdio   
+- SSE   
+- WebSocket   
+- MCP   
+- Custom  
+ MCP-Server können dadurch in die Florde-Umgebung eingebunden und von KI-Agenten verwendet werden.  
+## **Isolierte Ausführung**  
+Florde verfügt über mehrere Möglichkeiten, Code und Prozesse isoliert auszuführen.  
+ Unterstützte bzw. integrierte Isolationen umfassen:   
+- Docker   
+- Firejail   
+- Podman   
+- VMware   
+- QEMU   
+- None  
+   
+ none bedeutet, dass kein isoliertes Backend verwendet wird.  
+ Welche Umgebung verwendet wird, hängt von der jeweiligen Aufgabe und Konfiguration ab.   
+## **VMware**  
+Florde kann VMware als isolierte Umgebung verwenden.  
+ In einer VMware-Umgebung können auch **Vision-Modelle** eingesetzt werden.  
+ Diese können den virtuellen Desktop visuell erfassen und – abhängig von den verfügbaren Berechtigungen und Funktionen – mit der virtuellen Umgebung interagieren.  
+ Dadurch können auch Aufgaben automatisiert werden, bei denen eine reine Datei- oder Terminalsteuerung nicht ausreicht.   
+## **Permission Gate**  
+Das Permission Gate ist ein wichtiger Bestandteil der Sicherheitsarchitektur von Florde.  
+ Aktionen eines KI-Agenten werden nicht grundsätzlich als uneingeschränkt erlaubt betrachtet.  
+ Je nach Aktion können entsprechende Berechtigungen erforderlich sein oder eine Zustimmung des Users notwendig werden.  
+ Das Ziel ist, dass der User Kontrolle darüber behält, welche Fähigkeiten ein Agent innerhalb seiner Umgebung verwenden darf.   
+## **Transparenz**  
+Florde soll nicht nur ermöglichen, dass KI Aufgaben erledigt, sondern auch nachvollziehbar machen, **was die KI tatsächlich tut**.  
+ Dazu gehören unter anderem:   
+- nachvollziehbare Änderungen   
+- Diff-Ansichten   
+- Berechtigungskontrolle   
+- Audit-Informationen   
+- sichtbare Agent-Aktionen  
+ Die genaue Darstellung und der Umfang der Kontrolle hängen von der jeweiligen Funktion und dem aktuellen Implementierungsstand ab.  
+## **Datenschutz**  
+Florde verfolgt einen **Privacy-First-Ansatz**.  
+ Ein besonderer Schwerpunkt liegt darauf, dem User möglichst viel Kontrolle darüber zu geben, welche Daten lokal verarbeitet werden und welche externen Dienste verwendet werden.  
+ Durch die Unterstützung lokaler Modelle, unter anderem über Ollama, kann KI-Verarbeitung auch lokal erfolgen.  
+ Florde soll dabei nicht voraussetzen, dass sämtliche Entwicklungsdaten grundsätzlich an einen zentralen Cloud-Dienst übertragen werden.   
+## **Projektcharakter**  
+Florde verbindet mehrere Bereiche in einer Anwendung:   
+- KI-Agenten   
+- Softwareentwicklung   
+- IDE   
+- lokale und externe KI-Modelle   
+- Tool Calling   
+- MCP   
+- Terminal   
+- Git   
+- Sandbox- und Isolationssysteme   
+- Sicherheits- und Berechtigungssysteme  
+ Florde ist damit als integrierte Umgebung gedacht, in der KI nicht nur für Chat verwendet wird, sondern direkt in den Entwicklungsprozess eingebunden werden kann.  
+    
+# **Florde unterstützt verschiedene KI-Provider, darunter:**  
+    
+- OpenAI   
+- DeepSeek   
+- Mistral   
+- Anthropic   
+- Gemini   
+- Grok   
+- OpenRouter   
+- OpenCode Zen   
+- OpenCode Go   
+- Custom   
+- Ollama   
+- LM Studio   
+LocalAI  

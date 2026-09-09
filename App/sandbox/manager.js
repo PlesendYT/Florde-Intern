@@ -109,6 +109,23 @@ class SandboxManager {
     this._emit('switch', { type });
   }
 
+  // Security (b-33): remove a deleted project's orphaned tool volumes.
+  // Named per-project-hash volumes otherwise linger forever.
+  async removeProjectVolumes(project) {
+    if (typeof project !== 'string' || !project) return { ok: false, error: 'invalid project' };
+    const vol = 'florde-sbx-' + projectHash(project) + '-tools';
+    const removed = [];
+    for (const type of ['docker', 'podman']) {
+      const b = this._backends.get(type);
+      if (!b || typeof b._run !== 'function') continue;
+      try {
+        const r = b._run(['volume', 'rm', '-f', vol]);
+        if (r && r.ok) removed.push(type + ':' + vol);
+      } catch {}
+    }
+    return { ok: true, removed };
+  }
+
   async trySwitchBackend(type) {
     try {
       await this.switchBackend(type);

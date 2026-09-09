@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removePermissionRule: (rule) => ipcRenderer.invoke('sandbox:remove-permission-rule', rule),
     getCustomTools: (project) => ipcRenderer.invoke('sandbox:get-custom-tools', project),
     setCustomTools: (project, tools) => ipcRenderer.invoke('sandbox:set-custom-tools', project, tools),
+    removeProjectVolumes: (project) => ipcRenderer.invoke('sandbox:remove-project-volumes', project),
   },
 
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
@@ -162,6 +163,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAll: (n, ns) => ipcRenderer.invoke('florde:get-all', n, ns),
     query: (n, sql, params) => ipcRenderer.invoke('florde:query', n, sql, params),
     run: (n, sql, params) => ipcRenderer.invoke('florde:run', n, sql, params),
+    transaction: (n, statements) => ipcRenderer.invoke('florde:transaction', n, statements),
     close: (n) => ipcRenderer.invoke('florde:close', n),
     getDbPath: (n) => ipcRenderer.invoke('florde:get-db-path', n),
   },

@@ -185,11 +185,12 @@ class DbService {
   }
 
   // Security (b-06): raw SQL over IPC is restricted to a fixed statement
-  // shape over known tables. No stacked statements, no PRAGMA/ATTACH/DDL.
+  // shape over tables the renderer legitimately uses raw SQL for
+  // (todos/notes/decisions/time_sessions/audit_log/layout_states).
+  // permissions/kv_store must NEVER be touched raw (gate bypass otherwise).
   static _SQL_TABLES = new Set([
-    'kv_store', 'audit_log', 'feature_timeline', 'permissions',
-    'layout_states', 'todos', 'notes', 'decisions',
-    'time_sessions', 'time_summary',
+    'todos', 'notes', 'decisions',
+    'time_sessions', 'audit_log', 'layout_states',
   ]);
 
   static _checkSql(sql, kind) {
@@ -256,6 +257,25 @@ class DbService {
     return store.run(sql, clean);
   }
 
+  // Security (b-25): every statement validated like run(), then executed
+  // atomically in a single transaction.
+  transaction(projectName, statements) {
+    if (!Array.isArray(statements) || statements.length === 0 || statements.length > 50) {
+      throw new Error('transaction rejected: invalid statements');
+    }
+    const clean = statements.map((s) => {
+      if (!s || typeof s !== 'object') throw new Error('transaction rejected: invalid statement');
+      const err = DbService._checkSql(s.sql, 'run');
+      if (err) throw new Error('transaction rejected: ' + err);
+      const params = DbService._checkParams(s.params);
+      if (params === null) throw new Error('transaction rejected: invalid params');
+      return { sql: s.sql, params };
+    });
+    const store = this._getStore(projectName);
+    if (!store) return null;
+    return store.transaction(clean);
+  }
+
   close(projectName) {
     const store = this._stores.get(projectName);
     if (store) {
@@ -265,9 +285,10 @@ class DbService {
   }
 
   getDbPath(projectName) {
-    const root = getProjectRoot(projectName);
-    if (!root) return null;
-    return path.join(root, '.florde', 'database.db');
+    // Security (b-24): same single source of truth as _getStore.
+    const flordeDir = this._flordeDirFor(projectName);
+    if (!flordeDir) return null;
+    return path.join(flordeDir, 'database.db');
   }
 
   getDirPath(projectName) {

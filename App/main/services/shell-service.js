@@ -435,6 +435,12 @@ class ShellService {
     return resolved;
   }
 
+  // Flags that turn an allowlisted interpreter into arbitrary code execution.
+  static _MCP_FORBIDDEN_ARGS = new Set([
+    '-e', '--eval', '-c', '-r', '--require', '--import',
+    '--experimental-loader', '--experimental-require-module',
+  ]);
+
   mcpStartServer(id, command, args, env) {
     try {
       const bin = this._resolveMcpBin(command);
@@ -443,6 +449,11 @@ class ShellService {
       const cleanArgs = args.map(String);
       for (const a of cleanArgs) {
         if (a.length > 1000 || /[\0\n\r]/.test(a)) return { ok: false, error: 'Invalid MCP argument' };
+        // Security (b-14): node -e / python -c / --require etc. would turn
+        // the allowlisted runtime into arbitrary code execution.
+        if (ShellService._MCP_FORBIDDEN_ARGS.has(a)) {
+          return { ok: false, error: 'MCP argument not allowed: ' + a };
+        }
       }
       const safeEnv = {};
       if (env && typeof env === 'object') {
@@ -532,6 +543,10 @@ class ShellService {
     if (!ptySpawn) return null;
     const cwd = this._assertTerminalCwd(projectPath);
     const shellBin = this._resolveShellBin();
+    // Security (b-10): sessions are bound to the creating sender — write/
+    // resize/kill from any other webContents are rejected, so session ids
+    // cannot be driven cross-window by guessing sequential integers.
+    const ownerId = sender && typeof sender.id !== 'undefined' ? sender.id : null;
     const run = () => {
       const id = ++this._terminalIdCounter;
       const pty = ptySpawn(shellBin, [], {
@@ -550,7 +565,7 @@ class ShellService {
           sender.send('terminal:exit', { id });
         }
       });
-      this._terminalProcesses[id] = pty;
+      this._terminalProcesses[id] = { pty, ownerId, cwd };
       return id;
     };
     if (this._permissionGate) {
@@ -566,19 +581,35 @@ class ShellService {
     return run();
   }
 
-  terminalResize({ id, cols, rows }) {
-    if (this._terminalProcesses[id]) this._terminalProcesses[id].resize(cols, rows);
-  }
-
-  terminalWrite({ id, data }) {
-    if (this._terminalProcesses[id]) this._terminalProcesses[id].write(data);
-  }
-
-  terminalKill({ id }) {
-    if (this._terminalProcesses[id]) {
-      this._terminalProcesses[id].kill();
-      delete this._terminalProcesses[id];
+  // Sessions created via terminalCreate store { pty, ownerId, cwd }.
+  // _terminalPty enforces the owner binding for cross-window calls.
+  _terminalPty({ id }, sender) {
+    const entry = this._terminalProcesses[id];
+    if (!entry) return null;
+    const real = entry && entry.pty ? entry.pty : entry;
+    if (sender && entry && typeof entry === 'object' && entry.ownerId !== undefined) {
+      if (sender.id !== entry.ownerId) return null;
     }
+    return real;
+  }
+
+  terminalResize({ id, cols, rows }, sender) {
+    const pty = this._terminalPty({ id }, sender);
+    if (pty && typeof pty.resize === 'function') pty.resize(cols, rows);
+  }
+
+  terminalWrite({ id, data }, sender) {
+    const pty = this._terminalPty({ id }, sender);
+    if (pty && typeof pty.write === 'function') pty.write(data);
+  }
+
+  terminalKill({ id }, sender) {
+    if (!this._terminalProcesses[id]) return;
+    if (sender && !this._terminalPty({ id }, sender)) return;
+    const entry = this._terminalProcesses[id];
+    const real = entry && entry.pty ? entry.pty : entry;
+    if (real && typeof real.kill === 'function') real.kill();
+    delete this._terminalProcesses[id];
   }
 }
 

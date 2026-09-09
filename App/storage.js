@@ -180,6 +180,20 @@ class FlordeStorage {
     return this.db.prepare(sql).run(...params);
   }
 
+  // Security (b-25): atomic multi-statement execution — all or nothing,
+  // instead of autocommit-per-statement across IPC round-trips.
+  transaction(statements) {
+    this._assertReady();
+    const tx = this.db.transaction((stmts) => {
+      const out = [];
+      for (const { sql, params } of stmts) {
+        out.push(this.db.prepare(sql).run(...(params || [])));
+      }
+      return out;
+    });
+    return tx(statements);
+  }
+
   close() {
     if (this.db) {
       this.db.close();

@@ -40,16 +40,35 @@ class PluginRegistry {
     this.save();
   }
 
+  _assertManifest(manifest) {
+    // Security (b-04): manifest fields are stored, rendered and used as keys —
+    // strict shapes, no markup, no path tricks.
+    if (!manifest || typeof manifest !== 'object') throw new Error('Invalid plugin manifest');
+    if (typeof manifest.id !== 'string' || !/^[a-z][a-z0-9_-]{1,40}$/.test(manifest.id)) {
+      throw new Error('Invalid plugin manifest: bad id');
+    }
+    if (typeof manifest.name !== 'string' || manifest.name.length === 0 || manifest.name.length > 80) {
+      throw new Error('Invalid plugin manifest: bad name');
+    }
+    if (/[<>]/.test(manifest.id + manifest.name)) throw new Error('Invalid plugin manifest');
+    if (manifest.version !== undefined && !/^[A-Za-z0-9._-]{1,20}$/.test(String(manifest.version))) {
+      throw new Error('Invalid plugin manifest: bad version');
+    }
+    return manifest;
+  }
+
   async installFromUrl(url) {
     if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only http(s) plugin URLs allowed');
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Failed to fetch plugin manifest: ${resp.status}`);
     const manifest = await resp.json();
-    if (!manifest.id || !manifest.name) throw new Error('Invalid plugin manifest: missing id or name');
+    this._assertManifest(manifest);
     if (this.plugins.has(manifest.id) && this.plugins.get(manifest.id).installed) {
       throw new Error(`Plugin "${manifest.name}" is already installed`);
     }
-    this.plugins.set(manifest.id, { ...manifest, builtin: false, enabled: true, installed: true });
+    // Security (b-04): fresh installs start DISABLED — the user explicitly
+    // opts in via the marketplace toggle. Remote code must never auto-activate.
+    this.plugins.set(manifest.id, { ...manifest, builtin: false, enabled: false, installed: true });
     this.save();
     return manifest;
   }
@@ -128,8 +147,10 @@ class PluginRegistry {
   }
 
   registerLocal(manifest) {
-    const id = manifest.id || 'local-' + Date.now();
-    this.plugins.set(id, { ...manifest, id, builtin: false, enabled: true, installed: true, local: true });
+    const clean = this._assertManifest(manifest || {});
+    const id = clean.id || 'local-' + Date.now();
+    // Security (b-04): opt-in — local registrations start disabled too.
+    this.plugins.set(id, { ...clean, id, builtin: false, enabled: false, installed: true, local: true });
     this.save();
   }
 

@@ -1,3 +1,36 @@
+// Security (b-46): redacts secret-shaped values before audit persistence.
+// Object keys matching secret names are masked; well-known token prefixes
+// and Bearer/Basic credentials in free text are masked too.
+const _SECRET_KEY_RE = /^(.*[_-]?(key|token|secret|passwd|password|auth|credential|api[_-]?key).*|authorization)$/i;
+const _SECRET_VALUE_RES = [
+  /\b(sk-[A-Za-z0-9_-]{8,}|oc-[A-Za-z0-9_-]{8,}|xox[bpas]-[A-Za-z0-9-]+|ghp_[A-Za-z0-9]+|gho_[A-Za-z0-9]+|AIza[A-Za-z0-9_-]{10,}|AKIA[A-Z0-9]{10,})/g,
+  /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/g,
+];
+
+function _scrubString(s) {
+  if (typeof s !== 'string') return s;
+  let out = s.length > 5000 ? s.slice(0, 5000) : s;
+  for (const re of _SECRET_VALUE_RES) {
+    re.lastIndex = 0;
+    out = out.replace(re, '[REDACTED]');
+  }
+  return out;
+}
+
+function _scrubSecrets(value, depth = 0) {
+  if (depth > 6) return '[TRUNCATED]';
+  if (typeof value === 'string') return _scrubString(value);
+  if (Array.isArray(value)) return value.slice(0, 200).map(v => _scrubSecrets(v, depth + 1));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value).slice(0, 200)) {
+      out[k] = _SECRET_KEY_RE.test(k) ? '[REDACTED]' : _scrubSecrets(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function createAuditLog({ dbCheck, dbRun, dbQuery, storage, project }) {
   let _logs = [];
   let _currentProject = project || null;
@@ -37,17 +70,22 @@ export function createAuditLog({ dbCheck, dbRun, dbQuery, storage, project }) {
   }
 
   async function log(entry) {
-    const logEntry = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
+    // Security (b-46): audit entries persist to SQLite/localStorage — scrub
+    // anything secret-shaped so API keys never land in logs at rest.
+    const clean = _scrubSecrets({
       type: entry.type || 'unknown',
       action: entry.action || '',
       status: entry.status || 'auto',
       summary: entry.summary || '',
       details: entry.details || {},
       source: entry.source || 'KI',
+      sessionId: entry.sessionId || null,
+    });
+    const logEntry = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      ...clean,
       project: _currentProject,
-      sessionId: entry.sessionId || null
     };
     _logs.unshift(logEntry);
     if (_logs.length > _maxLogs) _logs.length = _maxLogs;

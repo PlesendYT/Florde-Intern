@@ -247,6 +247,16 @@ class SandboxService {
     return r;
   }
 
+  async removeProjectVolumes(project) {
+    const { isSafeProjectName } = shared;
+    if (!isSafeProjectName(project)) return { ok: false, error: 'invalid project' };
+    try {
+      return await this._manager.removeProjectVolumes(project);
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
   async detect() {
     return this._manager.detect();
   }
@@ -279,10 +289,31 @@ class SandboxService {
     try { return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox || {}; } catch { return {}; }
   }
 
-  setConfig(cfg) {
+  async setConfig(cfg) {
     try {
+      const next = (cfg && typeof cfg === 'object') ? cfg : {};
+      // Security (b-09): persisting a weak-isolation backend type needs the
+      // same approval as switching to it — otherwise set-config + restart
+      // (restore()) would silently activate none/firejail without a gate.
+      const wantType = typeof next.type === 'string' ? next.type : null;
+      let currentType = null;
+      try { currentType = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')).sandbox?.type || null; } catch {}
+      if ((wantType === 'none' || wantType === 'firejail') && wantType !== currentType && this._permissionGate) {
+        try {
+          await this._permissionGate.checkAndRun({
+            project: this._activeProject || null,
+            backend: this._manager.activeType,
+            op: 'switch_backend',
+            command: wantType,
+            path: null,
+            run: async () => true,
+          });
+        } catch (e) {
+          return { error: e.message };
+        }
+      }
       const settings = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8'));
-      settings.sandbox = { ...(settings.sandbox || {}), ...cfg };
+      settings.sandbox = { ...(settings.sandbox || {}), ...next };
       fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
       return settings.sandbox;
     } catch (e) { return { error: e.message }; }
@@ -391,6 +422,9 @@ class SandboxService {
     if (rule.global) return 'global rules not allowed via IPC';
     const { isSafeProjectName } = shared;
     if (!isSafeProjectName(rule.project)) return 'invalid project';
+    // Security (b-05): the literal name '__global__' would land in the global
+    // bucket via projectKey() — reject it so scoping cannot be spoofed.
+    if (rule.project === '__global__') return 'reserved project name';
     if (typeof rule.tool_type !== 'string' || !SandboxService._RULE_TOOL_RE.test(rule.tool_type)) {
       return 'invalid tool_type';
     }
@@ -414,7 +448,7 @@ class SandboxService {
     if (!rule || typeof rule !== 'object') return { ok: false };
     if (rule.global) return { ok: false, error: 'global rules not allowed via IPC' };
     const { isSafeProjectName } = shared;
-    if (!isSafeProjectName(rule.project)) return { ok: false };
+    if (!isSafeProjectName(rule.project) || rule.project === '__global__') return { ok: false };
     if (typeof rule.tool_type !== 'string' || !SandboxService._RULE_TOOL_RE.test(rule.tool_type)) {
       return { ok: false };
     }

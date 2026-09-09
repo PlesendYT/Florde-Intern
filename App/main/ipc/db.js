@@ -12,6 +12,7 @@ function registerDbIpc({ ipcMain, dbService }) {
   ipcMain.handle('florde:get-all', (event, projectName, namespace) => dbService.getAll(projectName, namespace));
   ipcMain.handle('florde:query', (event, projectName, sql, params) => dbService.query(projectName, sql, params));
   ipcMain.handle('florde:run', (event, projectName, sql, params) => dbService.run(projectName, sql, params));
+  ipcMain.handle('florde:transaction', (event, projectName, statements) => dbService.transaction(projectName, statements));
   ipcMain.handle('florde:close', (event, projectName) => dbService.close(projectName));
   ipcMain.handle('florde:get-db-path', (event, projectName) => dbService.getDbPath(projectName));
   ipcMain.handle('florde:get-dir-path', (event, projectName) => dbService.getDirPath(projectName));

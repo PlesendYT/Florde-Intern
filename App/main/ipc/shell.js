@@ -36,9 +36,9 @@ function registerShellIpc({ ipcMain, shellService }) {
   ipcMain.handle('mcp:stop-server', (event, id) => shellService.mcpStopServer(id));
 
   ipcMain.handle('terminal:create', (event, opts) => shellService.terminalCreate(opts, event.sender));
-  ipcMain.handle('terminal:resize', (event, opts) => shellService.terminalResize(opts));
-  ipcMain.handle('terminal:write', (event, opts) => shellService.terminalWrite(opts));
-  ipcMain.handle('terminal:kill', (event, opts) => shellService.terminalKill(opts));
+  ipcMain.handle('terminal:resize', (event, opts) => shellService.terminalResize(opts, event.sender));
+  ipcMain.handle('terminal:write', (event, opts) => shellService.terminalWrite(opts, event.sender));
+  ipcMain.handle('terminal:kill', (event, opts) => shellService.terminalKill(opts, event.sender));
 }
 
 module.exports = { registerShellIpc };

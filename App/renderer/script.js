@@ -3227,6 +3227,8 @@ async function loadProjectList() {
       try {
         const result = await window.electronAPI.deleteProject(p.name);
         if (!result.ok) throw new Error(result.error || 'unknown');
+        // Security (b-33): clean up orphaned per-project container volumes.
+        try { await window.electronAPI.sandbox.removeProjectVolumes?.(p.name); } catch {}
         if (result.flordePath) {
           if (confirm(`".florde/" folder found at:\n${result.flordePath}\n\nDelete it too?`)) {
             await window.electronAPI.flordeDir.remove(p.name).catch(() => {});
@@ -3341,14 +3343,14 @@ document.getElementById('btn-cancel-new')?.addEventListener('click', () => {
 
 function createProjectFromInput() {
   const name = document.getElementById('new-project-name').value.trim();
-  if (!name) { alert('Please enter a project name'); return; }
-  if (!window.electronAPI) { alert('App not ready: electronAPI not available'); return; }
+  if (!name) { alert(T('Please enter a project name')); return; }
+  if (!window.electronAPI) { alert(T('App not ready: electronAPI not available')); return; }
   window.electronAPI.createSandboxProject(name).then(ok => {
     if (ok) {
       hideModal('new-project-modal');
       WorkspaceManager.openProject(name, name);
     } else {
-      alert('Project already exists');
+      alert(T('Project already exists'));
     }
   }).catch(err => {
     alert('Failed to create project: ' + err.message);
@@ -3403,16 +3405,16 @@ if (btnCreateLocal) {
   btnCreateLocal.addEventListener('click', async () => {
     const name = document.getElementById('local-project-name').value.trim();
     const path = document.getElementById('local-project-path').value.trim();
-    if (!name) { alert('Please enter a project name'); return; }
-    if (!path) { alert('Please select a folder'); return; }
+    if (!name) { alert(T('Please enter a project name')); return; }
+    if (!path) { alert(T('Please select a folder')); return; }
     const result = await window.electronAPI.createLocalProject(name, path);
     if (result.ok) {
       hideModal('local-project-modal');
       WorkspaceManager.openProject(name, name);
     } else if (result.error === 'exists') {
-      alert('Project already exists');
+      alert(T('Project already exists'));
     } else {
-      alert('Folder not found');
+      alert(T('Folder not found'));
     }
   });
 } else console.error('btn-create-local not found');
@@ -3602,23 +3604,24 @@ async function migrateLocalStorageToFlorde(projectName) {
       console.error('Migration failed for key', key, e);
     }
   }
-  // Also migrate current in-memory state
+  // Also migrate current in-memory state — atomically (b-25).
   try {
+    const stmts = [];
     for (const todo of TodoList._todos) {
-      await window.electronAPI.flordeDb.run(projectName,
-        'INSERT OR IGNORE INTO todos (id, text, done, created_at) VALUES (?, ?, ?, ?)',
-        [todo.id, todo.text, todo.done ? 1 : 0, todo.createdAt || new Date().toISOString()]);
+      stmts.push({ sql: 'INSERT OR IGNORE INTO todos (id, text, done, created_at) VALUES (?, ?, ?, ?)',
+        params: [todo.id, todo.text, todo.done ? 1 : 0, todo.createdAt || new Date().toISOString()] });
     }
     for (const [name, note] of Object.entries(Notes._notes)) {
-      await window.electronAPI.flordeDb.run(projectName,
-        'INSERT OR REPLACE INTO notes (name, content, updated_at) VALUES (?, ?, ?)',
-        [name, note.content, new Date(note.updatedAt || Date.now()).toISOString()]);
+      stmts.push({ sql: 'INSERT OR REPLACE INTO notes (name, content, updated_at) VALUES (?, ?, ?)',
+        params: [name, note.content, new Date(note.updatedAt || Date.now()).toISOString()] });
     }
     for (const dec of DecisionLog._decisions) {
-      await window.electronAPI.flordeDb.run(projectName,
-        'INSERT OR IGNORE INTO decisions (title, decision, rationale, alternatives, created_at) VALUES (?, ?, ?, ?, ?)',
-        [dec.title, dec.reasons || '', dec.reasons || '', JSON.stringify(dec.alternatives || []),
-         new Date(dec.createdAt || Date.now()).toISOString()]);
+      stmts.push({ sql: 'INSERT OR IGNORE INTO decisions (title, decision, rationale, alternatives, created_at) VALUES (?, ?, ?, ?, ?)',
+        params: [dec.title, dec.reasons || '', dec.reasons || '', JSON.stringify(dec.alternatives || []),
+          new Date(dec.createdAt || Date.now()).toISOString()] });
+    }
+    if (stmts.length > 0 && window.electronAPI.flordeDb.transaction) {
+      await window.electronAPI.flordeDb.transaction(projectName, stmts);
     }
   } catch (e) {
     console.error('State migration failed:', e);
@@ -4638,7 +4641,7 @@ document.querySelectorAll('.audit-filter').forEach(btn => {
 
 document.getElementById('btn-git-commit').addEventListener('click', async () => {
   const name = document.getElementById('git-commit-name').value.trim();
-  if (!name) { alert('Please enter a commit name.'); return; }
+  if (!name) { alert(T('Please enter a commit name.')); return; }
   const desc = document.getElementById('git-commit-desc').value.trim();
   const result = await GitCore.commit(name, desc);
   if (result.ok) {
@@ -6784,7 +6787,7 @@ function renderKeybindings() {
   });
 
   document.getElementById('btn-reset-keybindings')?.addEventListener('click', () => {
-    if (confirm('Reset all keyboard shortcuts?')) {
+    if (confirm(T('Reset all keyboard shortcuts?'))) {
       KeybindManager.resetAll();
       renderKeybindings();
     }
@@ -7725,6 +7728,15 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
+// Security (b-47): route user-facing literals through the i18n system.
+// Falls back to the source string when no translation exists — zero risk.
+function T(s) {
+  try {
+    if (typeof I18n !== 'undefined' && I18n && typeof I18n.t === 'function') return I18n.t(s);
+  } catch {}
+  return s;
+}
+
 function showQuickOpen() {
   if (document.getElementById('quick-open-overlay')) return;
 
@@ -8496,7 +8508,7 @@ const DecisionLog = {
     });
     container.querySelectorAll('.btn-decision-delete').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (confirm('Delete this decision?')) this.delete(parseInt(btn.dataset.id));
+        if (confirm(T('Delete this decision?'))) this.delete(parseInt(btn.dataset.id));
       });
     });
   },

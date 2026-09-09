@@ -40,6 +40,7 @@ function registerSandboxIpc({ ipcMain, sandboxService }) {
 
   ipcMain.handle('sandbox:get-custom-tools', (event, project) => sandboxService.getCustomTools(project));
   ipcMain.handle('sandbox:set-custom-tools', (event, project, tools) => sandboxService.setCustomTools(project, tools));
+  ipcMain.handle('sandbox:remove-project-volumes', (event, project) => sandboxService.removeProjectVolumes(project));
 }
 
 module.exports = { registerSandboxIpc };

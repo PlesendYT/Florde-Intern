@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 export function parsePluginManifest(raw, base = {}) {
   let parsed;
   try {

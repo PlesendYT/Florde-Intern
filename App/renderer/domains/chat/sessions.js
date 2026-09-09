@@ -57,7 +57,9 @@ export function createChatSessions() {
   }
 
   return {
-    get sessions() { return _sessions; },
+    // Security (b-43): copies, never live references — external code must
+    // not mutate internal session state by accident.
+    get sessions() { return _sessions.map(s => ({ ...s })); },
     get activeSessionId() { return _activeSessionId; },
     get nextId() { return _nextId; },
     newSession,

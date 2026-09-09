@@ -2891,6 +2891,11 @@ async function validateAndSaveSettings() {
   saveBtn.textContent = 'Save';
 
   if (invalidResults.length === 0) {
+    // Security (b-46): secrets must not linger in DOM input values — keys
+    // live in the keychain (refilled via autoFillAllKeys on next open).
+    try {
+      document.querySelectorAll('input[type="password"][id^="key-"]').forEach(el => { el.value = ''; });
+    } catch {}
     hideModal('settings-modal');
     if (document.getElementById('app-view').classList.contains('hidden')) showStartMenu();
     showNotification('ready', 'Florde Is Ready \u2014 Settings saved successfully', '\u2713');
@@ -3143,25 +3148,8 @@ function blurMonaco() {
   if (ta) { ta.blur(); ta.setAttribute('tabindex', '-1'); }
 }
 
-// Debug: log which elements exist and their pointer-events state
-['btn-create-project','btn-cancel-new','btn-create-local','btn-cancel-local','new-project-modal','local-project-modal'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) {
-    const cs = getComputedStyle(el);
-    console.log(`DEBUG ${id}:`, {pointerEvents: cs.pointerEvents, zIndex: cs.zIndex, display: cs.display, cursor: cs.cursor, webkitAppRegion: cs.webkitAppRegion || cs.getPropertyValue('-webkit-app-region')});
-  } else console.warn(`DEBUG: #${id} NOT FOUND`);
-});
-
-// Debug: highlight click target on document
-// Removed debug logging
-// Debug: show hover target info
-document.addEventListener('mouseover', (e) => {
-  const el = e.target;
-  if (el.id && (el.id.includes('btn') || el.id.includes('modal'))) {
-    const cs = getComputedStyle(el);
-    console.log('HOVER on', el.id, {cursor: cs.cursor, pe: cs.pointerEvents, display: cs.display, region: cs.getPropertyValue('-webkit-app-region')});
-  }
-}, true);
+// (Debug pointer-events/HOVER logging removed — b-48: no debug console
+// output in production code. Errors keep console.error below.)
 
 function showStartMenu() {
   document.getElementById('start-menu').classList.remove('hidden');
@@ -3370,7 +3358,6 @@ function createProjectFromInput() {
 const btnCreate = document.getElementById('btn-create-project');
 if (btnCreate) {
   btnCreate.addEventListener('click', (e) => {
-    console.log('Create clicked');
     createProjectFromInput();
   });
 } else console.error('btn-create-project not found');
@@ -3378,7 +3365,6 @@ if (btnCreate) {
 const btnCancelNew = document.getElementById('btn-cancel-new');
 if (btnCancelNew) {
   btnCancelNew.addEventListener('click', (e) => {
-    console.log('Cancel clicked');
     hideModal('new-project-modal');
   });
 } else console.error('btn-cancel-new not found');
@@ -3403,7 +3389,6 @@ document.getElementById('local-project-modal')?.addEventListener('click', (e) =>
 const btnCancelLocal = document.getElementById('btn-cancel-local');
 if (btnCancelLocal) {
   btnCancelLocal.addEventListener('click', () => {
-    console.log('Local cancel clicked');
     hideModal('local-project-modal');
   });
 } else console.error('btn-cancel-local not found');
@@ -3416,7 +3401,6 @@ document.getElementById('btn-browse-folder').addEventListener('click', async () 
 const btnCreateLocal = document.getElementById('btn-create-local');
 if (btnCreateLocal) {
   btnCreateLocal.addEventListener('click', async () => {
-    console.log('Local create clicked');
     const name = document.getElementById('local-project-name').value.trim();
     const path = document.getElementById('local-project-path').value.trim();
     if (!name) { alert('Please enter a project name'); return; }
@@ -3532,6 +3516,20 @@ async function openProject(name) {
   chatHistory = active.messages;
 
   const files = await window.electronAPI.projectListFiles(name);
+  // Security (b-41): dispose previous project's Monaco models + listeners —
+  // otherwise models, disposables and timers leak on every project switch.
+  try {
+    for (const tname of openTabs) {
+      const d = typeof modelDisposables !== 'undefined' ? modelDisposables.get(tname) : null;
+      if (d) { try { d.dispose(); } catch {} modelDisposables.delete(tname); }
+      try {
+        if (typeof monaco !== 'undefined' && monaco.editor) {
+          const m = monaco.editor.getModels().find(x => x.uri.path === '/' + tname);
+          if (m) m.dispose();
+        }
+      } catch {}
+    }
+  } catch {}
   openTabs = [];
   tabContents = {};
   tabLanguages = {};
@@ -6146,7 +6144,9 @@ async function sendMessage(text) {
           const chatter = displayContent.trim();
           let chatHtml = '';
           if (chatter) {
-            chatHtml += '<details class="thoughts-block"><summary>Gedanken</summary><div class="thoughts-body">' +
+            // b-47: user-facing string via I18n so it can be translated.
+            const thoughtsLabel = (typeof I18n !== 'undefined' && I18n.t) ? I18n.t('Gedanken') : 'Gedanken';
+            chatHtml += '<details class="thoughts-block"><summary>' + escapeHtml(thoughtsLabel) + '</summary><div class="thoughts-body">' +
               formatMessageContent(chatter) + '</div></details>';
           }
           chatHtml += toolBadges.join('');
@@ -6724,7 +6724,19 @@ function renderKeybindings() {
         else if (key.length === 1) key = key.toUpperCase();
         parts.push(key);
         const combo = parts.join('+');
-        KeybindManager.setBinding(id, combo);
+        const res = KeybindManager.setBinding(id, combo);
+        if (res && res.ok === false && res.conflict) {
+          kbd.textContent = '⚠ in use: ' + res.conflict;
+          kbd.style.borderColor = 'var(--danger,#ef4444)';
+          kbd.style.color = 'var(--danger,#ef4444)';
+          setTimeout(() => {
+            kbd.textContent = prevText;
+            kbd.style.borderColor = '';
+            kbd.style.color = '';
+          }, 2500);
+          document.removeEventListener('keydown', handler);
+          return;
+        }
         kbd.textContent = combo;
         kbd.style.borderColor = '';
         kbd.style.color = '';

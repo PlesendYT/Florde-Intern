@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 export const REASONING_BLOCK_REGEX = />>\|\s*([\s\S]*?)\s*\|\|</;
 
 export function extractReasoningContent(messages) {

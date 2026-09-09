@@ -126,7 +126,14 @@ class FlordeStorage {
     return this;
   }
 
+  // Security (b-45): fail with a clear error instead of a null-deref when
+  // used before init() or after close().
+  _assertReady() {
+    if (!this.db) throw new Error('FlordeStorage not initialized (call init() first)');
+  }
+
   get(namespace, key) {
+    this._assertReady();
     const row = this.db.prepare(
       'SELECT value FROM kv_store WHERE namespace = ? AND key = ?'
     ).get(namespace, key);
@@ -134,6 +141,7 @@ class FlordeStorage {
   }
 
   set(namespace, key, value) {
+    this._assertReady();
     this.db.prepare(
       `INSERT INTO kv_store (namespace, key, value, updated_at)
        VALUES (?, ?, ?, datetime('now'))
@@ -144,26 +152,31 @@ class FlordeStorage {
   }
 
   delete(namespace, key) {
+    this._assertReady();
     this.db.prepare(
       'DELETE FROM kv_store WHERE namespace = ? AND key = ?'
     ).run(namespace, key);
   }
 
   getAll(namespace) {
+    this._assertReady();
     return this.db.prepare(
       'SELECT key, value FROM kv_store WHERE namespace = ?'
     ).all(namespace);
   }
 
   deleteNamespace(namespace) {
+    this._assertReady();
     this.db.prepare('DELETE FROM kv_store WHERE namespace = ?').run(namespace);
   }
 
   query(sql, params = []) {
+    this._assertReady();
     return this.db.prepare(sql).all(...params);
   }
 
   run(sql, params = []) {
+    this._assertReady();
     return this.db.prepare(sql).run(...params);
   }
 

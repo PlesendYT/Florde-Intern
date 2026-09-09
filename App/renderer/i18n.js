@@ -4,6 +4,17 @@ const I18n = {
   _sourceLang: 'en',
   _initialized: false,
   _translatedDict: {},
+  // Security (b-44): translation cache is bounded — oldest entries pruned.
+  _CACHE_MAX: 2000,
+
+  _setCache(key, val) {
+    if (typeof key !== 'string' || typeof val !== 'string') return;
+    if (!this._cache[key] && Object.keys(this._cache).length >= this._CACHE_MAX) {
+      const oldest = Object.keys(this._cache).slice(0, Math.floor(this._CACHE_MAX / 4));
+      for (const k of oldest) delete this._cache[k];
+    }
+    this._cache[key] = val;
+  },
 
   async init() {
     if (this._initialized) return;
@@ -12,7 +23,16 @@ const I18n = {
       this._currentLang = s.language || 'en';
     } catch { this._currentLang = 'en'; }
     try {
-      this._cache = await window.electronAPI.translation.getCache() || {};
+      const loaded = await window.electronAPI.translation.getCache() || {};
+      // Guard persisted cache: plain object of short strings, capped.
+      if (loaded && typeof loaded === 'object' && !Array.isArray(loaded)) {
+        const entries = Object.entries(loaded)
+          .filter(([k, v]) => typeof k === 'string' && typeof v === 'string' && k.length < 500 && v.length < 2000)
+          .slice(-this._CACHE_MAX);
+        this._cache = Object.fromEntries(entries);
+      } else {
+        this._cache = {};
+      }
     } catch { this._cache = {}; }
     this._initialized = true;
     if (this._currentLang !== this._sourceLang) {
@@ -69,8 +89,8 @@ const I18n = {
     if (this._cache[cacheKey]) return this._cache[cacheKey];
     try {
       const result = await window.electronAPI.translation.translate(text, this._sourceLang, this._currentLang);
-      if (result.success && result.text) {
-        this._cache[cacheKey] = result.text;
+      if (result && result.success && result.text) {
+        this._setCache(cacheKey, result.text);
         this._translatedDict[text] = result.text;
         this._saveCacheDebounced();
         return result.text;
@@ -85,12 +105,17 @@ const I18n = {
       batches.push(texts.slice(i, i + 5));
     }
     for (const batch of batches) {
+      // Security (b-44): per-item result guard — one failing translation
+      // must not reject the whole batch (Promise.all) or crash on
+      // undefined results.
       const results = await Promise.all(
-        batch.map(text => window.electronAPI.translation.translate(text, this._sourceLang, this._currentLang))
+        batch.map(text => window.electronAPI.translation.translate(text, this._sourceLang, this._currentLang)
+          .catch(() => null))
       );
       batch.forEach((text, idx) => {
-        if (results[idx].success && results[idx].text) {
-          this._cache[`${this._sourceLang}:${this._currentLang}:${text}`] = results[idx].text;
+        const r = results[idx];
+        if (r && r.success && r.text) {
+          this._setCache(`${this._sourceLang}:${this._currentLang}:${text}`, r.text);
         }
       });
     }

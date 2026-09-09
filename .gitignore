@@ -44,6 +44,9 @@ docs/*
 .superpowers
 .florde
 
+#Temporäres
+Temporäre Sachen/*
+
 # Git worktrees
 .worktrees
 worktrees

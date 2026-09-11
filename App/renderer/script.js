@@ -2107,19 +2107,23 @@ const TaskRouter = {
 
   _updateChatToolbar() {
     const providerSelect = document.getElementById('provider-select');
+    const modelSelect = document.getElementById('model-select');
     const aiRouterBtn = document.getElementById('btn-ai-router');
     const freeBadge = document.getElementById('provider-free-badge');
     const modelBadge = document.getElementById('model-info-badge');
     if (this._enabled) {
       if (providerSelect) providerSelect.style.display = 'none';
+      if (modelSelect) modelSelect.style.display = 'none';
       if (aiRouterBtn) aiRouterBtn.style.display = 'none';
       if (freeBadge) freeBadge.style.display = 'none';
       if (modelBadge) modelBadge.style.display = 'none';
     } else {
       if (providerSelect) providerSelect.style.display = '';
+      if (modelSelect) modelSelect.style.display = '';
       if (aiRouterBtn) aiRouterBtn.style.display = '';
       if (freeBadge) freeBadge.style.display = '';
       if (modelBadge) modelBadge.style.display = '';
+      if (typeof updateModelDropdown === 'function') { try { updateModelDropdown(); } catch {} }
     }
   },
 
@@ -2984,11 +2988,83 @@ function updatePrivacyIndicator() {
 
 function updateProviderDropdown() {
   AIRouter.renderDropdown();
+  updateModelDropdown();
   updatePrivacyIndicator();
   updateModelInfoBadge();
   if (typeof TaskRouter !== 'undefined' && TaskRouter._enabled) {
     TaskRouter._updateChatToolbar();
   }
+}
+
+// Chat-Modell-Auswahl: zeigt alle Modelle des gewählten Providers (Katalog +
+// live Ollama-Liste). Router-Routen behalten ihr festes Modell.
+async function updateModelDropdown() {
+  const sel = document.getElementById('model-select');
+  const provSel = document.getElementById('provider-select');
+  if (!sel || !provSel) return;
+  const helper = (typeof window !== 'undefined' && window.__chatModelSelect) ? window.__chatModelSelect : null;
+  const val = provSel.value || '';
+  if (val.startsWith('route:')) {
+    sel.style.display = 'none';
+    return;
+  }
+  if (typeof TaskRouter !== 'undefined' && TaskRouter._enabled) return;
+  sel.style.display = '';
+  const providerId = val;
+  const currentModel = (typeof providers !== 'undefined' && providers[providerId] && providers[providerId].model)
+    || (helper ? helper.CHAT_DEFAULT_MODELS[providerId] : '') || '';
+  let catalog = (typeof window !== 'undefined' && window.__modelsMeta) ? window.__modelsMeta.MODEL_CATALOG : null;
+  if (!catalog) catalog = {};
+  let ollamaModels = [];
+  if (providerId === 'ollama') {
+    try {
+      if (window.electronAPI && typeof window.electronAPI.ollamaList === 'function') {
+        ollamaModels = await window.electronAPI.ollamaList();
+      }
+    } catch {}
+  }
+  let opts;
+  if (helper && typeof helper.buildModelOptions === 'function') {
+    opts = helper.buildModelOptions(providerId, catalog, currentModel, ollamaModels);
+  } else {
+    const list = catalog[providerId] || [];
+    const seen = new Set();
+    opts = [];
+    for (const m of list) {
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      opts.push({ value: m, label: m, selected: m === currentModel });
+    }
+    if (currentModel && !seen.has(currentModel)) opts.push({ value: currentModel, label: currentModel, selected: true });
+    if (!opts.some(o => o.selected) && opts.length > 0) opts[0].selected = true;
+  }
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  sel.innerHTML = opts.map(o => `<option value="${esc(o.value)}"${o.selected ? ' selected' : ''}>${esc(o.label)}</option>`).join('');
+  const configured = (typeof providers !== 'undefined' && !!providers[providerId]);
+  sel.disabled = !configured && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'localai';
+  sel.title = configured ? 'Chat-Modell wählen' : 'Provider in Settings konfigurieren, um das Modell zu wechseln';
+}
+
+async function onChatModelChanged() {
+  const sel = document.getElementById('model-select');
+  const provSel = document.getElementById('provider-select');
+  if (!sel || !provSel) return;
+  const providerId = provSel.value;
+  if (!providerId || providerId.startsWith('route:')) return;
+  const model = sel.value;
+  if (!model) return;
+  if (typeof providers !== 'undefined' && providers[providerId]) {
+    providers[providerId].model = model;
+  }
+  try {
+    const s = JSON.parse(localStorage.getItem('florde-settings') || '{}');
+    s[providerId + 'Model'] = model;
+    localStorage.setItem('florde-settings', JSON.stringify(s));
+    if (typeof saveSettingsToDisk === 'function') saveSettingsToDisk({ [providerId + 'Model']: model });
+  } catch {}
+  const modelEl = document.getElementById('model-' + providerId);
+  if (modelEl) modelEl.value = model;
+  updateProviderDropdown();
 }
 
 function updateModelInfoBadge() {
@@ -4674,7 +4750,8 @@ document.getElementById('btn-git-commit-show')?.addEventListener('click', async 
 
 // ==================== PRIVACY & PROVIDER ====================
 
-document.getElementById('provider-select').addEventListener('change', () => { updatePrivacyIndicator(); updateModelInfoBadge(); });
+document.getElementById('provider-select').addEventListener('change', () => { updateModelDropdown(); updatePrivacyIndicator(); updateModelInfoBadge(); });
+document.getElementById('model-select')?.addEventListener('change', () => { onChatModelChanged(); });
 
 function sanitizePath(filePath) {
   let normalized = filePath.replace(/\\/g, '/');
@@ -10013,6 +10090,33 @@ const AIRouter = {
     const sel = document.getElementById('provider-select');
     if (!sel) return;
     const current = sel.value;
+    const helper = (typeof window !== 'undefined' && window.__chatModelSelect) ? window.__chatModelSelect : null;
+    if (helper && typeof helper.buildProviderOptions === 'function') {
+      const opts = helper.buildProviderOptions(typeof providers !== 'undefined' ? providers : {}, this._routes, this._activeRouteId);
+      const routeOpts = opts.filter(o => o.isRoute);
+      const plainOpts = opts.filter(o => !o.isRoute);
+      let html = '';
+      for (const o of routeOpts) {
+        html += `<option value="${this._esc(o.value)}"${o.selected ? ' selected' : ''}>${this._esc(o.label)}</option>`;
+      }
+      if (routeOpts.length > 0 && plainOpts.length > 0) html += '<option disabled>────────────</option>';
+      for (const o of plainOpts) {
+        html += `<option value="${this._esc(o.value)}"${o.disabled ? ' disabled' : ''}>${this._esc(o.label)}</option>`;
+      }
+      sel.innerHTML = html;
+      const q = (v) => { try { return sel.querySelector(`option[value="${CSS.escape(v)}"]`); } catch { return null; } };
+      const curOpt = current ? q(current) : null;
+      if (curOpt && !curOpt.disabled) {
+        sel.value = current;
+      } else if (this._activeRouteId && q('route:' + this._activeRouteId)) {
+        sel.value = 'route:' + this._activeRouteId;
+      } else {
+        const firstEnabled = sel.querySelector('option:not([disabled])');
+        if (firstEnabled) sel.value = firstEnabled.value;
+      }
+      if (typeof updateModelDropdown === 'function') { try { updateModelDropdown(); } catch {} }
+      return;
+    }
     let html = '';
     if (this._routes.length > 0) {
       for (const route of this._routes) {
@@ -10031,10 +10135,9 @@ const AIRouter = {
       ['localai', 'LocalAI'], ['openrouter', 'OpenRouter'], ['custom', 'Custom']
     ];
     for (const [id, label] of providerTypes) {
-      if (providers[id]) {
-        const model = providers[id].model || '';
-        html += `<option value="${id}">${label} (${this._esc(model)})</option>`;
-      }
+      const model = (typeof providers !== 'undefined' && providers[id] && providers[id].model) || this._getDefaultModel(id);
+      const configured = (typeof providers !== 'undefined' && !!providers[id]);
+      html += `<option value="${id}"${configured ? '' : ' disabled'}>${label} (${this._esc(model)})${configured ? '' : ' — setup needed'}</option>`;
     }
     sel.innerHTML = html;
     if (current && sel.querySelector(`option[value="${current}"]`)) {
@@ -10042,6 +10145,7 @@ const AIRouter = {
     } else if (this._activeRouteId && sel.querySelector(`option[value="route:${this._activeRouteId}"]`)) {
       sel.value = 'route:' + this._activeRouteId;
     }
+    if (typeof updateModelDropdown === 'function') { try { updateModelDropdown(); } catch {} }
   },
 
   _getProviderLabel(id) {

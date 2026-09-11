@@ -543,10 +543,9 @@ body {
 .titlebar button, .titlebar select, .titlebar input { -webkit-app-region: no-drag; }
 .titlebar-left { display: flex; align-items: center; gap: 6px; flex-shrink: 0; -webkit-app-region: drag; }
 .titlebar-center {
-  display: flex; overflow-x: auto; white-space: nowrap;
-  flex-shrink: 1; min-width: 0; gap: 2px; align-items: center;
-  scrollbar-width: thin; flex: 1;
-  -webkit-app-region: no-drag;
+  display: none; /* Task 6: old top-toolbar retired — rail delegates to the same
+    buttons, IDs stay in the DOM (shell-ids guard). Leftovers reachable via
+    Command Palette (btn-cmd-palette) + Settings (theme also in status panel). */
 }
 .titlebar-center button {
   background: var(--bg3); border: 1px solid var(--border2); color: var(--text);

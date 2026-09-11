@@ -4818,22 +4818,74 @@ document.getElementById('provider-select').addEventListener('change', () => { up
 document.getElementById('model-select')?.addEventListener('change', () => { onChatModelChanged(); });
 
 // ==================== ICON RAIL ====================
+// Rail buttons delegate to EXISTING toggle mechanisms (same pattern as the
+// keybindings below, e.g. `document.getElementById('btn-terminal-toggle').click()`).
+// Mapping (Task 6, researched 2026-09-11):
+//   chat/editor -> btn-mode-chat / btn-mode-editor (EditorMode.setMode)
+//   terminal    -> btn-terminal-toggle (toggles #terminal-panel.hidden)
+//   tools       -> btn-management-toggle (ManagementPanel.toggle, #management-panel.hidden)
+//   git         -> NO working button exists: btn-git-toggle is in the DOM but has no
+//                handler (only a dead `?.click()` ref in command-registry.js). Mirror
+//                the terminal/docker pattern: toggle #git-panel.hidden + refresh on show.
+//   sandbox/mcp -> NO buttons exist; their UI is the settings-modal tabs. Mirror the
+//                existing settings-tab switching (showModal + tab activation).
+// Theme/fullscreen/export leftovers stay reachable via Command Palette
+// (btn-cmd-palette) + Settings — the hidden .titlebar-center buttons keep their IDs.
+const RAIL_TARGETS = {
+  chat: 'btn-mode-chat',
+  editor: 'btn-mode-editor',
+  terminal: 'btn-terminal-toggle',
+  tools: 'btn-management-toggle',
+};
+
+function openSettingsTab(tabName) {
+  if (typeof hideAllModals === 'function') hideAllModals();
+  if (typeof showModal === 'function') showModal('settings-modal');
+  const tab = document.querySelector('.settings-tab[data-tab="' + tabName + '"]');
+  if (tab) tab.click();
+}
+
+function toggleGitPanel() {
+  const panel = document.getElementById('git-panel');
+  if (!panel) return;
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    if (typeof GitPanel !== 'undefined' && typeof GitPanel.refresh === 'function') {
+      try { GitPanel.refresh(); } catch {}
+    }
+    try { panel.scrollIntoView({ block: 'nearest' }); } catch {}
+  }
+}
+
+// Give the dead btn-git-toggle a real handler (same mirror fn) so the Command
+// Palette entry `git.toggle` (command-registry.js) works too. ID unchanged.
+document.getElementById('btn-git-toggle')?.addEventListener('click', toggleGitPanel);
+
+const RAIL_PANELS = {
+  git: toggleGitPanel,
+  sandbox: () => openSettingsTab('sandbox'),
+  mcp: () => openSettingsTab('mcp'),
+};
+
 document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
   btn.addEventListener('click', () => {
     const panel = btn.dataset.panel;
+    const target = RAIL_TARGETS[panel];
+    const el = target && document.getElementById(target);
+    if (el) {
+      el.click();
+    } else if (typeof RAIL_PANELS[panel] === 'function') {
+      RAIL_PANELS[panel]();
+    }
     document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(b => b.classList.toggle('active', b === btn));
     try {
       const open = JSON.parse(localStorage.getItem('florde-rail-panels') || '["chat","editor"]');
       const next = open.includes(panel) ? open.filter(p => p !== panel) : [...open, panel];
       localStorage.setItem('florde-rail-panels', JSON.stringify(next));
     } catch {}
-    if (window.LayoutManager && typeof window.LayoutManager.togglePanel === 'function') {
-      window.LayoutManager.togglePanel(panel);
-    } else {
-      document.getElementById('app-view')?.setAttribute('data-active-panel', panel);
-    }
   });
 });
+document.getElementById('rail-settings')?.addEventListener('click', () => document.getElementById('btn-settings')?.click());
 document.getElementById('status-dot')?.addEventListener('click', () => {
   renderStatusPanel();
   document.getElementById('status-panel')?.classList.toggle('hidden');

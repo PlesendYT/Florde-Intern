@@ -12,14 +12,11 @@ const TimeTracking = {
   },
 
   async _ensureTable() {
-    const sql = `CREATE TABLE IF NOT EXISTS time_sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project TEXT NOT NULL,
-      start TIMESTAMP NOT NULL,
-      end TIMESTAMP
-    )`;
+    // Schema is owned by storage.js init() in the main process.
+    // Never send DDL over flordeDb IPC — DbService allowlist rejects
+    // anything but INSERT/UPDATE/DELETE ("run rejected" on startup).
     try {
-      await window.electronAPI.flordeDb.run('florde', sql);
+      await window.electronAPI.flordeDb.initDb('florde');
     } catch (e) {
       this._useLocalStorage = true;
     }

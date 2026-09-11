@@ -435,6 +435,125 @@ git commit -m "feat(ui): Animations-Stufen + Status-Panel + CSS-Cleanup (Rewrite
 
 ---
 
+---
+
+## Round 2 (User-Feedback 2026-09-11): Rail funktional, Top-Toolbar weg, ALLE Bereiche
+
+Befund: Rail-Buttons rufen `LayoutManager.togglePanel` (existiert nicht) — Fallback wirkungslos.
+Alte `.titlebar-center`-Button-Wolke (~20 Buttons) noch sichtbar. Settings, Startmenü,
+Git/Docker/Terminal-Panels und Modals noch im alten Look.
+
+### Task 6: Rail-Verdrahtung + Top-Toolbar aufräumen
+
+**Files:**
+- Modify: `App/renderer/script.js` (Rail-Handler ersetzen, ~Zeilen 4821-4840)
+- Modify: `App/renderer/style.css` (`.titlebar-center` ausblenden)
+- Modify: `App/renderer/index.html` (nur `type="button"` ergänzen, KEINE ID ändern/entfernen)
+- Test: `renderer/__tests__/shell-ids.test.js` (grün) + Suite
+
+**Interfaces:**
+- Consumes: existierende Toggle-Handler (z. B. `btn-terminal-toggle`, `btn-mode-editor/chat`)
+- Produces: funktionierende Rail (Klick = echte Panel-Umschaltung), leere Top-Toolbar
+
+- [ ] **Step 1: Mapping recherchieren** — Für jedes `data-panel` (chat, editor, terminal, git, sandbox, mcp, tools) den existierenden Umschalt-Mechanismus finden (Button-Handler, `EditorMode`, Panel-`hidden`-Klasse). Nur Mechanismen verwenden, die bereits existieren.
+- [ ] **Step 2: Handler ersetzen** — Delegations-Pattern wie die Keybindings (z. B. `document.getElementById('btn-terminal-toggle').click()`):
+
+```js
+const RAIL_TARGETS = {
+  chat: 'btn-mode-chat', editor: 'btn-mode-editor', terminal: 'btn-terminal-toggle',
+  // git/sandbox/mcp/tools: im Step 1 gefundene Button-IDs eintragen
+};
+document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = RAIL_TARGETS[btn.dataset.panel];
+    const el = target && document.getElementById(target);
+    if (el) el.click();
+    document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(b => b.classList.toggle('active', b === btn));
+    try {
+      const open = JSON.parse(localStorage.getItem('florde-rail-panels') || '["chat","editor"]');
+      const panel = btn.dataset.panel;
+      const next = open.includes(panel) ? open.filter(p => p !== panel) : [...open, panel];
+      localStorage.setItem('florde-rail-panels', JSON.stringify(next));
+    } catch {}
+  });
+});
+document.getElementById('rail-settings')?.addEventListener('click', () => document.getElementById('btn-settings')?.click());
+```
+
+`active`-Klasse = zuletzt geklickt (löst T3M1 auf: Persistenz-Array bleibt Membership, Visual ist Single-Select).
+- [ ] **Step 3: `.titlebar-center` ausblenden** (IDs bleiben im DOM → Guard grün):
+
+```css
+.titlebar-center { display: none; }
+```
+
+Theme-Wechsel bleibt über Settings + Status-Panel erreichbar; Fullscreen/Export/Rest über Command Palette (`btn-cmd-palette`) und Shortcuts — als Kommentar in CSS/JS dokumentieren.
+- [ ] **Step 4: Verifizieren** — `node --check renderer/script.js`; Guard grün; `npm test` → exakt die 16 bekannten Failures (`grep "^not ok"`); Gitleaks; diff/status.
+- [ ] **Step 5: Commit**
+
+```bash
+git add App/renderer/script.js App/renderer/style.css App/renderer/index.html
+gitleaks detect
+git commit -m "feat(ui): Rail schaltet Panels wirklich, Top-Toolbar entfernt"
+```
+
+### Task 7: Full-Sweep A — Modals, Startmenü, Settings
+
+**Files:**
+- Modify: `App/renderer/style.css` (Hauptanteil), `App/renderer/permission-dialog.js` (pre-existing Hardcodes tokenisieren)
+- Test: Suite + Guard
+
+**Interfaces:**
+- Consumes: Task-2-Tokens
+- Produces: alle Modals + Startmenü + Settings im Quiet-Power-Look
+
+- [ ] **Step 1: Bereiche restylen** — Startmenü (`#start-menu`), Settings-Modal, alle `.modal`-Dialoge (new-project, question, prompt, confirm, app-connect, keychain, plugin, plugin-docs, ai-router), Notifications/Toasts. Regeln: nur Task-2-Tokens, keine `box-shadow` (durch Border ersetzen), Radius ≤ 8px, `.btn`/`.btn-primary`-Klassen wiederverwenden statt neuer Button-Styles, `focus-visible` überall.
+- [ ] **Step 2: `permission-dialog.js`-Hardcodes** (`background:#1e1e1e`, `#444`, `box-shadow`) auf Tokens umstellen (T4M4 einlösen).
+- [ ] **Step 3: Keine neuen Hex-Farben** — danach prüfen:
+
+```bash
+rg -n "#[0-9a-fA-F]{3,8}\b" App/renderer/style.css | grep -v -e "^\s*[0-9]*:\s*\*" -e "--surface" -e "--text" -e "--border" -e "--accent" -e "--status" | head -n 20
+```
+
+Jeder Treffer außerhalb der Token-Blöcke (Zeilen ~10-84) muss ein Token werden oder begründet bleiben (Monaco/xterm-Overrides ausgenommen).
+- [ ] **Step 4: Verifizieren** — Suite (16 bekannte), Guard, Gitleaks, diff/status.
+- [ ] **Step 5: Commit**
+
+```bash
+git add App/renderer/style.css App/renderer/permission-dialog.js
+gitleaks detect
+git commit -m "feat(ui): Full-Sweep A — Modals, Startmenü, Settings im Quiet-Power-Look"
+```
+
+### Task 8: Full-Sweep B — Panels, Listen, Tabellen
+
+**Files:**
+- Modify: `App/renderer/style.css` (Hauptanteil)
+- Test: Suite + Guard
+
+**Interfaces:**
+- Consumes: Task-2-Tokens
+- Produces: alle Arbeits-Panels im Quiet-Power-Look
+
+- [ ] **Step 1: Bereiche restylen** — Sidebar/File-Tree + Kontextmenü, Git-Panel + Unteransichten, Docker-Panel, Terminal-Panel, Browser-/Exec-/Output-Panels, Diff-Viewer, Tab-Bars (`file-tabs`, `chat-tab-bar`, `workspace-tab-bar`), File-Tabs, Search/Snippets/Command-Palette-Ergebnisse, Audit-/Management-/Notes-/Decisions-/Keybindings-/Subagents-/RAG-Ansichten, Tabellen, Scrollbars. Gleiche Regeln wie Task 7.
+- [ ] **Step 2: Shadow/Radius-Sweep** — danach muss gelten:
+
+```bash
+rg -n "box-shadow" App/renderer/style.css | head -n 20
+```
+
+Erlaubt bleiben nur begründete Ausnahmen (Overlays/Modals wenn nötig — besser Border). Jede Ausnahme im Commit-Text nennen.
+- [ ] **Step 3: Verifizieren** — Suite (16 bekannte), Guard, Gitleaks, diff/status.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css
+gitleaks detect
+git commit -m "feat(ui): Full-Sweep B — Panels, Listen, Tabellen im Quiet-Power-Look"
+```
+
+---
+
 ## Self-Review (vom Plan-Autor durchgeführt)
 
 1. **Spec-Coverage:** §1 Shell → Task 3; §2 Tokens/Themes → Task 2; §3 Chat/Permission → Task 4; §4 Status/Animation/A11y → Task 3+5 (Focus-States in Task 3-CSS, Rest via Token-Kontraste); §5 Absicherung → Task 1+5. Lücke geschlossen: Focus-States explizit in Task 3 enthalten.

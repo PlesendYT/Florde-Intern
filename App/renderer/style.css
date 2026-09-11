@@ -601,6 +601,22 @@ body {
 #app-view { display: flex; flex-direction: column; height: 100vh; }
 .app-body { display: flex; flex: 1; min-height: 0; position: relative; }
 
+/* ==================== ICON RAIL ==================== */
+#icon-rail { width: 48px; background: var(--surface-panel); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px; flex-shrink: 0; }
+.rail-brand { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+.rail-btn { width: 36px; height: 36px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 1rem; }
+.rail-btn:hover { background: var(--surface-raised); color: var(--text-primary); }
+.rail-btn.active { color: var(--accent); border-color: var(--border-subtle); background: var(--surface-raised); }
+.rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rail-spacer { flex: 1; }
+#status-dot { color: var(--status-success); font-size: 0.8rem; }
+#status-panel { position: absolute; left: 56px; bottom: 12px; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px; min-width: 220px; z-index: 50; color: var(--text-primary); }
+@media (max-width: 720px) {
+  #icon-rail { width: 40px; }
+  .rail-btn, .rail-brand { width: 32px; height: 32px; }
+  #status-panel { left: 46px; min-width: 180px; }
+}
+
 /* ==================== DOCKVIEW LAYOUT ==================== */
 #layout-container { flex: 1; overflow: hidden; min-height: 0; }
 #layout-container.hidden { display: none; }

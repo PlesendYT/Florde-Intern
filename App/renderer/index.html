@@ -182,6 +182,20 @@
     <div id="workspace-tab-bar"></div>
 
     <div class="app-body">
+      <nav id="icon-rail" aria-label="Workspace">
+        <div class="rail-brand">F</div>
+        <button class="rail-btn" data-panel="chat" title="Chat">💬</button>
+        <button class="rail-btn" data-panel="editor" title="Editor">&lt;/&gt;</button>
+        <button class="rail-btn" data-panel="terminal" title="Terminal">⌁</button>
+        <button class="rail-btn" data-panel="git" title="Git">⑂</button>
+        <button class="rail-btn" data-panel="sandbox" title="Sandbox">▣</button>
+        <button class="rail-btn" data-panel="mcp" title="MCP">🔌</button>
+        <button class="rail-btn" data-panel="tools" title="Tools">🛠</button>
+        <div class="rail-spacer"></div>
+        <button class="rail-btn" id="rail-settings" title="Settings">⚙</button>
+        <button class="rail-btn" id="status-dot" title="Florde Status">●</button>
+      </nav>
+      <div id="status-panel" class="hidden" role="dialog" aria-label="Florde Status"></div>
       <div id="layout-container" class="hidden" style="flex:1;overflow:hidden;"></div>
       <!-- Sidebar -->
       <div id="sidebar" class="sidebar">

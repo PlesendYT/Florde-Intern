@@ -4753,6 +4753,27 @@ document.getElementById('btn-git-commit-show')?.addEventListener('click', async 
 document.getElementById('provider-select').addEventListener('change', () => { updateModelDropdown(); updatePrivacyIndicator(); updateModelInfoBadge(); });
 document.getElementById('model-select')?.addEventListener('change', () => { onChatModelChanged(); });
 
+// ==================== ICON RAIL ====================
+document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const panel = btn.dataset.panel;
+    document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(b => b.classList.toggle('active', b === btn));
+    try {
+      const open = JSON.parse(localStorage.getItem('florde-rail-panels') || '["chat","editor"]');
+      const next = open.includes(panel) ? open.filter(p => p !== panel) : [...open, panel];
+      localStorage.setItem('florde-rail-panels', JSON.stringify(next));
+    } catch {}
+    if (window.LayoutManager && typeof window.LayoutManager.togglePanel === 'function') {
+      window.LayoutManager.togglePanel(panel);
+    } else {
+      document.getElementById('app-view')?.setAttribute('data-active-panel', panel);
+    }
+  });
+});
+document.getElementById('status-dot')?.addEventListener('click', () => {
+  document.getElementById('status-panel')?.classList.toggle('hidden');
+});
+
 function sanitizePath(filePath) {
   let normalized = filePath.replace(/\\/g, '/');
   normalized = normalized.replace(/^\.\.\/?/g, '');

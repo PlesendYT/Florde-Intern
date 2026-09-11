@@ -5,63 +5,77 @@
   --editor-font-size: 14px;
 }
 
-[data-theme="dark"], :root:not([data-theme]) {
-  --bg: #0a0a0f; --bg2: #12121a; --bg3: #1a1a24;
-  --text: #e0e0e0; --text2: #a0a0b0; --text3: #666;
-  --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.1);
-  --accent: #7c3aed; --accent2: #3b82f6; --hover: rgba(124,58,237,0.1);
-  --sidebar-bg: #0e0e16; --terminal-bg: #0c0c12; --tab-bg: #1a1a24;
-  --tab-active: #7c3aed; --chat-user: #2a1a3a; --chat-ai: #1a1a28;
-  --scrollbar: #333;
-  --diff-added: rgba(34,197,94,0.15); --diff-removed: rgba(239,68,68,0.15);
-  --diff-added-text: #22c55e; --diff-removed-text: #ef4444;
+:root, [data-theme="florde-dark"] {
+  --surface-background: #0b1020;
+  --surface-panel: #111832;
+  --surface-raised: #1a2342;
+  --text-primary: #e6eaf2;
+  --text-secondary: #a3adc2;
+  --text-muted: #5d6880;
+  --border-subtle: rgba(163, 173, 194, 0.14);
+  --accent: #7c5cfc;
+  --accent-ink: #ffffff;
+  --status-success: #34d399;
+  --status-warn: #fbbf24;
+  --status-danger: #f87171;
+  /* Legacy aliases — components still use --bg/--text/--border etc. */
+  --bg: var(--surface-background); --bg2: var(--surface-panel); --bg3: var(--surface-raised);
+  --text: var(--text-primary); --text2: var(--text-secondary); --text3: var(--text-muted);
+  --border: var(--border-subtle); --border2: var(--border-subtle);
+  --accent2: var(--accent); --hover: rgba(124, 92, 252, 0.12);
+  --sidebar-bg: var(--surface-panel); --terminal-bg: var(--surface-background); --tab-bg: var(--surface-raised);
+  --tab-active: var(--accent); --chat-user: var(--surface-raised); --chat-ai: var(--surface-panel);
+  --scrollbar: var(--text-muted);
+  --diff-added: rgba(52, 211, 153, 0.15); --diff-removed: rgba(248, 113, 113, 0.15);
+  --diff-added-text: var(--status-success); --diff-removed-text: var(--status-danger);
 }
-
-[data-theme="light"] {
-  --bg: #f5f5f8; --bg2: #ffffff; --bg3: #eaeaef;
-  --text: #1a1a2e; --text2: #555; --text3: #999;
-  --border: rgba(0,0,0,0.08); --border2: rgba(0,0,0,0.15);
-  --accent: #7c3aed; --accent2: #3b82f6; --hover: rgba(124,58,237,0.08);
-  --tab-active: #e0e0ff; --sidebar-bg: #eaeaef; --terminal-bg: #f0f0f3; --tab-bg: #e0e0e6;
-  --chat-user: #e8dff5; --chat-ai: #ffffff; --scrollbar: #ccc;
-  --diff-added: rgba(34,197,94,0.12); --diff-removed: rgba(239,68,68,0.12);
-  --diff-added-text: #22c55e; --diff-removed-text: #ef4444;
+[data-theme="florde-light"] {
+  --surface-background: #f2f4fa;
+  --surface-panel: #ffffff;
+  --surface-raised: #e8ecf5;
+  --text-primary: #131a2e;
+  --text-secondary: #4a5578;
+  --text-muted: #8a93ad;
+  --border-subtle: rgba(19, 26, 46, 0.12);
+  --accent: #6d4df6;
+  --accent-ink: #ffffff;
+  --status-success: #059669;
+  --status-warn: #b45309;
+  --status-danger: #dc2626;
+  /* Legacy aliases — components still use --bg/--text/--border etc. */
+  --bg: var(--surface-background); --bg2: var(--surface-panel); --bg3: var(--surface-raised);
+  --text: var(--text-primary); --text2: var(--text-secondary); --text3: var(--text-muted);
+  --border: var(--border-subtle); --border2: var(--border-subtle);
+  --accent2: var(--accent); --hover: rgba(109, 77, 246, 0.08);
+  --sidebar-bg: var(--surface-panel); --terminal-bg: var(--surface-background); --tab-bg: var(--surface-raised);
+  --tab-active: var(--accent); --chat-user: var(--surface-raised); --chat-ai: var(--surface-panel);
+  --scrollbar: var(--text-muted);
+  --diff-added: rgba(5, 150, 105, 0.12); --diff-removed: rgba(220, 38, 38, 0.12);
+  --diff-added-text: var(--status-success); --diff-removed-text: var(--status-danger);
 }
-
-[data-theme="high-contrast"] {
-  --bg: #000000; --bg2: #111111; --bg3: #222222;
-  --text: #ffffff; --text2: #cccccc; --text3: #999999;
-  --border: rgba(255,255,255,0.2); --border2: rgba(255,255,255,0.3);
-  --accent: #ffff00; --accent2: #00ffff; --hover: rgba(255,255,0,0.15);
-  --sidebar-bg: #000000; --terminal-bg: #0a0a0a; --tab-bg: #111111;
-  --tab-active: #ffff00; --chat-user: #1a1a00; --chat-ai: #111111;
-  --scrollbar: #555;
-  --diff-added: rgba(0,255,0,0.25); --diff-removed: rgba(255,0,0,0.25);
-  --diff-added-text: #00ff00; --diff-removed-text: #ff0000;
-}
-
-[data-theme="solarized-dark"] {
-  --bg: #002b36; --bg2: #073642; --bg3: #073642;
-  --text: #839496; --text2: #93a1a1; --text3: #586e75;
-  --border: rgba(131,148,150,0.15); --border2: rgba(131,148,150,0.25);
-  --accent: #268bd2; --accent2: #2aa198; --hover: rgba(38,139,210,0.15);
-  --sidebar-bg: #001f29; --terminal-bg: #00212b; --tab-bg: #073642;
-  --tab-active: #268bd2; --chat-user: #073642; --chat-ai: #002b36;
-  --scrollbar: #586e75;
-  --diff-added: rgba(133,153,0,0.2); --diff-removed: rgba(220,50,47,0.2);
-  --diff-added-text: #859900; --diff-removed-text: #dc322f;
-}
-
-[data-theme="solarized-light"] {
-  --bg: #fdf6e3; --bg2: #eee8d5; --bg3: #eee8d5;
-  --text: #657b83; --text2: #586e75; --text3: #93a1a1;
-  --border: rgba(101,123,131,0.15); --border2: rgba(101,123,131,0.25);
-  --accent: #268bd2; --accent2: #2aa198; --hover: rgba(38,139,210,0.1);
-  --sidebar-bg: #f5eed6; --terminal-bg: #f0ead0; --tab-bg: #eee8d5;
-  --tab-active: #268bd2; --chat-user: #eee8d5; --chat-ai: #fdf6e3;
-  --scrollbar: #93a1a1;
-  --diff-added: rgba(133,153,0,0.15); --diff-removed: rgba(220,50,47,0.15);
-  --diff-added-text: #859900; --diff-removed-text: #dc322f;
+[data-theme="florde-midnight"] {
+  --surface-background: #05070d;
+  --surface-panel: #0a0e1a;
+  --surface-raised: #121728;
+  --text-primary: #dfe4f0;
+  --text-secondary: #949cab;
+  --text-muted: #525a70;
+  --border-subtle: rgba(148, 156, 171, 0.12);
+  --accent: #8b6cff;
+  --accent-ink: #ffffff;
+  --status-success: #34d399;
+  --status-warn: #fbbf24;
+  --status-danger: #f87171;
+  /* Legacy aliases — components still use --bg/--text/--border etc. */
+  --bg: var(--surface-background); --bg2: var(--surface-panel); --bg3: var(--surface-raised);
+  --text: var(--text-primary); --text2: var(--text-secondary); --text3: var(--text-muted);
+  --border: var(--border-subtle); --border2: var(--border-subtle);
+  --accent2: var(--accent); --hover: rgba(139, 108, 255, 0.12);
+  --sidebar-bg: var(--surface-panel); --terminal-bg: var(--surface-background); --tab-bg: var(--surface-raised);
+  --tab-active: var(--accent); --chat-user: var(--surface-raised); --chat-ai: var(--surface-panel);
+  --scrollbar: var(--text-muted);
+  --diff-added: rgba(52, 211, 153, 0.15); --diff-removed: rgba(248, 113, 113, 0.15);
+  --diff-added-text: var(--status-success); --diff-removed-text: var(--status-danger);
 }
 
 body {

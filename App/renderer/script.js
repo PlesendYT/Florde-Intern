@@ -1002,7 +1002,7 @@ let tabDirty = {};
 let activeTabIndex = -1;
 let editor = null;
 let diffEditor = null;
-let currentTheme = 'dark';
+let currentTheme = 'florde-dark';
 let sandboxDir = null;
 let monacoReady = false;
 let pendingProjectOpen = null;
@@ -2584,7 +2584,7 @@ async function loadSettings() {
   else setToggle('instant-mode', false);
   if (s.detailedActivity !== undefined) setToggle('detailed-activity', s.detailedActivity);
   else setToggle('detailed-activity', false);
-  if (s.theme) { currentTheme = s.theme; document.getElementById('settings-theme').value = s.theme; applyTheme(); }
+  if (s.theme) { currentTheme = (__theme?.migrateTheme || (t => t || 'florde-dark'))(s.theme); document.getElementById('settings-theme').value = currentTheme; applyTheme(); }
   if (s.layout) {
     document.body.className = document.body.className.replace(/layout-\S+/g, '').trim();
     document.body.classList.add('layout-' + s.layout);
@@ -2952,8 +2952,8 @@ function enableOfflineMode(enabled) {
 const __theme = (typeof window !== 'undefined' && window.__theme) ? window.__theme : null;
 
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', (__theme?.normalizeTheme || (t => t || 'dark'))(currentTheme));
-  const isLight = (__theme?.isLightTheme || (t => t === 'light' || t === 'solarized-light'))(currentTheme);
+  document.documentElement.setAttribute('data-theme', (__theme?.normalizeTheme || (t => t || 'florde-dark'))(currentTheme));
+  const isLight = (__theme?.isLightTheme || (t => (window.__theme ? window.__theme.isLightTheme(t) : t === 'florde-light')))(currentTheme);
   document.getElementById('btn-theme-toggle') && (document.getElementById('btn-theme-toggle').textContent = isLight ? '\u263D' : '\u2600');
   if (editor) {
     monaco.editor.setTheme((__theme?.monacoThemeFor || (t => isLight ? 'vs' : 'vs-dark'))(currentTheme));
@@ -6427,7 +6427,7 @@ function showDiffView(changes) {
     if (diffEditor) diffEditor.dispose();
     diffEditor = monaco.editor.createDiffEditor(diffContainer, {
       enableSplitViewResizing: false, renderSideBySide: true, readOnly: true,
-      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
+      theme: (__theme?.monacoThemeFor || (t => t === 'florde-light' ? 'vs' : 'vs-dark'))(currentTheme),
     });
     diffEditor.setModel({ original: originalModel, modified: modifiedModel });
   }
@@ -6622,10 +6622,8 @@ document.getElementById('btn-terminal-clear').addEventListener('click', () => {
 
 // ==================== THEME TOGGLE ====================
 
-const THEME_CYCLE = ['dark', 'light', 'high-contrast', 'solarized-dark', 'solarized-light'];
-
 document.getElementById('btn-theme-toggle').addEventListener('click', () => {
-  currentTheme = (__theme?.nextTheme || (c => { const i = THEME_CYCLE.indexOf(c || 'dark'); return THEME_CYCLE[(i === -1 ? 0 : i + 1) % THEME_CYCLE.length]; }))(currentTheme);
+  currentTheme = (__theme?.nextTheme || (c => { const i = ['florde-dark', 'florde-light', 'florde-midnight'].indexOf(c || 'florde-dark'); return ['florde-dark', 'florde-light', 'florde-midnight'][(i === -1 ? 0 : i + 1) % 3]; }))(currentTheme);
   document.getElementById('settings-theme').value = currentTheme;
   applyTheme();
   saveSettingsToDisk({ theme: currentTheme });
@@ -10246,7 +10244,7 @@ require(['vs/editor/editor.main'], () => {
   const container = document.getElementById('editor-container');
   if (container) {
     editor = monaco.editor.create(container, {
-      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
+      theme: (__theme?.monacoThemeFor || (t => t === 'florde-light' ? 'vs' : 'vs-dark'))(currentTheme),
       automaticLayout: true,
       fontSize: 13,
       readOnly: false,
@@ -10677,7 +10675,7 @@ const DiffViewer = {
     this._model = model;
     this._editor = monaco.editor.create(container, {
       model: model,
-      theme: (__theme?.monacoThemeFor || (t => t === 'light' ? 'vs' : 'vs-dark'))(currentTheme),
+      theme: (__theme?.monacoThemeFor || (t => t === 'florde-light' ? 'vs' : 'vs-dark'))(currentTheme),
       automaticLayout: true,
       fontSize: 13,
       scrollBeyondLastLine: false,

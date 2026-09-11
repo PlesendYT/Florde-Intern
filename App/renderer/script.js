@@ -1388,6 +1388,14 @@ function showPermissionPrompt(toolName, args, callback) {
     if (parts.length) linesHtml = '<div class="perm-prompt-detail"><strong>📊 Changes:</strong> ' + parts.join(', ') + '</div>';
   }
 
+  // Task 4: Risiko/Sandbox/Network-Zeilen aus vorhandenen Args, sonst "—" (Gate unverändert)
+  const _riskVal = (args && args.risk) || info.riskLabel || '—';
+  const _sandboxVal = (args && args.sandbox) || '—';
+  const _networkVal = (args && args.network) || '—';
+  const riskGridHtml = '<div class="perm-risk-grid"><span>Risiko:</span><span>' + escapeHtml(String(_riskVal)) +
+    '</span><span>Sandbox:</span><span>' + escapeHtml(String(_sandboxVal)) +
+    '</span><span>Network:</span><span>' + escapeHtml(String(_networkVal)) + '</span></div>';
+
   overlay.innerHTML = '<div class="permission-prompt">' +
     '<h3>\u{1F512} AI Access Request</h3>' +
     '<div class="perm-prompt-icon">' + info.icon + '</div>' +
@@ -1396,6 +1404,7 @@ function showPermissionPrompt(toolName, args, callback) {
     linesHtml +
     (info.reason ? '<div class="perm-prompt-reason"><strong>💬 Reason:</strong> ' + escapeHtml(info.reason) + '</div>' : '') +
     '<div class="perm-prompt-risk"><strong>⚠️ Risk:</strong> <span class="perm-risk-badge ' + info.risk + '">' + info.riskLabel + '</span></div>' +
+    riskGridHtml +
     '<div class="perm-prompt-explain">' + escapeHtml(info.riskExplanation) + '</div>' +
     '<div id="perm-detail-area"></div>' +
     '<div class="perm-prompt-extra-btns">' +
@@ -4449,6 +4458,14 @@ document.addEventListener('click', (e) => {
   if (codeBtn) { e.stopPropagation(); copyMessageText(decodeURIComponent(codeBtn.dataset.content), codeBtn); }
 });
 
+// Task 4: Agent-Card Details-Toggle (delegiert, klassenbasiert — keine neuen IDs)
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('.agent-card-details-btn');
+  if (!t) return;
+  const card = t.closest('.agent-card');
+  if (card) card.classList.toggle('open');
+});
+
 // ==================== IMAGE ATTACHMENTS ====================
 
 let _attachedImages = [];
@@ -5477,6 +5494,18 @@ function renderTextToolBadge(name, args) {
     safe(name) + '</strong>' + (summary ? ' <span class="tool-call-args">' + summary + '</span>' : '') + '</div>';
 }
 
+// Task 4: kompakte Agent-Card — wrappt bereits gerenderte Tool-Badges (Fallback:
+// unbekannte Inhalte behalten ihr altes Markup, nur in <li> eingebettet + Karten-Styling).
+function buildAgentCardHtml(toolBadges) {
+  const items = toolBadges.map(b => '<li>' + b + '</li>').join('');
+  const n = toolBadges.length;
+  const label = n === 1 ? '1 Tool-Aktion' : n + ' Tool-Aktionen';
+  return '<div class="agent-card"><div class="agent-card-header"><span class="agent-card-dot">●</span>' +
+    '<span>' + escapeHtml(label) + '</span>' +
+    '<button type="button" class="agent-card-details-btn">Details</button></div>' +
+    '<ul class="agent-card-tools">' + items + '</ul></div>';
+}
+
 async function summarizeChat() {
   const totalChars = chatHistory.reduce((s, m) => s + (m.content || '').length, 0);
   if (totalChars < SUMMARY_THRESHOLD) return;
@@ -6250,7 +6279,8 @@ async function sendMessage(text) {
             chatHtml += '<details class="thoughts-block"><summary>' + escapeHtml(thoughtsLabel) + '</summary><div class="thoughts-body">' +
               formatMessageContent(chatter) + '</div></details>';
           }
-          chatHtml += toolBadges.join('');
+          if (toolBadges.length) chatHtml += buildAgentCardHtml(toolBadges);
+          else chatHtml += toolBadges.join('');
           contentDiv.innerHTML = chatHtml || formatMessageContent(displayContent);
         } else {
           break;

@@ -18,6 +18,7 @@ window.PermissionDialog = {
       <h3 style="margin:0 0 .6rem;">Genehmigung erforderlich</h3>
       <div style="font-size:.8rem;color:#aaa;margin-bottom:.6rem;">Backend: <b>${esc(info.backend) || '-'}</b> &middot; Kategorie: <b>${esc(info.category || info.op) || '-'}</b></div>
       <div style="font-size:.8rem;margin-bottom:.6rem;color:${riskColor};font-weight:600;">Risiko: ${esc(info.risk) || 'safe'}</div>
+      <div class="perm-risk-grid"><span>Risiko:</span><span>${esc(info.risk) || '—'}</span><span>Sandbox:</span><span>${esc(info.sandbox) || '—'}</span><span>Network:</span><span>${esc(info.network) || '—'}</span></div>
       <pre style="background:#111;padding:.6rem;border-radius:4px;overflow:auto;white-space:pre-wrap;font-family:monospace;font-size:.85rem;">${esc(info.command || info.path)}</pre>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem;">
         <button data-d="allow" data-p="once" style="flex:1;background:#2e7d32;color:#fff;border:0;border-radius:4px;padding:.5rem;">Einmal erlauben</button>

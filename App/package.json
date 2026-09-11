@@ -47,6 +47,7 @@
     "asarUnpack": [
       "**/*.node"
     ],
+    "icon": "../config/icon/icon.png",
     "directories": {
       "output": "build-output"
     },
@@ -54,6 +55,7 @@
       "target": [
         "nsis"
       ],
+      "icon": "../config/icon/icon.ico",
       "artifactName": "Florde-Setup-${version}.${ext}"
     },
     "nsis": {
@@ -65,6 +67,9 @@
       "createStartMenuShortcut": false,
       "runAfterFinish": true,
       "license": "LICENSE.txt",
+      "installerIcon": "../config/icon/icon.ico",
+      "uninstallerIcon": "../config/icon/icon.ico",
+      "installerSidebar": "../config/icon/installer-sidebar.bmp",
       "uninstallDisplayName": "Florde ${version}",
       "multiLanguageInstaller": true,
       "installerLanguages": [
@@ -88,6 +93,7 @@
           ]
         }
       ],
+      "icon": "../config/icon/icon.png",
       "category": "public.app-category.developer-tools",
       "artifactName": "Florde-${version}-${arch}.${ext}"
     },
@@ -102,6 +108,7 @@
         },
         "AppImage"
       ],
+      "icon": "../config/icon",
       "category": "Development",
       "synopsis": "AI-powered code generation",
       "description": "Florde is an AI coding assistant that generates code from natural language.",

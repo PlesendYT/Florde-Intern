@@ -2594,6 +2594,7 @@ async function loadSettings() {
   if (s.detailedActivity !== undefined) setToggle('detailed-activity', s.detailedActivity);
   else setToggle('detailed-activity', false);
   if (s.theme) { currentTheme = (__theme?.migrateTheme || (t => t || 'florde-dark'))(s.theme); document.getElementById('settings-theme').value = currentTheme; applyTheme(); }
+  { const _anim = s.animation || (() => { try { return localStorage.getItem('florde-animation'); } catch { return null; } })() || 'subtle'; applyAnimationLevel(_anim); }
   if (s.layout) {
     document.body.className = document.body.className.replace(/layout-\S+/g, '').trim();
     document.body.classList.add('layout-' + s.layout);
@@ -2826,6 +2827,7 @@ async function validateAndSaveSettings() {
     return s;
   })();
   settings.theme = document.getElementById('settings-theme').value;
+  settings.animation = document.getElementById('animation-level')?.value || 'subtle';
   settings.layout = document.querySelector('.layout-option input:checked')?.value || 'sidebar-left';
   settings.language = document.getElementById('settings-language').value;
   settings.offlineMode = getToggle('offline-mode');
@@ -2967,6 +2969,51 @@ function applyTheme() {
   if (editor) {
     monaco.editor.setTheme((__theme?.monacoThemeFor || (t => isLight ? 'vs' : 'vs-dark'))(currentTheme));
   }
+}
+
+// ==================== ANIMATION LEVEL (Task 5) ====================
+
+function applyAnimationLevel(level) {
+  const allowed = ['minimal', 'subtle', 'normal', 'full'];
+  const v = allowed.includes(level) ? level : 'subtle';
+  document.documentElement.setAttribute('data-animation', v);
+  try { localStorage.setItem('florde-animation', v); } catch {}
+  const sel = document.getElementById('animation-level');
+  if (sel && sel.value !== v) sel.value = v;
+}
+
+// init: localStorage (loadSettings overrides with disk value when present)
+applyAnimationLevel((() => { try { return localStorage.getItem('florde-animation') || 'subtle'; } catch { return 'subtle'; } })());
+
+// ==================== STATUS PANEL (Task 5: read-only, existing sources only) ====================
+
+function renderStatusPanel() {
+  const panel = document.getElementById('status-panel');
+  if (!panel) return;
+  const provider = document.getElementById('provider-select')?.value || '—';
+  const model = document.getElementById('model-select')?.value || '—';
+  const sandbox = (typeof currentProjectType !== 'undefined' && currentProjectType === 'local')
+    ? 'Local'
+    : ((typeof sandboxDir !== 'undefined' && sandboxDir) ? String(sandboxDir) : '—');
+  let mcp = '—';
+  try {
+    const configs = (typeof loadMcpConfig === 'function') ? loadMcpConfig() : [];
+    const connected = configs.filter(c => c && (typeof _mcpClients !== 'undefined') && _mcpClients.get(c.id)?._connected).length;
+    mcp = connected + '/' + configs.length + ' connected';
+  } catch {}
+  const branch = document.querySelector('.git-branch-name')?.textContent?.trim() || '—';
+  const changes = document.querySelector('.git-changes-count')?.textContent?.trim() || '—';
+  let agents = '—';
+  try {
+    const list = window.SubagentManager?.getAll?.();
+    if (Array.isArray(list)) agents = String(list.length) + ' active';
+  } catch {}
+  panel.innerHTML =
+    '<div><strong>AI:</strong> ' + escapeHtml(provider) + ' / ' + escapeHtml(model) + '</div>' +
+    '<div><strong>Sandbox:</strong> ' + escapeHtml(sandbox) + '</div>' +
+    '<div><strong>MCP:</strong> ' + escapeHtml(mcp) + '</div>' +
+    '<div><strong>Git:</strong> ' + escapeHtml(branch) + ' (' + escapeHtml(changes) + ')</div>' +
+    '<div><strong>Agents:</strong> ' + escapeHtml(agents) + '</div>';
 }
 
 // ==================== SANDBOX ====================
@@ -4788,6 +4835,7 @@ document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
   });
 });
 document.getElementById('status-dot')?.addEventListener('click', () => {
+  renderStatusPanel();
   document.getElementById('status-panel')?.classList.toggle('hidden');
 });
 
@@ -7454,6 +7502,11 @@ document.getElementById('settings-language').addEventListener('change', async ()
 document.getElementById('settings-theme').addEventListener('change', () => {
   currentTheme = document.getElementById('settings-theme').value;
   applyTheme();
+});
+
+// Animation select (persisted via florde-animation + settings save)
+document.getElementById('animation-level')?.addEventListener('change', (e) => {
+  applyAnimationLevel(e.target.value);
 });
 
 // Ollama model selector

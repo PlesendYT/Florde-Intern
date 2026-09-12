@@ -644,6 +644,86 @@ git commit -m "feat(ui): visuelle Hierarchie + Dichte, Chat unangetastet"
 
 ---
 
+## Round 4 (User-Feedback 2026-09-12): Echte Layout-Änderungen, Chat tabu
+
+User-Befund (alle 5 am Code verifiziert): Sidebar kollabiert nicht vollständig,
+Rail-Active wird nie initialisiert/gesynct, Animationen sind 2 Alibi-Zeilen,
+Titlebar-Links unverändert, Gesamt-Layout strukturell gleich. Round 3 war zu
+konservativ — Round 4 ändert Verhalten sichtbar. Chat-Tabu (Markup/Behavior/
+Styling von allem mit `chat-*`, `agent-card`, `perm-*`) gilt weiter.
+
+### Task 12: Sidebar-Kollaps + Rail-Active-Sync
+
+**Files:**
+- Modify: `App/renderer/style.css`, `App/renderer/script.js`
+- Modify: `App/renderer/index.html` (nur falls nötig, KEINE ID ändern/entfernen)
+- Test: Suite + Guard
+
+- [ ] **Step 1: Echter Kollaps** — `#sidebar.hidden, #sidebar-resizer.hidden { display: none; }` plus `.main-area`/Nachbar per Flex auffüllen lassen (falls nötig `min-width: 0` prüfen). Bestand: Toggle in `script.js` (~4180) setzt nur Klassen — CSS-Seite fehlte/war löchrig.
+- [ ] **Step 2: Active-Sync** — Beim Init `active`-Klasse aus `florde-rail-panels`/Defaults setzen (z. B. chat+editor aktiv wenn sichtbar); `aria-pressed` auf Rail-Buttons synchron zu `active` halten; Panel-Bar-Refresh (`refreshPanelBar`) auch bei Rail-Klicks aufrufen (T10-Minor einlösen).
+- [ ] **Step 3: Verifizieren** — Guard grün; Suite 16 bekannte; Gitleaks; diff/status.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css App/renderer/script.js App/renderer/index.html
+gitleaks detect
+git commit -m "feat(ui): Sidebar kollabiert vollständig, Rail-Active synchron"
+```
+
+### Task 13: Titlebar verschlanken (Steuerung → Rail/Status)
+
+**Files:**
+- Modify: `App/renderer/style.css`, `App/renderer/script.js` (nur falls Handler nötig)
+- Modify: `App/renderer/index.html` (nur `hidden`-Klassen/Attribute, KEINE ID ändern/entfernen)
+- Test: Suite + Guard
+
+- [ ] **Step 1: Duplikate raus** — `btn-mode-editor`/`btn-mode-chat` ausblenden (Rail kann das; IDs bleiben). `btn-settings` ausblenden (Rail hat es). Verwaiste `toolbar-scroll-left/right` ausblenden (T6M1 einlösen). Übrig oben: Projektname (klein), Privacy-Indikator, Save All, Menü, Theme nur via Settings/Status.
+- [ ] **Step 2: `privacy-indicator` in Status-Nähe** — Knoten per JS ans Status-Panel/`status-dot`-Umfeld umhängen ODER per CSS in die Rail-Ecke ziehen, ohne seine `textContent`-Updates zu brechen (ID bleibt, nur Position). Falls Umhängen riskant: klein + dezent in Titlebar lassen + im Report begründen.
+- [ ] **Step 3: Verifizieren** — Guard grün; Suite 16 bekannte; Gitleaks; diff/status.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css App/renderer/script.js App/renderer/index.html
+gitleaks detect
+git commit -m "feat(ui): Titlebar verschlankt, Steuerung in Rail/Status"
+```
+
+### Task 14: Echtes Animations-System
+
+**Files:**
+- Modify: `App/renderer/style.css` (Keyframes + Stufen)
+- Test: Suite + `rg`-Nachweis der Stufen
+
+- [ ] **Step 1: Keyframes** — `florde-fade-slide-in` (Panels/Modals/Toasts), `florde-fade` (Tabs), Rail-Active-Transition, Status-Punkt-Puls nur bei Aktivität. Ruhig: kurze Wege (2–4px), keine Bounces, kein Loop außer Status-Betriebsanzeige.
+- [ ] **Step 2: Stufen** — minimal (alles aus, vorhanden lassen), subtle = Standard (120–150ms, opacity + max 2px), normal (200ms + 4px Slide), full (250ms + leichtes Stagger bei Listen). `prefers-reduced-motion` erzwingt minimal (vorhanden lassen/erweitern).
+- [ ] **Step 3: Verifizieren** — `rg -n "florde-fade|data-animation" style.css` zeigt alle 4 Stufen; Suite; Guard; Gitleaks.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css
+gitleaks detect
+git commit -m "feat(ui): Animations-System mit 4 Stufen"
+```
+
+### Task 15: Struktur-Rest (Workspace-First, Dichte, Startmenü)
+
+**Files:**
+- Modify: `App/renderer/style.css`, ggf. `index.html`/`script.js` (KEINE ID ändern/entfernen, Chat tabu)
+- Test: Suite + Guard + Chat-Hard-Gate aus Task 11
+
+- [ ] **Step 1: Lücken schließen** — Startmenü-Layout straffen (Dichte, eine ruhige Spalte + Aktionen, kein Wildwuchs); `workspace-tab-bar` + Panel-Header auf eine kompakte Zeile; leere/optionale Bereiche erst bei Bedarf (bestehende `hidden`-Mechanismen nutzen, keine neuen Features).
+- [ ] **Step 2: Chat-Hard-Gate** — `git diff | grep -iE "^[+-].*(chat-msg|agent-card|permission-prompt|chat-input|chat-messages)"` muss leer sein.
+- [ ] **Step 3: Verifizieren** — Suite 16 bekannte; Guard; Gitleaks; diff/status.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css App/renderer/index.html App/renderer/script.js
+gitleaks detect
+git commit -m "feat(ui): Struktur-Rest Workspace-First, Chat unangetastet"
+```
+
+---
+
 ## Self-Review (vom Plan-Autor durchgeführt)
 
 1. **Spec-Coverage:** §1 Shell → Task 3; §2 Tokens/Themes → Task 2; §3 Chat/Permission → Task 4; §4 Status/Animation/A11y → Task 3+5 (Focus-States in Task 3-CSS, Rest via Token-Kontraste); §5 Absicherung → Task 1+5. Lücke geschlossen: Focus-States explizit in Task 3 enthalten.

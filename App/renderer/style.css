@@ -80,7 +80,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg);
+  background: var(--surface-background); /* Task 11: Ebene Background (wertgleich --bg) */
   color: var(--text);
   line-height: 1.5;
   overflow: hidden;
@@ -134,13 +134,13 @@ body {
 
 /* ==================== START MENU ==================== */
 #start-menu {
-  display: flex; height: 100vh; background: var(--bg);
+  display: flex; height: 100vh; background: var(--surface-background); /* Task 11: Ebene Background */
   -webkit-app-region: drag;
   padding-top: env(titlebar-area-height, 0px);
 }
 #start-menu button, #start-menu input, #start-menu select, #start-menu .project-item, #start-menu .project-list { -webkit-app-region: no-drag; }
 .start-sidebar {
-  width: 260px; background: var(--bg2); border-right: 1px solid var(--border);
+  width: 260px; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 24px 16px; flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
@@ -387,7 +387,7 @@ body {
   flex-direction: column;
   max-height: 60vh;
   border-top: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface-background); /* Task 11: Ebene Background */
   position: relative;
   flex-shrink: 0;
 }
@@ -397,7 +397,7 @@ body {
 #diff-viewer-header {
   display: flex;
   align-items: center;
-  background: var(--bg2);
+  background: var(--surface-panel); /* Task 11: Ebene Surface */
   border-bottom: 1px solid var(--border);
   min-height: 32px;
   flex-shrink: 0;
@@ -542,7 +542,7 @@ body {
 .titlebar {
   display: flex; align-items: center; gap: 4px;
   height: 36px; padding: 0 12px;
-  background: var(--bg2); border-bottom: 1px solid var(--border);
+  background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border);
   -webkit-app-region: drag; flex-shrink: 0; overflow: hidden;
 }
 .titlebar button, .titlebar select, .titlebar input { -webkit-app-region: no-drag; }
@@ -606,6 +606,11 @@ body {
   border-top: 1px solid var(--border); font-style: italic;
 }
 /* ==================== APP BODY ==================== */
+/* Task 11 (§7): 4-Ebenen-Hierarchie explizit via --surface-*-Tokens (wertgleich zu den
+   --bg/--bg2/--bg3/--sidebar-bg/--terminal-bg-Aliasen, daher kein Farbwechsel):
+   Background = App-/Panel-Fläche, Surface = Sidebar/Rail/Bar-/Panel-Header,
+   Raised = Cards/inner Aktiv-Tabs, Overlay = Modals/Overlays (Task 7, unangetastet).
+   Dichte: Panel-Paddings 8-12px, Header kompakt einzeilig. Tabu-Selektoren unangetastet. */
 #app-view { display: flex; flex-direction: column; height: 100vh; }
 .app-body { display: flex; flex: 1; min-height: 0; position: relative; }
 
@@ -638,14 +643,14 @@ body {
 .app-body.layout-dockview-active .main-area { display: none; }
 
 .dockview-theme-florde {
-  --dv-background: var(--bg);
+  --dv-background: var(--surface-background); /* Task 11: Ebene Background */
   --dv-tabs-border-bottom: 1px solid var(--border);
-  --dv-tab-active-background: var(--bg3);
+  --dv-tab-active-background: var(--surface-raised); /* Task 11: Ebene Raised */
   --dv-tab-active-border-bottom: 2px solid var(--accent);
   --dv-tab-active-text: var(--text);
   --dv-tab-inactive-text: var(--text3);
-  --dv-tab-background: var(--bg2);
-  --dv-panel-background: var(--bg);
+  --dv-tab-background: var(--surface-panel); /* Task 11: Ebene Surface */
+  --dv-panel-background: var(--surface-background); /* Task 11: Ebene Background */
   --dv-resize-handle-background: var(--border);
   --dv-separator-border: var(--border);
   --dv-drag-over-background: var(--hover);
@@ -684,7 +689,7 @@ body {
 
 /* ==================== SIDEBAR ==================== */
 .sidebar {
-  width: var(--sidebar-width, 220px); min-width: 180px; background: var(--sidebar-bg);
+  width: var(--sidebar-width, 220px); min-width: 180px; background: var(--surface-panel); /* Task 11: Ebene Surface */
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
   overflow: hidden; position: relative;
 }
@@ -786,7 +791,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   background: var(--surface-raised); color: var(--accent); border-color: var(--border-subtle);
 }
 #panel-control-bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.file-tabs { display: flex; background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; min-height: 32px; }
+.file-tabs { display: flex; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); overflow-x: auto; min-height: 32px; }
 .file-tab {
   display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.8rem;
   background: var(--tab-bg); border-right: 1px solid var(--border); cursor: pointer;
@@ -802,7 +807,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== WORKSPACE TAB BAR ==================== */
 #workspace-tab-bar {
   display: flex; align-items: center; height: 30px;
-  background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+  background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border);
   padding: 0 4px; overflow-x: auto; flex-shrink: 0;
 }
 .ws-tab {
@@ -894,8 +899,8 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .main-content { flex: 1; display: flex; min-height: 0; }
 .editor-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .panel-header {
-  display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem;
-  background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 0.8rem; color: var(--text2);
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; /* Task 11: Dichte 8-12px, kompakt einzeilig */
+  background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.8rem; color: var(--text2);
 }
 .panel-header span { flex: 1; }
 .panel-header select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
@@ -1087,9 +1092,9 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 
 /* ==================== TERMINAL ==================== */
 /* ==================== DOCKER PANEL ==================== */
-#docker-panel { position: fixed; bottom: 0; left: 0; right: 0; height: 250px; background: var(--terminal-bg); z-index: 100; border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+#docker-panel { position: fixed; bottom: 0; left: 0; right: 0; height: 250px; background: var(--surface-background); /* Task 11: Ebene Background */ z-index: 100; border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
 #docker-panel.hidden { display: none; }
-#docker-tab-bar { display: flex; align-items: center; background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 0.5rem; height: 30px; flex-shrink: 0; }
+#docker-tab-bar { display: flex; align-items: center; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); padding: 0 0.5rem; height: 30px; flex-shrink: 0; }
 .docker-tab { padding: 0.3rem 0.8rem; font-size: 0.78rem; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
 .docker-tab:hover { color: var(--text2); }
 .docker-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -1137,15 +1142,15 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .docker-compose-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
 #docker-compose-files { max-height: 150px; overflow-y: auto; }
 
-#terminal-panel { position: fixed; bottom: 0; left: 0; right: 0; height: 250px; background: var(--terminal-bg); z-index: 100; border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+#terminal-panel { position: fixed; bottom: 0; left: 0; right: 0; height: 250px; background: var(--surface-background); /* Task 11: Ebene Background */ z-index: 100; border-top: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
 #terminal-panel.hidden { display: none; }
-#terminal-toolbar { display: flex; gap: 4px; align-items: center; padding: 2px 4px; background: var(--bg2); border-bottom: 1px solid var(--border); }
+#terminal-toolbar { display: flex; gap: 4px; align-items: center; padding: 4px 8px; /* Task 11: Dichte */ background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); }
 #terminal-toolbar button { background: none; border: none; color: var(--text3); cursor: pointer; padding: 2px 6px; border-radius: 3px; font-size: 0.8rem; }
 #terminal-toolbar button:hover { background: var(--hover); }
 #terminal-splits { display: flex; flex: 1; gap: 1px; background: var(--border); }
-.terminal-split { flex: 1; display: flex; flex-direction: column; min-width: 100px; min-height: 50px; background: var(--bg); border: 1px solid transparent; }
+.terminal-split { flex: 1; display: flex; flex-direction: column; min-width: 100px; min-height: 50px; background: var(--surface-background); /* Task 11: Ebene Background */ border: 1px solid transparent; }
 .terminal-split.active { border-color: var(--accent); }
-.terminal-split-header { display: flex; align-items: center; justify-content: space-between; padding: 1px 6px; background: var(--bg2); font-size: 0.75rem; color: var(--text3); cursor: pointer; }
+.terminal-split-header { display: flex; align-items: center; justify-content: space-between; padding: 1px 6px; background: var(--surface-panel); /* Task 11: Ebene Surface */ font-size: 0.75rem; color: var(--text3); cursor: pointer; }
 .terminal-split-close { background: none; border: none; color: var(--text3); cursor: pointer; padding: 0 4px; font-size: 0.8rem; }
 .terminal-split-close:hover { color: var(--status-danger); }
 #terminal-toolbar button:focus-visible, .terminal-split-header:focus-visible, .terminal-split-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -1191,7 +1196,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== STATUS BAR ==================== */
 .status-bar {
   display: flex; align-items: center; gap: 1rem; padding: 0.2rem 0.8rem;
-  background: var(--bg2); border-top: 1px solid var(--border);
+  background: var(--surface-panel); /* Task 11: Ebene Surface */ border-top: 1px solid var(--border);
   font-size: 0.72rem; color: var(--text3); user-select: none; flex-shrink: 0;
 }
 .status-bar span { display: flex; align-items: center; gap: 0.3rem; }
@@ -1331,7 +1336,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .search-result-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ==================== PROBLEM PANEL ==================== */
-.problem-panel { border-top: 1px solid var(--border); background: var(--bg); max-height: 150px; overflow-y: auto; }
+.problem-panel { border-top: 1px solid var(--border); background: var(--surface-background); /* Task 11: Ebene Background */ max-height: 150px; overflow-y: auto; }
 
 /* ==================== GIT PANEL ==================== */
 .sidebar-section { border-top: 1px solid var(--border); }
@@ -1345,7 +1350,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 }
 .git-panel-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px 14px; font-size: 0.75rem; color: var(--text3);
+  padding: 8px 12px; /* Task 11: Dichte 8-12px, kompakt einzeilig */ font-size: 0.75rem; color: var(--text3);
   border-bottom: 1px solid var(--border); font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.5px;
 }
@@ -1485,11 +1490,11 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== TO-DO PANEL ==================== */
 #todo-panel {
   position: fixed; right: 0; top: 2rem; width: 280px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50;
 }
 #todo-panel.hidden { display: none; }
-#todo-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
+#todo-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
 #todo-input-row { padding: 0.5rem; border-bottom: 1px solid var(--border); }
 #todo-input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; background: var(--bg1); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; font-size: 0.8rem; }
 #todo-list { flex: 1; overflow-y: auto; padding: 0.25rem 0; }
@@ -1511,11 +1516,11 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== NOTES PANEL ==================== */
 #notes-panel {
   position: fixed; right: 0; top: 2rem; width: 500px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50;
 }
 #notes-panel.hidden { display: none; }
-#notes-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
+#notes-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
 #notes-sidebar { width: 100%; max-height: 120px; border-bottom: 1px solid var(--border); overflow-y: auto; display: flex; }
 #notes-list { display: flex; gap: 2px; padding: 0.25rem; flex-wrap: wrap; }
 .note-item { padding: 0.25rem 0.5rem; background: var(--bg1); border: 1px solid var(--border2); border-radius: 4px; cursor: pointer; font-size: 0.75rem; white-space: nowrap; }
@@ -1534,12 +1539,12 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== RAG PANEL ==================== */
 #rag-panel {
   position: fixed; right: 0; top: 2rem; width: 320px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50;
   font-size: 0.8rem;
 }
 #rag-panel.hidden { display: none; }
-#rag-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-weight: 600; }
+#rag-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-weight: 600; }
 #rag-status-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
 #rag-status { flex: 1; font-size: 0.75rem; color: var(--text3); }
 #btn-rag-reindex { padding: 0.2rem 0.5rem; background: var(--bg2); border: 1px solid var(--border2); color: var(--text); border-radius: 3px; cursor: pointer; font-size: 0.7rem; }
@@ -1560,12 +1565,12 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== SKILLS PANEL ==================== */
 #skills-panel {
   position: fixed; right: 0; top: 2rem; width: 320px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50;
   font-size: 0.8rem;
 }
 #skills-panel.hidden { display: none; }
-#skills-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-weight: 600; }
+#skills-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-weight: 600; }
 #skills-panel-header span:first-child { flex: 1; }
 #skills-list { flex: 1; overflow-y: auto; padding: 0.25rem; }
 .skill-card { padding: 0.5rem; margin: 0.25rem 0; background: var(--bg1); border: 1px solid var(--border2); border-radius: 6px; }
@@ -1610,11 +1615,11 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== EXECUTION PANEL ==================== */
 #execution-panel {
   position: fixed; right: 0; top: 2rem; width: 320px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50; font-size: 0.8rem;
 }
 #execution-panel.hidden { display: none; }
-#execution-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-weight: 600; }
+#execution-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-weight: 600; }
 #execution-panel-header span:first-child { flex: 1; }
 #execution-list { flex: 1; overflow-y: auto; padding: 0.25rem; }
 .exec-current { padding: 0.5rem; }
@@ -1638,11 +1643,11 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== OLLAMA HUB PANEL ==================== */
 #ollama-hub-panel {
   position: fixed; right: 0; top: 2rem; width: 340px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50; font-size: 0.8rem;
 }
 #ollama-hub-panel.hidden { display: none; }
-#ollama-hub-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--bg2); border-bottom: 1px solid var(--border); font-weight: 600; }
+#ollama-hub-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-weight: 600; }
 #ollama-hub-header span:first-child { flex: 1; }
 #ollama-hub-controls { display: flex; gap: 0.3rem; padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
 #ollama-hub-search { flex: 1; padding: 0.3rem 0.5rem; background: var(--bg1); border: 1px solid var(--border2); color: var(--text); border-radius: 3px; font-size: 0.8rem; }
@@ -1660,13 +1665,13 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== MANAGEMENT PANEL ==================== */
 #management-panel {
   position: fixed; right: 0; top: 2rem; width: 500px; bottom: 2rem;
-  background: var(--bg); border-left: 1px solid var(--border);
+  background: var(--surface-background); /* Task 11: Ebene Background */ border-left: 1px solid var(--border);
   display: flex; flex-direction: column; z-index: 50;
 }
 #management-panel.hidden { display: none; }
 #management-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 0.5rem 0.75rem; background: var(--bg2);
+  padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */
   border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600;
 }
 #management-subtabs {
@@ -1690,7 +1695,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 /* ==================== DECISION LOG ==================== */
 #decision-toolbar {
   display: flex; gap: 0.3rem; align-items: center;
-  padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem; /* Task 11: Dichte 8-12px */ border-bottom: 1px solid var(--border);
   background: var(--bg1);
 }
 #decision-list { flex: 1; overflow-y: auto; padding: 0.5rem; }

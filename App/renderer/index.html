@@ -261,6 +261,15 @@
 
       <!-- Main Content -->
       <div class="main-area">
+        <!-- Task 10 (§6): Panel-Control-Bar über dem Workspace (nicht im/über dem Chat).
+             Nur rg-verifizierte Panels (docker/terminal/git/file-tree); sandbox/mcp haben
+             keine echten Panels (nur Settings-Tabs an der Rail) und sind weggelassen. -->
+        <div id="panel-control-bar" aria-label="Panels">
+          <button type="button" data-opens="docker-panel" aria-pressed="false">Docker</button>
+          <button type="button" data-opens="terminal-panel" aria-pressed="false">Terminal</button>
+          <button type="button" data-opens="git-panel" aria-pressed="false">Git</button>
+          <button type="button" data-opens="file-tree" aria-pressed="false">Files</button>
+        </div>
         <div id="file-tabs" class="file-tabs"></div>
 
         <div class="main-content">

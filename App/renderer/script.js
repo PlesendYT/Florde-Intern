@@ -4914,6 +4914,45 @@ document.getElementById('status-dot')?.addEventListener('click', () => {
   document.getElementById('status-panel')?.classList.toggle('hidden');
 });
 
+// ==================== PANEL CONTROL BAR (Task 10, Design-Doc §6) ====================
+// Buttons carry data-opens="<panel-id>" and delegate to the EXISTING toggles
+// (Task-6 pattern: real button .click() or hidden-toggle mirror + refresh).
+// docker/terminal/git -> their real buttons; file-tree (= sidebar content) ->
+// the existing toggleWorkspacePanel() mirror (btn-sidebar-toggle is not in the
+// DOM, see RAIL_TARGETS comment above). Sandbox/MCP have no buttons: no
+// sandbox-panel/mcp-panel exists in the DOM (rg-verified); their UI stays on
+// the rail's settings tabs (no duplication).
+const PANEL_BAR_TARGETS = {
+  'docker-panel': 'btn-docker-toggle',
+  'terminal-panel': 'btn-terminal-toggle',
+  'git-panel': 'btn-git-toggle',
+};
+
+function refreshPanelBar() {
+  document.querySelectorAll('#panel-control-bar [data-opens]').forEach(btn => {
+    // file-tree lives inside #sidebar: its visibility follows the sidebar.
+    const target = btn.dataset.opens === 'file-tree'
+      ? document.getElementById('sidebar')
+      : document.getElementById(btn.dataset.opens);
+    btn.setAttribute('aria-pressed', target && !target.classList.contains('hidden') ? 'true' : 'false');
+  });
+}
+
+document.querySelectorAll('#panel-control-bar [data-opens]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.opens;
+    if (id === 'file-tree') {
+      toggleWorkspacePanel();
+    } else {
+      const target = PANEL_BAR_TARGETS[id];
+      const el = target && document.getElementById(target);
+      if (el) el.click();
+    }
+    refreshPanelBar();
+  });
+});
+refreshPanelBar();
+
 function sanitizePath(filePath) {
   let normalized = filePath.replace(/\\/g, '/');
   normalized = normalized.replace(/^\.\.\/?/g, '');

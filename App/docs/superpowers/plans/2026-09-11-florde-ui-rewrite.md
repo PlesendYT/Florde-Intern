@@ -554,6 +554,96 @@ git commit -m "feat(ui): Full-Sweep B — Panels, Listen, Tabellen im Quiet-Powe
 
 ---
 
+## Round 3 (User-Feedback 2026-09-11): Layout nach Design-Doc, Chat unangetastet
+
+User: komplette UI = auch Layout (§3–§6), nicht nur Farben. Chat ist gut → TABU.
+Chat-Tabu umfasst: `#chat-messages`, `#chat-input`, `#chat-tab-bar`, Provider/Modell-Row,
+Agent-Cards, Permission-Dialog — weder Markup noch Behavior noch Styling anfassen.
+
+### Task 9: Navigation nach Doc gruppieren + Workspace-Toggle
+
+**Files:**
+- Modify: `App/renderer/index.html` (Rail-Gruppen, KEINE ID ändern/entfernen)
+- Modify: `App/renderer/style.css` (Gruppen-Trenner, Dichte)
+- Modify: `App/renderer/script.js` (Workspace-Toggle nur falls Mechanismus existiert)
+- Test: Suite + Guard
+
+**Interfaces:**
+- Consumes: bestehende Rail aus Task 3/6
+- Produces: Rail in Doc-Reihenfolge mit 3 Gruppen + Trennern
+
+- [ ] **Step 1: Rail umgruppieren** — Reihenfolge nach Doc §4: Chat, Workspace, Editor, Terminal — Trenner — Tools, MCP, Sandbox, Git — Trenner — Settings, Status. `Workspace`-Button toggelt die Datei-Sidebar (`#sidebar`) über deren existierenden Mechanismus (`btn-sidebar-toggle` falls vorhanden, sonst `hidden`-Toggle analog `toggleGitPanel`). Neue Trenner als `<div class="rail-divider">`, neue Buttons nur mit `type="button"` + `data-panel`.
+- [ ] **Step 2: CSS** — `.rail-divider { height: 1px; background: var(--border-subtle); margin: 6px 8px; }`, Dichte niedrig–mittel (Rail bleibt 48px, kein Text-Label-Wildwuchs).
+- [ ] **Step 3: RAIL_TARGETS/RAIL_PANELS** um `workspace` erweitern; Mapping im Kommentar dokumentieren.
+- [ ] **Step 4: Verifizieren** — Guard grün; Suite 16 bekannte; Gitleaks; diff/status.
+- [ ] **Step 5: Commit**
+
+```bash
+git add App/renderer/index.html App/renderer/style.css App/renderer/script.js
+gitleaks detect
+git commit -m "feat(ui): Rail nach Design-Doc gruppiert + Workspace-Toggle"
+```
+
+### Task 10: Panel-System mit Panel-Controls (§6)
+
+**Files:**
+- Modify: `App/renderer/index.html` (Panel-Control-Bar, KEINE ID ändern/entfernen)
+- Modify: `App/renderer/style.css` (Bar + Panel-States)
+- Modify: `App/renderer/script.js` (Toggle-Verdrahtung via existierende Mechanismen)
+- Test: Suite + Guard
+
+**Interfaces:**
+- Consumes: existierende Panel-Toggles (terminal/docker/git/management)
+- Produces: `#panel-control-bar` mit 6 Buttons, Klick öffnet/schließt Panels
+
+- [ ] **Step 1: Control-Bar einfügen** — über dem Workspace-Bereich (NICHT im/über dem Chat-Panel):
+
+```html
+<div id="panel-control-bar" aria-label="Panels">
+  <button type="button" data-opens="docker-panel">Docker</button>
+  <button type="button" data-opens="terminal-panel">Terminal</button>
+  <button type="button" data-opens="sandbox-panel">Sandbox</button>
+  <button type="button" data-opens="git-panel">Git</button>
+  <button type="button" data-opens="mcp-panel">MCP</button>
+  <button type="button" data-opens="file-tree">Files</button>
+</div>
+```
+
+Nur Panels verwenden, die im DOM existieren — vor dem Einfügen per `rg 'id="(docker-panel|terminal-panel|sandbox-panel|git-panel|mcp-panel|file-tree)" index.html` prüfen und Buttons auf existierende Ziele beschränken (fehlende weglassen + im Report nennen).
+- [ ] **Step 2: Verdrahtung** — Klick ruft den jeweils existierenden Toggle auf (Delegation wie Task 6: vorhandene Button-`.click()` oder `hidden`-Toggle + Refresh). Sandbox/MCP nur falls echte Panels existieren — NICHT die Settings-Tabs duplizieren (die hängen bereits an der Rail).
+- [ ] **Step 3: CSS** — Bar dezent (Surface-Panel, 1px Border oben, kleine Buttons, Radius ≤ 8px, Tokens only, `aria-pressed`-State auf aktivem Button).
+- [ ] **Step 4: Verifizieren** — Guard grün; Suite 16 bekannte; Gitleaks; diff/status.
+- [ ] **Step 5: Commit**
+
+```bash
+git add App/renderer/index.html App/renderer/style.css App/renderer/script.js
+gitleaks detect
+git commit -m "feat(ui): Panel-Control-Bar nach Design-Doc §6"
+```
+
+### Task 11: Visuelle Hierarchie + Dichte (§7, keine Shadows, Chat ausgenommen)
+
+**Files:**
+- Modify: `App/renderer/style.css` (nur Layout-Container, KEINE Chat-Selektoren)
+- Test: Suite + Guard
+
+**Interfaces:**
+- Consumes: Task-2-Tokens
+- Produces: 4 Ebenen Background → Surface → Raised → Overlay durchgängig
+
+- [ ] **Step 1: Ebenen zuordnen** — App-Hintergrund → `--surface-background`; Sidebar/Rail/Panel-Container → `--surface-panel`; Cards/Popups/inner Panels → `--surface-raised`; Modals/Overlays bleiben (Task 7). Nur Container, deren aktuelle Farbe VORHER per Screenshot/DOM-Logik anders war, umstellen — keine Ratestöße bei Unsicherheit, dann liegenlassen + im Report nennen.
+- [ ] **Step 2: Dichte** — Panel-Paddings auf 8–12px vereinheitlichen wo inkonsistent, Panel-Header kompakt (eine Zeile, kleine Schrift). Chat-Selektoren (`chat-*`, `agent-card`, `msg`, `perm-*`) strikt ausnehmen — per `git diff | grep "^[+-].*chat" ` muss 0 herauskommen (Ausnahme: `chat-tab-bar` aus Task 8 bleibt wie sie ist).
+- [ ] **Step 3: Verifizieren** — Suite 16 bekannte; Guard; Chat-Diff-Check `git diff | grep -iE "^[+-].*(chat-msg|agent-card|permission-prompt|chat-input|chat-messages)"` muss leer sein; Gitleaks; diff/status.
+- [ ] **Step 4: Commit**
+
+```bash
+git add App/renderer/style.css
+gitleaks detect
+git commit -m "feat(ui): visuelle Hierarchie + Dichte, Chat unangetastet"
+```
+
+---
+
 ## Self-Review (vom Plan-Autor durchgeführt)
 
 1. **Spec-Coverage:** §1 Shell → Task 3; §2 Tokens/Themes → Task 2; §3 Chat/Permission → Task 4; §4 Status/Animation/A11y → Task 3+5 (Focus-States in Task 3-CSS, Rest via Token-Kontraste); §5 Absicherung → Task 1+5. Lücke geschlossen: Focus-States explizit in Task 3 enthalten.

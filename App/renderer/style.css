@@ -373,10 +373,18 @@ body {
 .question-choice.custom { border-style: dashed; color: var(--text2); }
 
 /* ==================== DIFF VIEWER (READ-ONLY) ==================== */
-#sidebar, .sidebar-resizer, #file-tabs, #file-name, #project-type-badge,
-.editor-panel, .editor-panel .panel-header { display: none !important; }
+/* Scoped to diff-visible state: hiding IDE chrome only while the read-only
+   diff viewer is shown. Bare global selectors here would permanently hide
+   the sidebar/file tabs/editor panel. */
+body:has(#diff-viewer.visible) #sidebar,
+body:has(#diff-viewer.visible) .sidebar-resizer,
+body:has(#diff-viewer.visible) #file-tabs,
+body:has(#diff-viewer.visible) #file-name,
+body:has(#diff-viewer.visible) #project-type-badge,
+body:has(#diff-viewer.visible) .editor-panel,
+body:has(#diff-viewer.visible) .editor-panel .panel-header { display: none !important; }
 
-.chat-panel {
+body:has(#diff-viewer.visible) .chat-panel {
   flex: 1 !important;
   min-width: 0 !important;
   border-left: none !important;

@@ -617,6 +617,9 @@ body {
 .rail-btn.active { color: var(--accent); border-color: var(--border-subtle); background: var(--surface-raised); }
 .rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rail-spacer { flex: 1; }
+/* Task 9: group dividers (align-self overrides the rail's align-items:center
+   so the 1px line actually spans the rail width). */
+.rail-divider { height: 1px; background: var(--border-subtle); margin: 6px 8px; align-self: stretch; }
 #status-dot { color: var(--status-success); font-size: 0.8rem; }
 #status-panel { position: absolute; left: 56px; bottom: 12px; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px; min-width: 220px; z-index: 50; color: var(--text-primary); }
 @media (max-width: 720px) {

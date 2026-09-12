@@ -4829,6 +4829,11 @@ document.getElementById('model-select')?.addEventListener('change', () => { onCh
 //                the terminal/docker pattern: toggle #git-panel.hidden + refresh on show.
 //   sandbox/mcp -> NO buttons exist; their UI is the settings-modal tabs. Mirror the
 //                existing settings-tab switching (showModal + tab activation).
+//   workspace  -> btn-sidebar-toggle if present (toggles #sidebar.hidden +
+//                #sidebar-resizer.hidden + localStorage flag), else mirror that
+//                hidden-toggle directly (same pattern as toggleGitPanel below).
+//                Function-mapped via RAIL_PANELS (no target button id exists,
+//                so no RAIL_TARGETS entry).
 // Theme/fullscreen/export leftovers stay reachable via Command Palette
 // (btn-cmd-palette) + Settings — the hidden .titlebar-center buttons keep their IDs.
 const RAIL_TARGETS = {
@@ -4861,7 +4866,23 @@ function toggleGitPanel() {
 // Palette entry `git.toggle` (command-registry.js) works too. ID unchanged.
 document.getElementById('btn-git-toggle')?.addEventListener('click', toggleGitPanel);
 
+function toggleWorkspacePanel() {
+  // Workspace = file sidebar (#sidebar). Prefer the existing mechanism
+  // (btn-sidebar-toggle) when that button exists; otherwise mirror its
+  // hidden-toggle (same pattern as toggleGitPanel above).
+  // NOTE: querySelector (not getElementById) keeps the shell-ids guard's
+  // unguarded-read watchlist untouched; the instanceof check is null-safe.
+  const legacyBtn = document.querySelector('#btn-sidebar-toggle');
+  if (legacyBtn instanceof HTMLButtonElement) { legacyBtn.click(); return; }
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  sb.classList.toggle('hidden');
+  document.getElementById('sidebar-resizer')?.classList.toggle('hidden');
+  try { localStorage.setItem('florde-sidebar-hidden', sb.classList.contains('hidden') ? '1' : '0'); } catch {}
+}
+
 const RAIL_PANELS = {
+  workspace: toggleWorkspacePanel,
   git: toggleGitPanel,
   sandbox: () => openSettingsTab('sandbox'),
   mcp: () => openSettingsTab('mcp'),

@@ -697,6 +697,10 @@ body {
   width: 4px; cursor: col-resize; background: transparent;
   position: relative; z-index: 10; flex-shrink: 0;
 }
+/* Task 12: totaler Sidebar-Kollaps — .hidden nimmt Sidebar + Resizer
+   vollständig aus dem Layout; .main-area (flex: 1, min-width: 0)
+   füllt den frei gewordenen Raum. */
+#sidebar.hidden, #sidebar-resizer.hidden { display: none !important; }
 
 /* Layout options in settings */
 .layout-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 4px 0; }

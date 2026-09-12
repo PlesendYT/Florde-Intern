@@ -4890,6 +4890,47 @@ const RAIL_PANELS = {
   mcp: () => openSettingsTab('mcp'),
 };
 
+// Task 12: Rail-Active-Sync — active folgt dem sichtbaren Panel-State
+// (statt exklusiv "zuletzt geklickt"); aria-pressed spiegelt active.
+// Sandbox/MCP haben keine Panels (nur Settings-Tabs) und sind nie aktiv.
+function isRailPanelOpen(panel) {
+  if (panel === 'workspace') {
+    const sb = document.getElementById('sidebar');
+    return !!sb && !sb.classList.contains('hidden');
+  }
+  if (panel === 'terminal') {
+    const p = document.getElementById('terminal-panel');
+    return !!p && !p.classList.contains('hidden');
+  }
+  if (panel === 'tools') {
+    const p = document.getElementById('management-panel');
+    return !!p && !p.classList.contains('hidden');
+  }
+  if (panel === 'git') {
+    const p = document.getElementById('git-panel');
+    return !!p && !p.classList.contains('hidden');
+  }
+  if (panel === 'chat') {
+    const p = document.querySelector('.chat-panel');
+    return !!p && !p.classList.contains('hidden');
+  }
+  if (panel === 'editor') {
+    const p = document.querySelector('.editor-panel');
+    if (p && p.classList.contains('hidden')) return false;
+    // Editor-Modus blendet den Editor per Body-Klasse aus (kein .hidden).
+    return !document.body.classList.contains('app-mode-chat');
+  }
+  return false;
+}
+
+function syncRailButtons() {
+  document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
+    const on = isRailPanelOpen(btn.dataset.panel);
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
 document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
   btn.addEventListener('click', () => {
     const panel = btn.dataset.panel;
@@ -4900,14 +4941,37 @@ document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
     } else if (typeof RAIL_PANELS[panel] === 'function') {
       RAIL_PANELS[panel]();
     }
-    document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(b => b.classList.toggle('active', b === btn));
     try {
       const open = JSON.parse(localStorage.getItem('florde-rail-panels') || '["chat","editor"]');
       const next = open.includes(panel) ? open.filter(p => p !== panel) : [...open, panel];
       localStorage.setItem('florde-rail-panels', JSON.stringify(next));
     } catch {}
+    syncRailButtons();
+    refreshPanelBar();
   });
 });
+// Init: active aus florde-rail-panels/Defaults (z. B. chat+editor),
+// danach mit dem sichtbaren State abgleichen (externe Toggles).
+try {
+  const open = JSON.parse(localStorage.getItem('florde-rail-panels') || '["chat","editor"]');
+  document.querySelectorAll('#icon-rail .rail-btn[data-panel]').forEach(btn => {
+    const on = open.includes(btn.dataset.panel);
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+} catch {}
+syncRailButtons();
+// Externe Toggles (Ctrl+B, Panel-Bar, Shortcuts, Sidebar-Restore,
+// Editor-Modus via Body-Klasse) mitsyncen — fängt auch die
+// Sidebar-Restore-IIFE am Dateiende ab (Observer feuert async).
+if (typeof MutationObserver !== 'undefined') {
+  const railSyncObserver = new MutationObserver(() => syncRailButtons());
+  ['sidebar', 'sidebar-resizer', 'terminal-panel', 'management-panel', 'git-panel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) railSyncObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+  railSyncObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+}
 document.getElementById('rail-settings')?.addEventListener('click', () => document.getElementById('btn-settings')?.click());
 document.getElementById('status-dot')?.addEventListener('click', () => {
   renderStatusPanel();

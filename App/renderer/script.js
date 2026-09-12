@@ -4832,8 +4832,9 @@ document.getElementById('model-select')?.addEventListener('change', () => { onCh
 //   workspace  -> btn-sidebar-toggle if present (toggles #sidebar.hidden +
 //                #sidebar-resizer.hidden + localStorage flag), else mirror that
 //                hidden-toggle directly (same pattern as toggleGitPanel below).
-//                Function-mapped via RAIL_PANELS (no target button id exists,
-//                so no RAIL_TARGETS entry).
+//                Dual-mapped: RAIL_TARGETS lets the generic dispatcher click
+//                the legacy button when it exists; otherwise it falls through
+//                to RAIL_PANELS.workspace (toggleWorkspacePanel mirror).
 // Theme/fullscreen/export leftovers stay reachable via Command Palette
 // (btn-cmd-palette) + Settings — the hidden .titlebar-center buttons keep their IDs.
 const RAIL_TARGETS = {
@@ -4841,6 +4842,7 @@ const RAIL_TARGETS = {
   editor: 'btn-mode-editor',
   terminal: 'btn-terminal-toggle',
   tools: 'btn-management-toggle',
+  workspace: 'btn-sidebar-toggle',
 };
 
 function openSettingsTab(tabName) {

@@ -589,6 +589,27 @@ body:has(#diff-viewer.visible) .chat-panel {
 .toolbar-scroll-btn:hover { color: var(--text); background: var(--hover); }
 .toolbar-scroll-btn.visible { display: flex; align-items: center; }
 
+/* Task 13: Titlebar verschlankt — Steuerung in Rail/Status.
+   IDs bleiben im DOM (shell-ids guard), nur per CSS ausgeblendet:
+   - btn-mode-editor/btn-mode-chat: Rail deckt beide via RAIL_TARGETS ab.
+   - btn-settings: Rail hat rail-settings (delegiert per .click()).
+   - toolbar-scroll-left/right: verwaist (.titlebar-center ist display:none);
+     inkl. .visible-Override, damit toolbar-scroll.js sie nie wieder einblendet. */
+#btn-mode-editor,
+#btn-mode-chat,
+#btn-settings { display: none !important; }
+#toolbar-scroll-left,
+#toolbar-scroll-right,
+#toolbar-scroll-left.visible,
+#toolbar-scroll-right.visible { display: none !important; }
+/* Task 13: privacy-indicator wohnt per JS in der Rail direkt vor #status-dot
+   (gleiche ID, reiner DOM-Umzug — updatePrivacyIndicator löst per
+   getElementById auf und bleibt intakt). Kompakt-Badge für die 48px-Rail. */
+#icon-rail #privacy-indicator {
+  font-size: 0.6rem; padding: 1px 3px; margin: 2px 0; max-width: 42px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
+}
+
 /* ==================== DEV UTILS DROPDOWN ==================== */
 .dev-utils-wrapper { position: relative; }
 .dev-utils-menu {

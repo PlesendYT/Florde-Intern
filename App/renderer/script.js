@@ -4978,6 +4978,20 @@ document.getElementById('status-dot')?.addEventListener('click', () => {
   document.getElementById('status-panel')?.classList.toggle('hidden');
 });
 
+// Task 13: privacy-indicator in Status-Nähe (status-dot-Umfeld).
+// Reiner DOM-Umzug, gleiche ID: updatePrivacyIndicator() löst per
+// getElementById auf (parent-unabhängig), live textContent-Updates bleiben
+// intakt. NICHT in #status-panel (dessen innerHTML wird bei jedem Öffnen
+// in renderStatusPanel() neu gebaut und würde den Knoten zerstören).
+(function relocatePrivacyIndicatorToRail() {
+  const el = document.getElementById('privacy-indicator');
+  const dot = document.getElementById('status-dot');
+  const rail = document.getElementById('icon-rail');
+  if (!el || !dot || !rail) return;
+  if (el.parentElement === rail) return;
+  rail.insertBefore(el, dot);
+})();
+
 // ==================== PANEL CONTROL BAR (Task 10, Design-Doc §6) ====================
 // Buttons carry data-opens="<panel-id>" and delegate to the EXISTING toggles
 // (Task-6 pattern: real button .click() or hidden-toggle mirror + refresh).

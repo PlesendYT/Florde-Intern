@@ -213,34 +213,34 @@ body {
 }
 #start-menu button, #start-menu input, #start-menu select, #start-menu .project-item, #start-menu .project-list { -webkit-app-region: no-drag; }
 .start-sidebar {
-  width: 260px; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; padding: 24px 16px; flex-shrink: 0;
+  width: 232px; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 16px 12px; /* Task 15: Dichte */ flex-shrink: 0;
   -webkit-app-region: no-drag;
 }
 .start-logo {
-  font-size: 2rem; font-weight: 700; margin-bottom: 0.2rem;
+  font-size: 1.5rem; /* Task 15: Dichte */ font-weight: 700; margin-bottom: 0.2rem;
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-.start-tagline { font-size: 0.7rem; color: var(--text3); margin-bottom: 1.8rem; }
+.start-tagline { font-size: 0.7rem; color: var(--text3); margin-bottom: 1.25rem; /* Task 15: Dichte */ }
 .start-sidebar-btns { display: flex; flex-direction: column; gap: 4px; }
 .start-sidebar-btn {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: 6px; border: none;
-  background: transparent; color: var(--text2); font-size: 0.85rem;
+  padding: 8px 10px; /* Task 15: Dichte */ border-radius: 6px; border: none;
+  background: transparent; color: var(--text2); font-size: 0.8rem; /* Task 15: Dichte */
   cursor: pointer; transition: all 0.15s; text-align: left;
 }
 .start-sidebar-btn:hover { background: var(--hover); color: var(--text); }
 .start-sidebar-btn.primary { background: var(--accent); color: var(--accent-ink); }
 .start-sidebar-btn.primary:hover { background: var(--accent); filter: brightness(0.9); }
 .start-sidebar-btn:focus-visible, .project-del:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.start-main { flex: 1; padding: 32px 40px; display: flex; flex-direction: column; overflow-y: auto; }
+.start-main { flex: 1; padding: 24px 28px; /* Task 15: Dichte */ display: flex; flex-direction: column; overflow-y: auto; }
 .start-main-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
 .start-main-subtitle { font-size: 0.75rem; color: var(--text3); margin-bottom: 1.5rem; }
-.project-list { margin-top: 0; }
+.project-list { margin-top: 0; max-width: 720px; /* Task 15: ruhige einspaltige Liste */ }
 #project-items { display: flex; flex-direction: column; gap: 0.4rem; }
 .project-item {
-  display: flex; align-items: center; gap: 0.5rem; padding: 14px 16px;
+  display: flex; align-items: center; gap: 0.5rem; padding: 10px 12px; /* Task 15: Dichte */
   background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
   cursor: pointer; transition: all 0.15s;
 }
@@ -248,7 +248,7 @@ body {
 .project-item .project-type { font-size: 0.7rem; color: var(--accent); background: var(--hover); padding: 0.1rem 0.4rem; border-radius: 4px; }
 .project-del { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 1.1rem; padding: 0 0.3rem; }
 .project-del:hover { color: var(--status-danger); }
-#start-dashboard { flex: 1; overflow-y: auto; max-width: 800px; }
+#start-dashboard { flex: 1; overflow-y: auto; max-width: 720px; /* Task 15: gleiche ruhige Spalte wie .project-list */ }
 
 /* ==================== BUTTONS ==================== */
 .btn { display: inline-block; padding: 0.7rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.2s; cursor: pointer; border: none; font-size: 0.9rem; }
@@ -898,6 +898,10 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 }
 #panel-control-bar button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .file-tabs { display: flex; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); overflow-x: auto; min-height: 32px; }
+/* Task 15: progressive disclosure via bestehenden DOM-Zustand (kein neues Feature, kein JS):
+   renderTabs() leert #file-tabs (innerHTML='') wenn keine Datei offen ist — dann die
+   32px-Bar ganz ausblenden statt eine leere Leiste zu zeigen. */
+#file-tabs:empty { display: none; }
 .file-tab {
   display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.8rem;
   background: var(--tab-bg); border-right: 1px solid var(--border); cursor: pointer;
@@ -911,23 +915,25 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .file-tab:focus-visible, .file-tab .close-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ==================== WORKSPACE TAB BAR ==================== */
+/* Task 15: kompakte einzeilige Bar (28px, nowrap, kein Wrap). */
 #workspace-tab-bar {
-  display: flex; align-items: center; height: 30px;
+  display: flex; align-items: center; height: 28px;
   background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border);
-  padding: 0 4px; overflow-x: auto; flex-shrink: 0;
+  padding: 0 4px; overflow-x: auto; flex-shrink: 0; white-space: nowrap;
 }
 .ws-tab {
   display: flex; align-items: center; gap: 4px;
-  padding: 4px 10px; cursor: pointer; font-size: 12px;
-  border-radius: 3px 3px 0 0; color: var(--text2);
+  padding: 3px 8px; cursor: pointer; font-size: 12px;
+  border-radius: 3px 3px 0 0; color: var(--text2); max-width: 200px; /* Task 15: ruhige Tabs */
   white-space: nowrap; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis;
 }
+.ws-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; /* Task 15: einzeilig */ }
 .ws-tab.active { background: var(--bg); color: var(--text); }
 .ws-tab:hover { background: var(--hover); }
 .ws-tab-close { background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; }
 .ws-tab-close:hover { color: var(--status-danger); }
 .ws-tab:focus-visible, .ws-tab-close:focus-visible, #btn-open-project-ws:focus-visible, .star-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#btn-open-project-ws { margin-left: auto; background: none; border: none; color: var(--text3); cursor: pointer; font-size: 18px; padding: 0 8px; line-height: 1; flex-shrink: 0; }
+#btn-open-project-ws { margin-left: auto; background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; /* Task 15: Dichte */ padding: 0 6px; line-height: 1; flex-shrink: 0; }
 #btn-open-project-ws:hover { color: var(--text); }
 
 /* ==================== FAVORITE STARS ==================== */
@@ -1010,6 +1016,14 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 }
 .panel-header span { flex: 1; }
 .panel-header select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+/* Task 15: Panel-Header kompakt einzeilig (nowrap + Titel-Ellipsis). Chat-Panel bewusst
+   ausgenommen (.chat-panel .panel-header unverändert) — Chat tabu. */
+.editor-panel .panel-header, .sidebar-header, .sidebar-section-header, .git-panel-header,
+#todo-panel-header, #notes-panel-header, #rag-panel-header, #skills-panel-header,
+#execution-panel-header { white-space: nowrap; overflow: hidden; flex-shrink: 0; }
+.editor-panel .panel-header span, .sidebar-header span, .git-panel-header span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 .editor-container { flex: 1; min-height: 0; }
 
 #code-toolbar {
@@ -1600,7 +1614,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   display: flex; flex-direction: column; z-index: 50;
 }
 #todo-panel.hidden { display: none; }
-#todo-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
+#todo-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.8rem; /* Task 15: kompakt */ font-weight: 600; }
 #todo-input-row { padding: 0.5rem; border-bottom: 1px solid var(--border); }
 #todo-input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; background: var(--bg1); border: 1px solid var(--border2); color: var(--text); border-radius: 4px; font-size: 0.8rem; }
 #todo-list { flex: 1; overflow-y: auto; padding: 0.25rem 0; }
@@ -1626,7 +1640,7 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
   display: flex; flex-direction: column; z-index: 50;
 }
 #notes-panel.hidden { display: none; }
-#notes-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.85rem; font-weight: 600; }
+#notes-panel-header { display: flex; align-items: center; gap: 0.25rem; padding: 0.5rem 0.75rem; background: var(--surface-panel); /* Task 11: Ebene Surface */ border-bottom: 1px solid var(--border); font-size: 0.8rem; /* Task 15: kompakt */ font-weight: 600; }
 #notes-sidebar { width: 100%; max-height: 120px; border-bottom: 1px solid var(--border); overflow-y: auto; display: flex; }
 #notes-list { display: flex; gap: 2px; padding: 0.25rem; flex-wrap: wrap; }
 .note-item { padding: 0.25rem 0.5rem; background: var(--bg1); border: 1px solid var(--border2); border-radius: 4px; cursor: pointer; font-size: 0.75rem; white-space: nowrap; }
@@ -2016,11 +2030,11 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 
 /* ==================== PROJECT ACTION TAB ==================== */
 .project-action-tab {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 12px; cursor: pointer; font-size: 0.8rem;
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; /* Task 15: einzeilig in der Tab-Bar */
+  padding: 3px 10px; cursor: pointer; font-size: 0.75rem;
   position: relative; user-select: none; border-radius: 4px;
   background: var(--bg3); border: 1px solid var(--border);
-  margin-left: 8px; white-space: nowrap;
+  margin-left: 4px; white-space: nowrap;
 }
 .project-action-tab:hover { border-color: var(--accent); }
 .project-action-tab.hidden { display: none; }

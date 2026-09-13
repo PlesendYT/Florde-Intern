@@ -119,9 +119,82 @@ body {
   to { transform: translateX(0); opacity: 1; }
 }
 
-/* ==================== ANIMATION LEVELS (Task 5) ==================== */
+/* ==================== ANIMATION LEVELS (Task 5 + Task 14) ==================== */
+/* Ruhig per Design: kurze Wege (2–4px via --florde-slide-dist), keine Bounces,
+   kein Loop (Status-Dot-Puls bewusst ausgespart, siehe Kommentar unten).
+   CHAT TABU: keine chat-*-Keyframe-Targets; .agent-card-Regel (Task 5) unverändert. */
+@keyframes florde-fade-slide-in {
+  from { opacity: 0; transform: translateY(var(--florde-slide-dist, 2px)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes florde-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* minimal: alles aus (Task 5, unverändert lassen) */
 [data-animation="minimal"] * { animation: none !important; transition: none !important; }
+/* Task-5-Regel, unverändert lassen (.agent-card bleibt wie sie ist) */
 [data-animation="subtle"] .agent-card, [data-animation="subtle"] .modal { transition: opacity 120ms ease; }
+/* subtle (Standard): 120–150ms, opacity + max 2px — wahrnehmbar, aber ruhig */
+[data-animation="subtle"] { --florde-slide-dist: 2px; }
+[data-animation="subtle"] .modal:not(.hidden) .modal-content,
+[data-animation="subtle"] .modal-overlay .modal-content,
+[data-animation="subtle"] #command-palette-overlay .command-palette,
+[data-animation="subtle"] #status-panel:not(.hidden),
+[data-animation="subtle"] .notification {
+  animation: florde-fade-slide-in 150ms ease-out;
+}
+[data-animation="subtle"] .settings-tab-content.active {
+  animation: florde-fade 120ms ease-out;
+}
+[data-animation="subtle"] .rail-btn {
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+/* normal: 200ms + 4px Slide */
+[data-animation="normal"] { --florde-slide-dist: 4px; }
+[data-animation="normal"] .modal:not(.hidden) .modal-content,
+[data-animation="normal"] .modal-overlay .modal-content,
+[data-animation="normal"] #command-palette-overlay .command-palette,
+[data-animation="normal"] #status-panel:not(.hidden),
+[data-animation="normal"] .notification {
+  animation: florde-fade-slide-in 200ms ease-out;
+}
+[data-animation="normal"] .settings-tab-content.active {
+  animation: florde-fade 200ms ease-out;
+}
+[data-animation="normal"] .rail-btn {
+  transition: color 200ms ease, background-color 200ms ease, border-color 200ms ease;
+}
+/* full: 250ms + 4px Slide + leichtes Listen-Stagger */
+[data-animation="full"] { --florde-slide-dist: 4px; }
+[data-animation="full"] .modal:not(.hidden) .modal-content,
+[data-animation="full"] .modal-overlay .modal-content,
+[data-animation="full"] #command-palette-overlay .command-palette,
+[data-animation="full"] #status-panel:not(.hidden),
+[data-animation="full"] .notification {
+  animation: florde-fade-slide-in 250ms ease-out;
+}
+[data-animation="full"] .settings-tab-content.active {
+  animation: florde-fade 250ms ease-out;
+}
+[data-animation="full"] .rail-btn {
+  transition: color 250ms ease, background-color 250ms ease, border-color 250ms ease;
+}
+[data-animation="full"] #project-items .project-item,
+[data-animation="full"] #cmd-palette-list .cmd-palette-item {
+  animation: florde-fade-slide-in 250ms ease-out;
+  animation-fill-mode: backwards;
+}
+[data-animation="full"] #project-items .project-item:nth-child(2),
+[data-animation="full"] #cmd-palette-list .cmd-palette-item:nth-child(2) { animation-delay: 30ms; }
+[data-animation="full"] #project-items .project-item:nth-child(3),
+[data-animation="full"] #cmd-palette-list .cmd-palette-item:nth-child(3) { animation-delay: 60ms; }
+[data-animation="full"] #project-items .project-item:nth-child(n+4),
+[data-animation="full"] #cmd-palette-list .cmd-palette-item:nth-child(n+4) { animation-delay: 90ms; }
+/* Status-Dot-Puls: bewusst KEINE Regel — #status-dot hat keinen CSS-erreichbaren
+   Aktivitäts-Selektor (rg-verifiziert: es wird nie eine busy/checking/running-Klasse
+   gesetzt; neues JS-State ist per Brief verboten). Eigene Betriebs-Loops
+   (.ollama-status.checking → ollama-pulse, .timeout-pulse) bleiben unangetastet. */
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 .notification-icon { font-size: 1.3rem; flex-shrink: 0; }
 .notification-text { flex: 1; color: var(--text); }

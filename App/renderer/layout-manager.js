@@ -60,7 +60,9 @@ const LayoutManager = {
   _registerPanels() {
     const api = this._api;
     if (!api) return;
-    api.addPanel({ id: 'editor', title: 'Editor', params: {}, position: { direction: 'center' } });
+    // dockview has no 'center' direction: the first panel added WITHOUT a
+    // position becomes the root panel; the rest dock relative to it.
+    api.addPanel({ id: 'editor', title: 'Editor', params: {} });
     api.addPanel({ id: 'files', title: 'Files', params: {}, position: { direction: 'left', referencePanel: 'editor', width: 220 } });
     api.addPanel({ id: 'chat', title: 'Chat', params: {}, position: { direction: 'right', referencePanel: 'editor', width: 350 } });
     api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'chat', height: 200 } });
@@ -253,7 +255,9 @@ const LayoutManager = {
     const api = this._api;
     if (!api) return;
     api.clear();
-    api.addPanel({ id: 'editor', title: 'Editor', params: {}, position: { direction: 'center' } });
+    // dockview has no 'center' direction: the first panel added WITHOUT a
+    // position becomes the root panel; the rest dock relative to it.
+    api.addPanel({ id: 'editor', title: 'Editor', params: {} });
     api.addPanel({ id: 'files', title: 'Files', params: {}, position: { direction: 'left', referencePanel: 'editor', width: 220 } });
     api.addPanel({ id: 'chat', title: 'Chat', params: {}, position: { direction: 'right', referencePanel: 'editor', width: 350 } });
     api.addPanel({ id: 'git', title: 'Git', params: {}, position: { direction: 'below', referencePanel: 'chat', height: 200 } });

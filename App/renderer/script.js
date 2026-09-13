@@ -9469,30 +9469,17 @@ function initGitPanel() {
 const XtermLoader = {
   _loaded: null,
   async load() {
+    // xterm/addon-fit load via classic <script> tags in index.html (CSP
+    // `script-src 'self'` forbids the previous fetch+eval approach).
     if (this._loaded) return this._loaded;
-    this._loaded = (async () => {
-      const base = '../node_modules/@xterm';
-      const [xtermCode, fitCode] = await Promise.all([
-        fetch(`${base}/xterm/lib/xterm.js`).then(r => r.text()),
-        fetch(`${base}/addon-fit/lib/addon-fit.js`).then(r => r.text())
-      ]);
-      const saved = { exports: window.exports, module: window.module, define: window.define };
-      window.exports = undefined; window.module = undefined; window.define = undefined;
-      try {
-        (0, eval)(xtermCode);
-        (0, eval)(fitCode);
-      } finally {
-        window.exports = saved.exports; window.module = saved.module; window.define = saved.define;
-      }
-      // FitAddon may be a module object, unwrap
-      let FA = window.FitAddon;
-      if (FA && typeof FA.FitAddon === 'function') FA = FA.FitAddon;
-      else if (FA && typeof FA.default === 'function') FA = FA.default;
-      window.FitAddon = FA;
-      if (typeof window.Terminal !== 'function') throw new Error('Failed to load Terminal');
-      if (typeof window.FitAddon !== 'function') throw new Error('Failed to load FitAddon');
-      return { Terminal: window.Terminal, FitAddon: window.FitAddon };
-    })();
+    // FitAddon UMD attaches a module object, unwrap
+    let FA = window.FitAddon;
+    if (FA && typeof FA.FitAddon === 'function') FA = FA.FitAddon;
+    else if (FA && typeof FA.default === 'function') FA = FA.default;
+    window.FitAddon = FA;
+    if (typeof window.Terminal !== 'function') throw new Error('Failed to load Terminal (xterm.js script tag missing?)');
+    if (typeof window.FitAddon !== 'function') throw new Error('Failed to load FitAddon (addon-fit.js script tag missing?)');
+    this._loaded = Promise.resolve({ Terminal: window.Terminal, FitAddon: window.FitAddon });
     return this._loaded;
   }
 };

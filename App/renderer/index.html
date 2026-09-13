@@ -1468,6 +1468,11 @@
   </div>
 
   <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+  <!-- xterm as classic scripts (CSP forbids the old fetch+eval loader).
+       Must stay BEFORE monaco's AMD loader.js, else the UMD builds
+       register with `define` instead of setting window globals. -->
+  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script src="lib/dockview-core.min.js"></script>
   <script src="fuse.js"></script>
   <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>

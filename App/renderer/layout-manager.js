@@ -87,10 +87,16 @@ const LayoutManager = {
 
     this._restore = {};
 
-    const appendToPanel = (panelId, element) => {
+    // IDockviewPanel has no .element — content host is panel.view.content.element.
+    const panelHost = (panelId) => {
       const panel = api.getPanel(panelId);
-      if (panel && element) {
-        panel.element.appendChild(element);
+      const host = panel && panel.view && panel.view.content && panel.view.content.element;
+      return host || null;
+    };
+    const appendToPanel = (panelId, element) => {
+      const host = panelHost(panelId);
+      if (host && element) {
+        host.appendChild(element);
       }
     };
 
@@ -103,7 +109,7 @@ const LayoutManager = {
     };
 
     const getPanel = (id) => api.getPanel(id);
-    const panelEl = (id) => { const p = getPanel(id); return p ? p.element : null; };
+    const panelEl = (id) => panelHost(id);
 
     // Move chat-panel out of main-content first (it's a sibling of editor-panel)
     const chatPanel = document.querySelector('.chat-panel');

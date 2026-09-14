@@ -9492,8 +9492,13 @@ const TerminalManager = {
       if (typeof showNotification !== 'undefined') showNotification('error', 'Terminal not available', '\u2715');
       return;
     }
+    const targetPath = projectPath || (typeof currentProject !== 'undefined' ? currentProject : null);
+    // Page-load init runs before any project is open — skip silently instead
+    // of rejecting the IPC call ('Terminal requires a project path').
+    // Callers treat falsy as 'no terminal' (see createSplit).
+    if (!targetPath) return null;
     const { Terminal, FitAddon } = await XtermLoader.load();
-    const id = await window.electronAPI.terminal.create({ projectPath: projectPath || currentProject, project: currentProject });
+    const id = await window.electronAPI.terminal.create({ projectPath: targetPath, project: currentProject });
     const term = new Terminal({
       cursorBlink: true, cursorStyle: 'block', fontSize: 13,
       fontFamily: 'Consolas, "Courier New", monospace',

@@ -1,3 +1,15 @@
+// Overwrite-semantics event wiring: plain addEventListener would stack
+// handlers when re-render paths re-wire the same element, while
+// el.onclick = fn replaced them. fn=null detaches. Idempotent global.
+window.__setListener = window.__setListener || function __setListener(el, type, fn) {
+  if (!el) return;
+  el._flordeListeners = el._flordeListeners || {};
+  if (el._flordeListeners[type]) el.removeEventListener(type, el._flordeListeners[type]);
+  if (fn) { el._flordeListeners[type] = fn; el.addEventListener(type, fn); }
+  else { delete el._flordeListeners[type]; }
+};
+window.__setClick = window.__setClick || function __setClick(el, fn) { window.__setListener(el, 'click', fn); };
+
 const ApiKeyManager = {
   _keys: {},
   _listeners: [],
@@ -139,11 +151,11 @@ const ApiKeyManager = {
       // Secret via DOM property, never through HTML markup (b-23).
       try { row.querySelector('#api-input-' + svc.id).value = entry.key || ''; } catch {}
 
-      row.querySelector('#api-toggle-' + svc.id).onclick = () => {
+      __setClick(row.querySelector('#api-toggle-' + svc.id), () => {
         const inp = row.querySelector('#api-input-' + svc.id);
         inp.type = inp.type === 'password' ? 'text' : 'password';
-      };
-      row.querySelector('#api-save-' + svc.id).onclick = async () => {
+      });
+      __setClick(row.querySelector('#api-save-' + svc.id), async () => {
         const inp = row.querySelector('#api-input-' + svc.id);
         const statusEl = row.querySelector('#api-status-' + svc.id);
         this.setKey(svc.id, inp.value.trim());
@@ -157,7 +169,7 @@ const ApiKeyManager = {
           statusEl.textContent = 'Getrennt';
           statusEl.style.color = '#ef4444';
         }
-      };
+      });
     }
   }
 };

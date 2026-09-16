@@ -299,13 +299,13 @@ function askUserQuestion(question, choices) {
       });
       choicesDiv.appendChild(btn);
     });
-    submitBtn.onclick = () => {
+    __setListener(submitBtn, 'click', () => {
       const val = customInput.value.trim();
       if (val) {
         modal.classList.add('hidden');
         resolve(val);
       }
-    };
+    });
     const cancelBtn = document.getElementById('btn-question-cancel');
     const cancelHandler = () => {
       modal.classList.add('hidden');
@@ -1421,31 +1421,31 @@ function showPermissionPrompt(toolName, args, callback) {
   '</div>';
   document.body.appendChild(overlay);
 
-  overlay.querySelector('.btn-allow-once').onclick = () => {
+  __setListener(overlay.querySelector('.btn-allow-once'), 'click', () => {
     overlay.remove();
     AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'allowed', summary: act + ' (erlaubt, einmalig)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     callback(true);
-  };
-  overlay.querySelector('.btn-allow-always').onclick = () => {
+  });
+  __setListener(overlay.querySelector('.btn-allow-always'), 'click', () => {
     PermissionManager.setPermission(toolName, 'allow');
     overlay.remove();
     AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'allowed', summary: act + ' (immer erlauben)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     callback(true);
-  };
-  overlay.querySelector('.btn-block-once').onclick = () => {
+  });
+  __setListener(overlay.querySelector('.btn-block-once'), 'click', () => {
     overlay.remove();
     AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'blocked', summary: act + ' (blockiert, einmalig)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     callback(false);
-  };
-  overlay.querySelector('.btn-block-always').onclick = () => {
+  });
+  __setListener(overlay.querySelector('.btn-block-always'), 'click', () => {
     PermissionManager.setPermission(toolName, 'block');
     overlay.remove();
     AuditLog.log({ type: _toolAuditType(toolName), action: act, status: 'blocked', summary: act + ' (immer blockieren)', details: { tool: toolName, args: JSON.stringify(args) }, source: 'KI' });
     callback(false);
-  };
+  });
 
-  document.getElementById('btn-perm-edit').onclick = () => _permEditFlow(overlay, toolName, args, callback);
-  document.getElementById('btn-perm-explain').onclick = () => _permExplainFlow(overlay, toolName, args);
+  __setListener(document.getElementById('btn-perm-edit'), 'click', () => _permEditFlow(overlay, toolName, args, callback));
+  __setListener(document.getElementById('btn-perm-explain'), 'click', () => _permExplainFlow(overlay, toolName, args));
 }
 
 function _permEditFlow(overlay, toolName, args, callback) {
@@ -1458,7 +1458,7 @@ function _permEditFlow(overlay, toolName, args, callback) {
       '<span id="perm-edit-status" style="font-size:0.75rem;color:var(--text3);margin-left:auto;"></span>' +
     '</div>';
 
-  document.getElementById('btn-perm-edit-submit').onclick = async () => {
+  __setListener(document.getElementById('btn-perm-edit-submit'), 'click', async () => {
     const input = document.getElementById('perm-edit-textarea');
     const status = document.getElementById('perm-edit-status');
     const submitBtn = document.getElementById('btn-perm-edit-submit');
@@ -1488,10 +1488,10 @@ function _permEditFlow(overlay, toolName, args, callback) {
       status.textContent = '❌ Error: ' + (e.message || e);
       submitBtn.disabled = false;
     }
-  };
-  document.getElementById('btn-perm-edit-cancel').onclick = () => {
+  });
+  __setListener(document.getElementById('btn-perm-edit-cancel'), 'click', () => {
     detailArea.innerHTML = '';
-  };
+  });
 }
 
 function _permExplainFlow(overlay, toolName, args) {
@@ -1548,10 +1548,10 @@ function showSandboxDeniedUI(toolName, args, callback) {
   '</div>';
   document.body.appendChild(overlay);
 
-  overlay.querySelector('.btn-allow-once').onclick = () => { overlay.remove(); callback(true); };
-  overlay.querySelector('.btn-allow-always').onclick = () => { PermissionManager.setPermission(toolName, 'allow'); overlay.remove(); callback(true); };
-  overlay.querySelector('.btn-block-once').onclick = () => { overlay.remove(); callback(false); };
-  overlay.querySelector('.btn-block-always').onclick = () => { PermissionManager.setPermission(toolName, 'block'); overlay.remove(); callback(false); };
+  __setListener(overlay.querySelector('.btn-allow-once'), 'click', () => { overlay.remove(); callback(true); });
+  __setListener(overlay.querySelector('.btn-allow-always'), 'click', () => { PermissionManager.setPermission(toolName, 'allow'); overlay.remove(); callback(true); });
+  __setListener(overlay.querySelector('.btn-block-once'), 'click', () => { overlay.remove(); callback(false); });
+  __setListener(overlay.querySelector('.btn-block-always'), 'click', () => { PermissionManager.setPermission(toolName, 'block'); overlay.remove(); callback(false); });
 }
 
 function showCriticalWarning(command, callback) {
@@ -1596,7 +1596,7 @@ function showCriticalWarning(command, callback) {
         holdCompleted = true;
         holdText.textContent = 'Confirm Execution';
         holdBtn.style.background = '#dc2626';
-        holdBtn.onclick = () => { overlay.remove(); callback(true); };
+        __setListener(holdBtn, 'click', () => { overlay.remove(); callback(true); });
       }
     }, 1000);
   });
@@ -4817,6 +4817,17 @@ document.getElementById('btn-git-commit-show')?.addEventListener('click', async 
 document.getElementById('provider-select').addEventListener('change', () => { updateModelDropdown(); updatePrivacyIndicator(); updateModelInfoBadge(); });
 document.getElementById('model-select')?.addEventListener('change', () => { onChatModelChanged(); });
 
+// Overwrite-semantics event wiring (see tools/api-keys.js): re-wire replaces
+// instead of stacking, fn=null detaches. Idempotent global.
+window.__setListener = window.__setListener || function __setListener(el, type, fn) {
+  if (!el) return;
+  el._flordeListeners = el._flordeListeners || {};
+  if (el._flordeListeners[type]) el.removeEventListener(type, el._flordeListeners[type]);
+  if (fn) { el._flordeListeners[type] = fn; el.addEventListener(type, fn); }
+  else { delete el._flordeListeners[type]; }
+};
+window.__setClick = window.__setClick || function __setClick(el, fn) { window.__setListener(el, 'click', fn); };
+
 // CSP (script-src 'self') forbids inline handlers — delegated replacements
 // for the onclick/onkeydown attributes removed from index.html.
 document.getElementById('btn-close-settings-x')?.addEventListener('click', () => hideModal('settings-modal'));
@@ -5671,14 +5682,14 @@ function showPlanModal(plan) {
     textarea.value = plan;
     textarea.readOnly = true;
     editToggle.checked = false;
-    editToggle.onchange = () => { textarea.readOnly = !editToggle.checked; };
+    __setListener(editToggle, 'change', () => { textarea.readOnly = !editToggle.checked; });
     stepProgress.textContent = '';
     showModal('plan-modal');
     const execute = document.getElementById('btn-plan-execute');
     const cancel = document.getElementById('btn-plan-cancel');
     const cleanup = () => {
       hideModal('plan-modal');
-      editToggle.onchange = null;
+      __setListener(editToggle, 'change', null);
       execute.removeEventListener('click', onExecute);
       cancel.removeEventListener('click', onCancel);
     };
@@ -10758,7 +10769,7 @@ function showHunkToolbar(fileName, hunk) {
   bar.style.left = (rect.left + (pos ? pos.left : 0) + 10) + 'px';
   bar.style.top = (rect.top + (pos ? pos.top : 0) - 40) + 'px';
   bar.style.display = 'flex';
-  bar.onclick = (ev) => {
+  __setListener(bar, 'click', (ev) => {
     const b = ev.target.closest('.ht-btn');
     if (!b) return;
     if (b.dataset.k === 'accept') applyHunkDecision(fileName, hunk.id, 'accept');
@@ -10767,7 +10778,7 @@ function showHunkToolbar(fileName, hunk) {
     else if (b.dataset.k === 'rejectLine') applyHunkDecision(fileName, hunk.id, 'rejectLine', hunk.added[0] && hunk.added[0].line);
     else if (b.dataset.k === 'acceptAll') commitCurrentFile();
     else if (b.dataset.k === 'rejectAll') rejectCurrentFile();
-  };
+  });
 }
 
 function hideHunkToolbar() {
@@ -10846,8 +10857,8 @@ function showOptimizePrompt(code, lang, fileName) {
   `;
   document.body.appendChild(overlay);
   document.getElementById('optimize-input').focus();
-  document.getElementById('optimize-cancel').onclick = () => overlay.remove();
-  document.getElementById('optimize-confirm').onclick = () => {
+  __setListener(document.getElementById('optimize-cancel'), 'click', () => overlay.remove());
+  __setListener(document.getElementById('optimize-confirm'), 'click', () => {
     const goal = document.getElementById('optimize-input').value.trim();
     overlay.remove();
     if (goal) {
@@ -10855,7 +10866,7 @@ function showOptimizePrompt(code, lang, fileName) {
     } else {
       sendMessage('Optimize the following code section for performance and readability.\n\n```' + lang + '\n' + code + '\n```\n\nShow me the optimized code and explain the changes.');
     }
-  };
+  });
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 }
 

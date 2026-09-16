@@ -1,3 +1,14 @@
+// See tools/api-keys.js: overwrite-semantics event wiring (re-wire replaces
+// instead of stacking, fn=null detaches). Idempotent global.
+window.__setListener = window.__setListener || function __setListener(el, type, fn) {
+  if (!el) return;
+  el._flordeListeners = el._flordeListeners || {};
+  if (el._flordeListeners[type]) el.removeEventListener(type, el._flordeListeners[type]);
+  if (fn) { el._flordeListeners[type] = fn; el.addEventListener(type, fn); }
+  else { delete el._flordeListeners[type]; }
+};
+window.__setClick = window.__setClick || function __setClick(el, fn) { window.__setListener(el, 'click', fn); };
+
 const CodeIntelligence = {
   _resultsEl: null,
   _activeTab: 'code-search',
@@ -93,7 +104,7 @@ const CodeIntelligence = {
       </div>
       <div id="ci-health-scan-results"></div>
     `;
-    document.getElementById('ci-scan-start').onclick = () => this._runHealthScan();
+    __setClick(document.getElementById('ci-scan-start'), () => this._runHealthScan());
   },
 
   async _runHealthScan() {
@@ -242,13 +253,13 @@ const CodeIntelligence = {
       </div>
       <div id="ci-ie-results"></div>
     `;
-    document.getElementById('ci-ie-go').onclick = () => {
+    __setClick(document.getElementById('ci-ie-go'), () => {
       const text = document.getElementById('ci-ie-input').value.trim();
       if (!text) return;
       const checkboxes = document.querySelectorAll('.ci-ie-checkboxes input:checked');
       const checkedTypes = [...checkboxes].map(cb => cb.value);
       this._runIdeaEvolution(text, checkedTypes);
-    };
+    });
   },
 
   async _runIdeaEvolution(text, types) {
@@ -298,7 +309,7 @@ const CodeIntelligence = {
       </div>
       <div id="ci-ep-output"></div>
     `;
-    document.getElementById('ci-ep-start').onclick = () => this._runExplainProject();
+    __setClick(document.getElementById('ci-ep-start'), () => this._runExplainProject());
   },
 
   async _runExplainProject() {
@@ -341,12 +352,12 @@ const CodeIntelligence = {
       const res = await window.providers[providerId].sendPlain(prompt, null, { signal: AbortSignal.timeout(60000) });
 
       out.innerHTML = `<div class="ci-ep-copy"><button class="ci-v2-btn ci-v2-btn-sm" id="ci-ep-copy-btn">📋 Kopieren</button></div><div class="ci-ep-output">${escapeHtml(res)}</div>`;
-      document.getElementById('ci-ep-copy-btn').onclick = () => {
+      __setClick(document.getElementById('ci-ep-copy-btn'), () => {
         navigator.clipboard.writeText(res);
         const btn = document.getElementById('ci-ep-copy-btn');
         btn.textContent = '✅ Kopiert!';
         setTimeout(() => { btn.textContent = '📋 Kopieren'; }, 2000);
-      };
+      });
     } catch (err) {
       out.innerHTML = '<div style="padding:0.5rem;color:#e74c3c;">Fehler: ' + escapeHtml(err.message || err) + '</div>';
     }
@@ -362,7 +373,7 @@ const CodeIntelligence = {
       </div>
       <div id="ci-gc-output"></div>
     `;
-    document.getElementById('ci-gc-start').onclick = () => {
+    __setClick(document.getElementById('ci-gc-start'), () => {
       this._resultsEl.querySelector('#ci-gc-output').innerHTML = `
         <div class="ci-gc-confirm">
           <p>Git Clarify wird <strong>alle Commit-Nachrichten</strong> analysieren und Vorschläge machen. Die Git-History wird umgeschrieben (amend/rebase).</p>
@@ -373,9 +384,9 @@ const CodeIntelligence = {
           </div>
         </div>
       `;
-      document.getElementById('ci-gc-cancel').onclick = () => this._renderGitClarify();
-      document.getElementById('ci-gc-confirm').onclick = () => this._runGitClarify();
-    };
+      __setClick(document.getElementById('ci-gc-cancel'), () => this._renderGitClarify());
+      __setClick(document.getElementById('ci-gc-confirm'), () => this._runGitClarify());
+    });
   },
 
   async _runGitClarify() {
@@ -477,7 +488,7 @@ const CodeIntelligence = {
 
     // Attach per-item handlers (single pass)
     listEl.querySelectorAll('[data-action]').forEach(btn => {
-      btn.onclick = async () => {
+      __setClick(btn, async () => {
         const idx = parseInt(btn.dataset.idx);
         if (btn.dataset.action === 'accept') {
           if (rows[idx].accepted) return;
@@ -498,10 +509,10 @@ const CodeIntelligence = {
           acceptBtn.textContent = '✓ Übernehmen';
           acceptBtn.classList.remove('ci-v2-btn-primary');
         }
-      };
+      });
     });
 
-    out.querySelector('#ci-gc-accept-all').onclick = async () => {
+    __setClick(out.querySelector('#ci-gc-accept-all'), async () => {
       for (let i = 0; i < rows.length; i++) {
         if (!rows[i].accepted && rows[i].hash === headHash) {
           rows[i].accepted = true;
@@ -510,12 +521,12 @@ const CodeIntelligence = {
         }
       }
       updateStatus();
-    };
-    out.querySelector('#ci-gc-reject-all').onclick = () => {
+    });
+    __setClick(out.querySelector('#ci-gc-reject-all'), () => {
       rows.forEach(r => r.accepted = false);
       accepted = 0;
       updateStatus();
-    };
+    });
 
     this._playEventSound();
   },
@@ -572,8 +583,8 @@ const CodeIntelligence = {
         <div id="ci-search-results" style="font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-search-btn').onclick = () => this._doCodeSearch();
-    document.getElementById('ci-search-input').onkeydown = (e) => { if (e.key === 'Enter') this._doCodeSearch(); };
+    __setClick(document.getElementById('ci-search-btn'), () => this._doCodeSearch());
+    __setListener(document.getElementById('ci-search-input'), 'keydown', (e) => { if (e.key === 'Enter') this._doCodeSearch(); });
   },
 
   async _doCodeSearch() {
@@ -616,7 +627,7 @@ const CodeIntelligence = {
         <div id="ci-plag-results" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-plag-btn').onclick = () => this._doPlagiarismCheck();
+    __setClick(document.getElementById('ci-plag-btn'), () => this._doPlagiarismCheck());
   },
 
   async _doPlagiarismCheck() {
@@ -656,8 +667,8 @@ const CodeIntelligence = {
         <div id="ci-api-results" style="font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-api-btn').onclick = () => this._doApiSearch();
-    document.getElementById('ci-api-input').onkeydown = (e) => { if (e.key === 'Enter') this._doApiSearch(); };
+    __setClick(document.getElementById('ci-api-btn'), () => this._doApiSearch());
+    __setListener(document.getElementById('ci-api-input'), 'keydown', (e) => { if (e.key === 'Enter') this._doApiSearch(); });
   },
 
   async _doApiSearch() {
@@ -697,8 +708,8 @@ const CodeIntelligence = {
         <div id="ci-web-results" style="font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-web-btn').onclick = () => this._doWebCodeSearch();
-    document.getElementById('ci-web-input').onkeydown = (e) => { if (e.key === 'Enter') this._doWebCodeSearch(); };
+    __setClick(document.getElementById('ci-web-btn'), () => this._doWebCodeSearch());
+    __setListener(document.getElementById('ci-web-input'), 'keydown', (e) => { if (e.key === 'Enter') this._doWebCodeSearch(); });
   },
 
   async _doWebCodeSearch() {
@@ -744,7 +755,7 @@ const CodeIntelligence = {
         <div id="ci-virus-results" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-virus-btn').onclick = () => this._doVirusCheck();
+    __setClick(document.getElementById('ci-virus-btn'), () => this._doVirusCheck());
   },
 
   async _doVirusCheck() {
@@ -805,8 +816,8 @@ const CodeIntelligence = {
         <div id="ci-scan-results" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-scan-btn').onclick = () => this._doWebsiteScan();
-    document.getElementById('ci-scan-url').onkeydown = (e) => { if (e.key === 'Enter') this._doWebsiteScan(); };
+    __setClick(document.getElementById('ci-scan-btn'), () => this._doWebsiteScan());
+    __setListener(document.getElementById('ci-scan-url'), 'keydown', (e) => { if (e.key === 'Enter') this._doWebsiteScan(); });
   },
 
   async _doWebsiteScan() {
@@ -846,7 +857,7 @@ const CodeIntelligence = {
         <div id="ci-dep-results" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-dep-btn').onclick = () => this._doDepCheck();
+    __setClick(document.getElementById('ci-dep-btn'), () => this._doDepCheck());
   },
 
   async _doDepCheck() {
@@ -934,8 +945,8 @@ const CodeIntelligence = {
         <div id="ci-secret-results" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text3);"></div>
       </div>
     `;
-    document.getElementById('ci-secret-btn').onclick = () => this._doSecretScan();
-    document.getElementById('ci-secret-input').onkeydown = (e) => { if (e.key === 'Enter') this._doSecretScan(); };
+    __setClick(document.getElementById('ci-secret-btn'), () => this._doSecretScan());
+    __setListener(document.getElementById('ci-secret-input'), 'keydown', (e) => { if (e.key === 'Enter') this._doSecretScan(); });
   },
 
   async _doSecretScan() {

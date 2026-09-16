@@ -229,7 +229,7 @@ const SkillsManager = {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,.skill';
-    input.onchange = (e) => {
+    __setListener(input, 'change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
@@ -252,7 +252,7 @@ const SkillsManager = {
         }
       };
       reader.readAsText(file);
-    };
+    });
     input.click();
   },
 

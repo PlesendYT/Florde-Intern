@@ -43,3 +43,26 @@ test('renderer JS generates no inline event handler attributes (CSP)', () => {
   }
   assert.deepStrictEqual(hits, [], `inline handlers blocked by CSP:\n${hits.join('\n')}`);
 });
+
+// `.onfoo = fn` property assignment is CSP-legal but replaces instead of
+// stacking: re-running the wiring silently drops the old handler (or, after a
+// naive addEventListener migration, stacks duplicates). All UI wiring must go
+// through __setListener/__setClick (overwrite semantics, fn=null detaches).
+// Deliberately excluded: `onerror`/`onload` on fresh connection/resource
+// objects (single assignment at construction, idiomatic).
+const PROP_RE = /\.(on(?:click|dblclick|keydown|keyup|keypress|change|input|submit|focus|blur))\s*=/;
+
+test('renderer JS uses no .on* property assignments (use __setListener)', () => {
+  const hits = [];
+  for (const f of collectJs(rendererDir)) {
+    const src = fs.readFileSync(f, 'utf-8');
+    src.split('\n').forEach((line, i) => {
+      const m = PROP_RE.exec(line);
+      if (!m) return;
+      const commentAt = line.indexOf('//');
+      if (commentAt !== -1 && commentAt < m.index) return; // prose comment
+      hits.push(`${path.relative(rendererDir, f)}:${i + 1}: ${line.trim().slice(0, 80)}`);
+    });
+  }
+  assert.deepStrictEqual(hits, [], `property assignments must use __setListener:\n${hits.join('\n')}`);
+});

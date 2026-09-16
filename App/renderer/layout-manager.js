@@ -93,13 +93,6 @@ const LayoutManager = {
       const host = panel && panel.view && panel.view.content && panel.view.content.element;
       return host || null;
     };
-    const appendToPanel = (panelId, element) => {
-      const host = panelHost(panelId);
-      if (host && element) {
-        host.appendChild(element);
-      }
-    };
-
     const replaceWithPlaceholder = (element) => {
       if (!element || !element.parentNode) return null;
       const ph = document.createComment('layout-manager');
@@ -111,74 +104,88 @@ const LayoutManager = {
     const getPanel = (id) => api.getPanel(id);
     const panelEl = (id) => panelHost(id);
 
+    // Fail-safe move: detach ONLY when the dockview host actually exists.
+    // Otherwise the element would be lost (black workspace) — keep the
+    // static layout instead. Returns true when nothing needed doing or the
+    // move succeeded, false when the host is missing.
+    const moveIntoPanel = (panelId, element, key, extra) => {
+      if (!element || !element.parentNode) return true;
+      const host = panelHost(panelId);
+      if (!host) return false;
+      const parent = element.parentNode;
+      const ph = replaceWithPlaceholder(element);
+      this._restore[key] = Object.assign({ element, parent, placeholder: ph }, extra);
+      host.appendChild(element);
+      return true;
+    };
+
+    // Force content creation before moving (container may still be hidden).
+    try { this._api?.layout?.(); } catch {}
+
     // Move chat-panel out of main-content first (it's a sibling of editor-panel)
     const chatPanel = document.querySelector('.chat-panel');
+    let chatOk = true;
     if (chatPanel && chatPanel.parentNode === mainContent) {
-      const ph = replaceWithPlaceholder(chatPanel);
-      this._restore.chatPanel = { element: chatPanel, parent: mainContent, placeholder: ph };
-      appendToPanel('chat', chatPanel);
+      chatOk = moveIntoPanel('chat', chatPanel, 'chatPanel');
     }
 
     // Move file-tabs into editor panel
     const fileTabs = document.getElementById('file-tabs');
     if (fileTabs && fileTabs.parentNode === mainArea) {
-      const ph = replaceWithPlaceholder(fileTabs);
-      this._restore.fileTabs = { element: fileTabs, parent: mainArea, placeholder: ph };
-      appendToPanel('editor', fileTabs);
+      moveIntoPanel('editor', fileTabs, 'fileTabs');
     }
 
     // Move main-content (now without chat) into editor panel
+    let contentOk = true;
     if (mainContent && mainContent.parentNode === mainArea) {
-      const ph = replaceWithPlaceholder(mainContent);
-      this._restore.mainContent = { element: mainContent, parent: mainArea, placeholder: ph };
-      appendToPanel('editor', mainContent);
+      contentOk = moveIntoPanel('editor', mainContent, 'mainContent');
+    }
+
+    // Critical moves (chat = right column, mainContent = editor) must succeed.
+    // Otherwise restore whatever was moved and stay in static layout instead
+    // of showing an empty dockview.
+    if (!chatOk || !contentOk) {
+      this._restoreStatic();
+      this._active = false;
+      return;
     }
 
     // Move terminal panel
     const terminal = document.getElementById('terminal-panel');
     if (terminal && terminal.parentNode === mainArea) {
       const wasHidden = terminal.classList.contains('hidden');
-      terminal.classList.remove('hidden');
-      const ph = replaceWithPlaceholder(terminal);
-      this._restore.terminal = { element: terminal, parent: mainArea, placeholder: ph, wasHidden };
-      appendToPanel('terminal', terminal);
+      if (panelHost('terminal')) {
+        terminal.classList.remove('hidden');
+        moveIntoPanel('terminal', terminal, 'terminal', { wasHidden });
+      }
     }
 
     // Move docker panel
     const docker = document.getElementById('docker-panel');
     if (docker && docker.parentNode === mainArea) {
       const wasHidden = docker.classList.contains('hidden');
-      docker.classList.remove('hidden');
-      const ph = replaceWithPlaceholder(docker);
-      this._restore.docker = { element: docker, parent: mainArea, placeholder: ph, wasHidden };
-      appendToPanel('docker', docker);
+      if (panelHost('docker')) {
+        docker.classList.remove('hidden');
+        moveIntoPanel('docker', docker, 'docker', { wasHidden });
+      }
     }
 
     // Move file tree from sidebar into files panel
     const fileTree = document.getElementById('file-tree');
     const sidebar = document.getElementById('sidebar');
-    if (fileTree && fileTree.parentNode === sidebar) {
+    if (fileTree && fileTree.parentNode === sidebar && panelHost('files')) {
       // Also move the sidebar header
       const sidebarHeader = sidebar.querySelector('.sidebar-header');
-      const filesPanelEl = panelEl('files');
-      if (sidebarHeader && filesPanelEl) {
-        const ph = replaceWithPlaceholder(sidebarHeader);
-        this._restore.sidebarHeader = { element: sidebarHeader, parent: sidebar, placeholder: ph };
-        filesPanelEl.appendChild(sidebarHeader);
+      if (sidebarHeader) {
+        moveIntoPanel('files', sidebarHeader, 'sidebarHeader');
       }
-      if (filesPanelEl) {
-        const ph = replaceWithPlaceholder(fileTree);
-        this._restore.fileTree = { element: fileTree, parent: sidebar, placeholder: ph };
-        filesPanelEl.appendChild(fileTree);
-      }
+      moveIntoPanel('files', fileTree, 'fileTree');
     }
 
     // Move git panel from sidebar into git panel
     const gitPanel = document.getElementById('git-panel');
     if (gitPanel && gitPanel.parentNode === sidebar) {
-      const ph = replaceWithPlaceholder(gitPanel);
-      this._restore.gitPanel = { element: gitPanel, parent: sidebar, placeholder: ph };
-      appendToPanel('git', gitPanel);
+      moveIntoPanel('git', gitPanel, 'gitPanel');
     }
 
     // Hide sidebar
@@ -196,6 +203,19 @@ const LayoutManager = {
       if (typeof editor !== 'undefined' && editor?.layout) editor.layout();
       if (typeof DiffViewer !== 'undefined' && DiffViewer._editor?.layout) DiffViewer._editor.layout();
     });
+  },
+
+  _restoreStatic() {
+    for (const [key, info] of Object.entries(this._restore)) {
+      if (info.element && info.placeholder && info.placeholder.parentNode) {
+        info.placeholder.parentNode.insertBefore(info.element, info.placeholder);
+        info.placeholder.parentNode.removeChild(info.placeholder);
+      } else if (info.element && info.parent) {
+        info.parent.appendChild(info.element);
+      }
+      if (info.wasHidden) info.element.classList.add('hidden');
+    }
+    this._restore = {};
   },
 
   deactivate() {

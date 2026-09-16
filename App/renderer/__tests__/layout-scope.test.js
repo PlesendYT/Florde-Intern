@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const css = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf-8');
+const layoutJs = fs.readFileSync(path.join(__dirname, '..', 'layout-manager.js'), 'utf-8');
 
 function parseRules(src) {
   const clean = src.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -67,5 +68,35 @@ test('no bare global chrome selectors in any display:none rule', () => {
     offenders,
     [],
     `bare global chrome-hiding selectors (always hidden): ${offenders.join(', ')}`
+  );
+});
+
+// activate() must never detach an element it cannot re-attach: detaching
+// first and re-attaching only-if-host-exists loses DOM nodes (black
+// workspace) when dockview content isn't rendered yet. All moves go through
+// moveIntoPanel (host check before detach), critical failures restore the
+// static layout and reset _active so a later retry can run.
+test('activate moves only into existing panel hosts (fail-safe)', () => {
+  assert.ok(
+    /const moveIntoPanel = \(panelId, element, key/.test(layoutJs),
+    'moveIntoPanel helper missing'
+  );
+  assert.ok(
+    /if \(!host\) return false/.test(layoutJs),
+    'moveIntoPanel must bail before detaching when host is missing'
+  );
+  for (const key of ['chatPanel', 'mainContent']) {
+    assert.ok(
+      new RegExp(`moveIntoPanel\\('(?:chat|editor)',[^)]*'${key}'`).test(layoutJs),
+      `critical move for ${key} must go through moveIntoPanel`
+    );
+  }
+  assert.ok(
+    /_restoreStatic\(\)/.test(layoutJs) && /this\._active = false/.test(layoutJs),
+    'critical-move failure must restore static layout and reset _active'
+  );
+  assert.ok(
+    !/panel\.element\.appendChild/.test(layoutJs),
+    'bare panel.element access must stay fixed (use panelHost)'
   );
 });

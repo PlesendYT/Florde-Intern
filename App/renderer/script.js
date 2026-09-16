@@ -4849,6 +4849,35 @@ document.addEventListener('click', (e) => {
   if (img) img.classList.toggle('full');
 });
 
+// ==================== UPDATE CHECK ====================
+// Badge oben links erscheint NUR bei neuerer Version auf
+// florde.vercel.app/version.json. Still ohne Netz/bei Fehlern.
+async function checkForAppUpdate() {
+  const badge = document.getElementById('update-badge');
+  if (!badge) return;
+  try {
+    const helper = (typeof window !== 'undefined' && window.__updateCheck) ? window.__updateCheck : null;
+    if (!helper) return;
+    const localVersion = await window.electronAPI?.getAppVersion?.();
+    if (!localVersion) return;
+    const { update, remote } = await helper.checkForUpdate({ localVersion });
+    if (!update) return;
+    badge.classList.remove('hidden');
+    badge.title = 'Update verfügbar (v' + remote + ') — Download öffnen';
+    badge.dataset.remote = remote;
+  } catch {}
+}
+
+document.getElementById('update-badge')?.addEventListener('click', () => {
+  const helper = (typeof window !== 'undefined' && window.__updateCheck) ? window.__updateCheck : null;
+  const url = (helper && helper.UPDATE_DOWNLOAD_URL) || 'https://florde.vercel.app/downloads';
+  if (window.electronAPI?.openExternal) window.electronAPI.openExternal(url);
+  else window.open(url, '_blank');
+});
+
+// Verzögert prüfen, damit der Start nicht blockiert.
+setTimeout(() => { checkForAppUpdate(); }, 8000);
+
 // ==================== ICON RAIL ====================
 // Rail buttons delegate to EXISTING toggle mechanisms (same pattern as the
 // keybindings below, e.g. `document.getElementById('btn-terminal-toggle').click()`).

@@ -80,6 +80,14 @@ class SystemService {
     }
   }
 
+  getAppVersion() {
+    try {
+      return app.getVersion();
+    } catch {
+      return null;
+    }
+  }
+
   async openExternal(url) {
     try {
       const parsed = new URL(url);

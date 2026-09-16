@@ -9,6 +9,7 @@ function registerSystemIpc({ ipcMain, systemService }) {
   ipcMain.handle('get-plugins', () => systemService.getPlugins());
   ipcMain.handle('save-plugins', (event, data) => systemService.savePlugins(data));
   ipcMain.handle('open-external', async (event, url) => systemService.openExternal(url));
+  ipcMain.handle('app:get-version', () => systemService.getAppVersion());
 }
 
 module.exports = { registerSystemIpc };

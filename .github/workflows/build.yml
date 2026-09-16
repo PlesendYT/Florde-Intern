@@ -1,0 +1,53 @@
+# Windows installers cannot be built on Linux/macOS: native modules
+# (better-sqlite3, node-pty) cannot be cross-compiled by node-gyp, and no
+# prebuilt Windows binaries exist for the pinned Electron version.
+# This workflow builds each installer on its native runner instead.
+name: Build installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: App
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: florde-windows
+          path: App/build-output/
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: App
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: florde-linux
+          path: App/build-output/
+          if-no-files-found: error

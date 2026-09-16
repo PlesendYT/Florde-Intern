@@ -37,8 +37,19 @@ function syncVersion(appDir) {
     const file = path.join(dir, name);
     if (!fs.existsSync(file)) continue;
     const data = readJson(file);
+    let fileChanged = false;
     if (data.version !== version) {
       data.version = version;
+      fileChanged = true;
+    }
+    // npm keeps packages[""].version in sync with the top-level version.
+    if (name === 'package-lock.json' && data.packages && data.packages['']) {
+      if (data.packages[''].version !== version) {
+        data.packages[''].version = version;
+        fileChanged = true;
+      }
+    }
+    if (fileChanged) {
       writeJson(file, data);
       changed = true;
     }

@@ -34,15 +34,33 @@ do_dev() {
 
 do_build() {
   target="$1"
-  case "$target" in
-    win)   npm_script="build:win" ;;
-    linux) npm_script="build:linux" ;;
-    mac)   npm_script="build:mac" ;;
-    all)   npm_script="build" ;;
-    *) echo "Unknown build target: $target (win/linux/mac/all)"; return 1 ;;
-  esac
-  echo "Building Florde ($target)..."
-  npm run "$npm_script"
+  # Windows builds need Windows: native modules (better-sqlite3/node-pty)
+  # cannot be cross-compiled (node-gyp refuses linux->win32) and no
+  # Electron-44 prebuilds exist. Windows installers are built in CI
+  # (.github/workflows/build.yml) on windows-latest runners.
+  if [ "$target" = "win" ]; then
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        echo "Building Florde (win, native)..."
+        npm run build:win
+        ;;
+      *)
+        echo "Windows builds need Windows (native modules can't cross-compile)."
+        echo "They run in CI: .github/workflows/build.yml (Actions -> Build installers -> Artifacts)."
+        echo "On a Windows machine choose this option again for a local build."
+        return 1
+        ;;
+    esac
+  else
+    case "$target" in
+      linux) npm_script="build:linux" ;;
+      mac)   npm_script="build:mac" ;;
+      all)   npm_script="build" ;;
+      *) echo "Unknown build target: $target (win/linux/mac/all)"; return 1 ;;
+    esac
+    echo "Building Florde ($target)..."
+    npm run "$npm_script"
+  fi
   if [ $? -ne 0 ]; then
     echo "Build failed."
     return 1
@@ -52,7 +70,12 @@ do_build() {
 
 do_build_all() {
   echo "Building Florde for Windows, Linux, and macOS..."
-  npm run build
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) npm run build ;;
+    # "build" bundles win+linux, but win needs Windows (see do_build):
+    # build linux locally, win comes from CI.
+    *) npm run build:linux && echo "NOTE: Windows installer comes from CI (.github/workflows/build.yml)." ;;
+  esac
   if [ $? -ne 0 ]; then
     echo "Build failed."
     return 1

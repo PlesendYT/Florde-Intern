@@ -34,7 +34,12 @@ test('syncVersion writes config version into package.json + lock', async () => {
   assert.strictEqual(res.changed, true);
   assert.strictEqual(res.version, '9.9.9');
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).version, '9.9.9');
-  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'package-lock.json'), 'utf-8')).version, '9.9.9');
+  const lock = JSON.parse(fs.readFileSync(path.join(dir, 'package-lock.json'), 'utf-8'));
+  assert.strictEqual(lock.version, '9.9.9');
+  lock.packages = { '': { version: '1.0.0' } };
+  fs.writeFileSync(path.join(dir, 'package-lock.json'), JSON.stringify(lock, null, 2));
+  syncVersion(dir);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'package-lock.json'), 'utf-8')).packages[''].version, '9.9.9');
   fs.rmSync(dir, { recursive: true });
 });
 

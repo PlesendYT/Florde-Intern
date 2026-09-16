@@ -18,15 +18,15 @@ jobs:
         working-directory: App
         shell: bash
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run build:win
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: florde-windows
           path: App/build-output/
@@ -38,15 +38,15 @@ jobs:
       run:
         working-directory: App
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run build:linux
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: florde-linux
           path: App/build-output/

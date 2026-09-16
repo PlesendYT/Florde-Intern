@@ -37,10 +37,12 @@ jobs:
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run build:win -- --publish never nsis
+      - run: npm run build:win -- --publish never
       - name: Normalize asset name
         run: |
           VER=$(node -p "require('./config.json').version")
+          # Nur hier ist mv nötig: Windows kennt kein x86_64-Mapping im
+          # artifactName (NSIS liefert Florde-Setup-<V>.exe).
           mv "build-output/Florde-Setup-${VER}.exe" "build-output/Florde-${VER}-x86_64-Setup.exe"
           ls "build-output/Florde-${VER}-x86_64-Setup.exe"
       - uses: actions/upload-artifact@v5
@@ -63,10 +65,11 @@ jobs:
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run build:win -- --publish never nsis
+      - run: npm run build:win -- --publish never
       - name: Normalize asset name
         run: |
           VER=$(node -p "require('./config.json').version")
+          # Siehe build-win-x64: arch-Ergänzung nur per mv möglich.
           mv "build-output/Florde-Setup-${VER}.exe" "build-output/Florde-${VER}-arm64-Setup.exe"
           ls "build-output/Florde-${VER}-arm64-Setup.exe"
       - uses: actions/upload-artifact@v5
@@ -89,11 +92,12 @@ jobs:
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run build:linux -- AppImage deb --publish never
-      - name: Normalize asset names
+      - name: Verify asset names
+        # Kein mv nötig: electron-builder liefert direkt
+        # Florde-<V>-x86_64.AppImage und Florde-<V>-amd64.deb
+        # (arch-Mapping je Target, lokal verifiziert).
         run: |
           VER=$(node -p "require('./config.json').version")
-          mv "build-output/Florde-${VER}-x64.AppImage" "build-output/Florde-${VER}-x86_64.AppImage"
-          mv "build-output/Florde-${VER}-x64.deb" "build-output/Florde-${VER}-amd64.deb"
           ls "build-output/Florde-${VER}-x86_64.AppImage" "build-output/Florde-${VER}-amd64.deb"
       - uses: actions/upload-artifact@v5
         with:

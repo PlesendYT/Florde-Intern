@@ -24,6 +24,18 @@ test('isValidVersion accepts 1.0.0 and 1.0, rejects garbage', async () => {
   assert.strictEqual(isValidVersion('1.0.0; rm -rf /'), false);
 });
 
+test('resolveAppDir points at the App dir (Windows-safe, no leading backslash)', async () => {
+  const { resolveAppDir } = await import('../sync-version.js');
+  const { pathToFileURL } = await import('node:url');
+  const fake = pathToFileURL(path.join(path.sep, 'x', 'App', 'scripts', 'sync-version.js')).href;
+  const dir = resolveAppDir(fake);
+  assert.ok(!dir.startsWith('\\'), `must not start with backslash, got: ${dir}`);
+  assert.strictEqual(path.basename(dir), 'App');
+  // And from its real location it must hit the real App dir:
+  const real = resolveAppDir(new URL('../sync-version.js', import.meta.url).href);
+  assert.ok(fs.existsSync(path.join(real, 'package.json')), 'must resolve to the real App dir');
+});
+
 test('syncVersion writes config version into package.json + lock', async () => {
   const { syncVersion } = await import('../sync-version.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'florde-ver-'));

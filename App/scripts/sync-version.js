@@ -6,7 +6,14 @@
 // npm pre-Hook (predev/prestart/prebuild*), kein manueller Aufruf nötig.
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// Skript-Verzeichnis -> App-Verzeichnis. fileURLToPath statt .pathname:
+// pathname liefert auf Windows "/D:/..." und path.join daraus "\D:\..."
+// (ungültig) — fileURLToPath gibt "D:\..." korrekt zurück.
+function resolveAppDir(metaUrl) {
+  return path.dirname(path.dirname(fileURLToPath(metaUrl)));
+}
 
 const VERSION_RE = /^\d+\.\d+(\.\d+)?([-+.][0-9A-Za-z.+-]+)?$/;
 
@@ -23,7 +30,7 @@ function writeJson(file, data) {
 }
 
 function syncVersion(appDir) {
-  const dir = appDir || path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  const dir = appDir || resolveAppDir(import.meta.url);
   const configFile = path.join(dir, 'config.json');
   if (!fs.existsSync(configFile)) {
     throw new Error(`sync-version: ${configFile} fehlt — {"version":"x.y.z"} anlegen`);
@@ -57,8 +64,8 @@ function syncVersion(appDir) {
   return { version, changed };
 }
 
-export { isValidVersion, syncVersion };
-export default { isValidVersion, syncVersion };
+export { isValidVersion, syncVersion, resolveAppDir };
+export default { isValidVersion, syncVersion, resolveAppDir };
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   try {

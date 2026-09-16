@@ -68,6 +68,10 @@ async function checkForUpdate({ url, localVersion, fetchFn, isOnline, timeoutMs 
   }
 }
 
-export { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate };
-export default { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate };
-if (typeof window !== 'undefined') window.__updateCheck = { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate };
+function buildUpdateConfirmText(localVersion, remoteVersion) {
+  return `Update verfügbar: v${remoteVersion} (installiert: v${localVersion}). Website mit dem neuen Release öffnen?`;
+}
+
+export { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate, buildUpdateConfirmText };
+export default { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate, buildUpdateConfirmText };
+if (typeof window !== 'undefined') window.__updateCheck = { UPDATE_VERSION_URL, UPDATE_DOWNLOAD_URL, normalizeVersion, isNewer, parseVersionPayload, checkForUpdate, buildUpdateConfirmText };

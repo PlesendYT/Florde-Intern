@@ -47,6 +47,13 @@ test('checkForUpdate reports update only when remote is newer', async () => {
   assert.deepStrictEqual(r, { update: false, remote: '1.0' });
 });
 
+test('buildUpdateConfirmText names both versions', async () => {
+  const { buildUpdateConfirmText } = await import('../domains/update/check.js');
+  const t = buildUpdateConfirmText('1.0.0', '1.1.0');
+  assert.match(t, /1\.1\.0/, 'remote version named');
+  assert.match(t, /1\.0\.0/, 'local version named');
+});
+
 test('checkForUpdate is silent offline / on errors', async () => {
   const { checkForUpdate } = await import('../domains/update/check.js');
   let called = false;

@@ -4868,9 +4868,39 @@ async function checkForAppUpdate() {
   } catch {}
 }
 
-document.getElementById('update-badge')?.addEventListener('click', () => {
+function askUpdateConfirm(localVersion, remoteVersion) {
+  return new Promise(resolve => {
+    const helper = (typeof window !== 'undefined' && window.__updateCheck) ? window.__updateCheck : null;
+    const modal = document.getElementById('florde-confirm-modal');
+    const text = document.getElementById('florde-confirm-text');
+    const btns = document.getElementById('florde-confirm-buttons');
+    if (!modal || !text || !btns || typeof addButton !== 'function') { resolve(false); return; }
+    text.textContent = helper && helper.buildUpdateConfirmText
+      ? helper.buildUpdateConfirmText(localVersion, remoteVersion)
+      : `Update verfügbar: v${remoteVersion} (installiert: v${localVersion}). Website öffnen?`;
+    btns.innerHTML = '';
+    modal.classList.remove('hidden');
+    const close = result => { modal.classList.add('hidden'); resolve(result); };
+    addButton('Website öffnen', 'open', 'btn btn-primary', () => close(true), btns);
+    addButton('Abbrechen', 'cancel', 'btn btn-secondary', () => close(false), btns);
+    modal.addEventListener('click', function onOverlay(e) {
+      if (e.target === modal) { modal.removeEventListener('click', onOverlay); close(false); }
+    });
+  });
+}
+
+document.getElementById('update-badge')?.addEventListener('click', async () => {
+  const badge = document.getElementById('update-badge');
   const helper = (typeof window !== 'undefined' && window.__updateCheck) ? window.__updateCheck : null;
   const url = (helper && helper.UPDATE_DOWNLOAD_URL) || 'https://florde.vercel.app/downloads';
+  let localVersion = null;
+  try { localVersion = await window.electronAPI?.getAppVersion?.(); } catch {}
+  const remote = (badge && badge.dataset.remote) || null;
+  let open = false;
+  try {
+    open = await askUpdateConfirm(localVersion || '?', remote || '?');
+  } catch { open = false; }
+  if (!open) return;
   if (window.electronAPI?.openExternal) window.electronAPI.openExternal(url);
   else window.open(url, '_blank');
 });

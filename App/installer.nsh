@@ -176,7 +176,9 @@ FunctionEnd
     FunctionEnd
 
     Function flordeModeMenuLeave
-      !insertmacro CHECK_APP_RUNNING
+      ; NOTE: no CHECK_APP_RUNNING here — electron-builder already expands it
+      ; in both installer and uninstaller flows; a second expansion re-declares
+      ; Var CmdPath and aborts makensis ("already declared").
       ${NSD_GetState} $flordeRadioInstall $0
       ${If} $0 <> 0
         StrCpy $flordeMode "install"
@@ -440,7 +442,7 @@ FunctionEnd
     FunctionEnd
 
     Function un.flordeModeMenuLeave
-      !insertmacro CHECK_APP_RUNNING
+      ; NOTE: see flordeModeMenuLeave — builder already checks, do not expand twice.
       ${NSD_GetState} $flordeUnRadioRepair $0
       ${If} $0 <> 0
         StrCpy $flordeUnMode "repair"

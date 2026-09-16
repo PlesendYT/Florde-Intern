@@ -5,6 +5,7 @@ const LayoutManager = {
   _active: false,
   _locked: false,
   _restore: {},
+  _moved: false,
 
   async init(containerElement) {
     if (this._initialized) return;
@@ -78,144 +79,17 @@ const LayoutManager = {
 
   activate() {
     if (this._active || !this._initialized) return;
+    // Static layout stays authoritative: relocating live DOM into dockview
+    // panels is disabled. api.clear()/api.fromJSON() (load/reset on every
+    // project switch) destroy moved nodes without recovery, which left a
+    // black workspace. Dockview stays initialized (API for future use) but
+    // hidden; _moved gates load()/save() below.
     this._active = true;
-
-    const api = this._api;
-    const mainArea = document.querySelector('.main-area');
-    const mainContent = document.querySelector('.main-content');
-    if (!mainArea) { console.warn('LayoutManager: .main-area not found'); return; }
-
-    this._restore = {};
-
-    // IDockviewPanel has no .element — content host is panel.view.content.element.
-    const panelHost = (panelId) => {
-      const panel = api.getPanel(panelId);
-      const host = panel && panel.view && panel.view.content && panel.view.content.element;
-      return host || null;
-    };
-    const replaceWithPlaceholder = (element) => {
-      if (!element || !element.parentNode) return null;
-      const ph = document.createComment('layout-manager');
-      element.parentNode.insertBefore(ph, element);
-      element.parentNode.removeChild(element);
-      return ph;
-    };
-
-    const getPanel = (id) => api.getPanel(id);
-    const panelEl = (id) => panelHost(id);
-
-    // Fail-safe move: detach ONLY when the dockview host actually exists.
-    // Otherwise the element would be lost (black workspace) — keep the
-    // static layout instead. Returns true when nothing needed doing or the
-    // move succeeded, false when the host is missing.
-    const moveIntoPanel = (panelId, element, key, extra) => {
-      if (!element || !element.parentNode) return true;
-      const host = panelHost(panelId);
-      if (!host) return false;
-      const parent = element.parentNode;
-      const ph = replaceWithPlaceholder(element);
-      this._restore[key] = Object.assign({ element, parent, placeholder: ph }, extra);
-      host.appendChild(element);
-      return true;
-    };
-
-    // Force content creation before moving (container may still be hidden).
+    this._moved = false;
     try { this._api?.layout?.(); } catch {}
-
-    // Move chat-panel out of main-content first (it's a sibling of editor-panel)
-    const chatPanel = document.querySelector('.chat-panel');
-    let chatOk = true;
-    if (chatPanel && chatPanel.parentNode === mainContent) {
-      chatOk = moveIntoPanel('chat', chatPanel, 'chatPanel');
+    if (typeof editor !== 'undefined' && editor?.layout) {
+      requestAnimationFrame(() => { try { editor.layout(); } catch {} });
     }
-
-    // Move file-tabs into editor panel
-    const fileTabs = document.getElementById('file-tabs');
-    if (fileTabs && fileTabs.parentNode === mainArea) {
-      moveIntoPanel('editor', fileTabs, 'fileTabs');
-    }
-
-    // Move main-content (now without chat) into editor panel
-    let contentOk = true;
-    if (mainContent && mainContent.parentNode === mainArea) {
-      contentOk = moveIntoPanel('editor', mainContent, 'mainContent');
-    }
-
-    // Critical moves (chat = right column, mainContent = editor) must succeed.
-    // Otherwise restore whatever was moved and stay in static layout instead
-    // of showing an empty dockview.
-    if (!chatOk || !contentOk) {
-      this._restoreStatic();
-      this._active = false;
-      return;
-    }
-
-    // Move terminal panel
-    const terminal = document.getElementById('terminal-panel');
-    if (terminal && terminal.parentNode === mainArea) {
-      const wasHidden = terminal.classList.contains('hidden');
-      if (panelHost('terminal')) {
-        terminal.classList.remove('hidden');
-        moveIntoPanel('terminal', terminal, 'terminal', { wasHidden });
-      }
-    }
-
-    // Move docker panel
-    const docker = document.getElementById('docker-panel');
-    if (docker && docker.parentNode === mainArea) {
-      const wasHidden = docker.classList.contains('hidden');
-      if (panelHost('docker')) {
-        docker.classList.remove('hidden');
-        moveIntoPanel('docker', docker, 'docker', { wasHidden });
-      }
-    }
-
-    // Move file tree from sidebar into files panel
-    const fileTree = document.getElementById('file-tree');
-    const sidebar = document.getElementById('sidebar');
-    if (fileTree && fileTree.parentNode === sidebar && panelHost('files')) {
-      // Also move the sidebar header
-      const sidebarHeader = sidebar.querySelector('.sidebar-header');
-      if (sidebarHeader) {
-        moveIntoPanel('files', sidebarHeader, 'sidebarHeader');
-      }
-      moveIntoPanel('files', fileTree, 'fileTree');
-    }
-
-    // Move git panel from sidebar into git panel
-    const gitPanel = document.getElementById('git-panel');
-    if (gitPanel && gitPanel.parentNode === sidebar) {
-      moveIntoPanel('git', gitPanel, 'gitPanel');
-    }
-
-    // Hide sidebar
-    this._sidebarHidden = !sidebar.classList.contains('hidden');
-    sidebar.classList.add('hidden');
-    const resizer = document.getElementById('sidebar-resizer');
-    if (resizer) resizer.classList.add('hidden');
-
-    // Show dockview
-    this._container.classList.remove('hidden');
-    document.querySelector('.app-body')?.classList.add('layout-dockview-active');
-
-    requestAnimationFrame(() => {
-      this._api?.layout?.();
-      if (typeof editor !== 'undefined' && editor?.layout) editor.layout();
-      if (typeof DiffViewer !== 'undefined' && DiffViewer._editor?.layout) DiffViewer._editor.layout();
-    });
-  },
-
-  _restoreStatic() {
-    for (const [key, info] of Object.entries(this._restore)) {
-      if (info.element && info.placeholder && info.placeholder.parentNode) {
-        info.placeholder.parentNode.insertBefore(info.element, info.placeholder);
-        info.placeholder.parentNode.removeChild(info.placeholder);
-      } else if (info.element && info.parent) {
-        info.parent.appendChild(info.element);
-      }
-      if (info.wasHidden) info.element.classList.add('hidden');
-    }
-    this._restore = {};
   },
 
   deactivate() {
@@ -293,7 +167,7 @@ const LayoutManager = {
 
   async save(name) {
     const api = this._api;
-    if (!api) return;
+    if (!api || !this._moved) return;
     const state = api.toJSON();
     const projectName = name.replace(/^project-/, '');
     localStorage.setItem(`florde-layout-${name}`, JSON.stringify(state));
@@ -309,7 +183,9 @@ const LayoutManager = {
 
   async load(name) {
     const api = this._api;
-    if (!api) return;
+    // fromJSON()/clear() would rebuild panels; with live DOM inside that
+    // destroys app nodes. Only run when content was actually moved.
+    if (!api || !this._moved) return;
     const projectName = name.replace(/^project-/, '');
     const state = await this._loadLayoutState(name, projectName);
     if (state) {

@@ -71,32 +71,38 @@ test('no bare global chrome selectors in any display:none rule', () => {
   );
 });
 
-// activate() must never detach an element it cannot re-attach: detaching
-// first and re-attaching only-if-host-exists loses DOM nodes (black
-// workspace) when dockview content isn't rendered yet. All moves go through
-// moveIntoPanel (host check before detach), critical failures restore the
-// static layout and reset _active so a later retry can run.
-test('activate moves only into existing panel hosts (fail-safe)', () => {
+// activate() must never relocate live DOM into dockview panels:
+// api.clear()/api.fromJSON() (load/reset on every project switch) destroy
+// moved nodes without recovery (black workspace). Static layout stays
+// authoritative; load()/save() are gated on _moved.
+test('activate performs no DOM relocation (static layout authoritative)', () => {
+  const activateBody = layoutJs.slice(
+    layoutJs.indexOf('activate() {'),
+    layoutJs.indexOf('deactivate() {')
+  );
+  assert.ok(activateBody.length > 0, 'activate() not found');
   assert.ok(
-    /const moveIntoPanel = \(panelId, element, key/.test(layoutJs),
-    'moveIntoPanel helper missing'
+    !/replaceWithPlaceholder\(/.test(activateBody),
+    'activate must not detach live DOM'
   );
   assert.ok(
-    /if \(!host\) return false/.test(layoutJs),
-    'moveIntoPanel must bail before detaching when host is missing'
-  );
-  for (const key of ['chatPanel', 'mainContent']) {
-    assert.ok(
-      new RegExp(`moveIntoPanel\\('(?:chat|editor)',[^)]*'${key}'`).test(layoutJs),
-      `critical move for ${key} must go through moveIntoPanel`
-    );
-  }
-  assert.ok(
-    /_restoreStatic\(\)/.test(layoutJs) && /this\._active = false/.test(layoutJs),
-    'critical-move failure must restore static layout and reset _active'
+    !/appendChild/.test(activateBody),
+    'activate must not re-attach nodes into panels'
   );
   assert.ok(
     !/panel\.element\.appendChild/.test(layoutJs),
-    'bare panel.element access must stay fixed (use panelHost)'
+    'bare panel.element access must stay fixed'
   );
+});
+
+test('load/save skip dockview rebuild while static (no node destruction)', () => {
+  for (const fn of ['async save(name)', 'async load(name)']) {
+    const start = layoutJs.indexOf(fn);
+    assert.ok(start !== -1, `${fn} not found`);
+    const body = layoutJs.slice(start, start + 400);
+    assert.ok(
+      /if \(!this\._moved\) return/.test(body) || /!this\._moved/.test(body),
+      `${fn} must bail when nothing was moved into dockview`
+    );
+  }
 });

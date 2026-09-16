@@ -4860,7 +4860,12 @@ async function checkForAppUpdate() {
     if (!helper) return;
     const localVersion = await window.electronAPI?.getAppVersion?.();
     if (!localVersion) return;
-    const { update, remote } = await helper.checkForUpdate({ localVersion });
+    // Main-Prozess bevorzugen (kein CORS-Problem wie Renderer-fetch).
+    const fetchText = window.electronAPI?.fetchUpdateVersion
+      ? (u) => window.electronAPI.fetchUpdateVersion(u)
+      : undefined;
+    const opts = fetchText ? { localVersion, fetchText } : { localVersion };
+    const { update, remote } = await helper.checkForUpdate(opts);
     if (!update) return;
     badge.classList.remove('hidden');
     badge.title = 'Update verfügbar (v' + remote + ') — Download öffnen';

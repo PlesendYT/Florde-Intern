@@ -88,6 +88,27 @@ class SystemService {
     }
   }
 
+  // Update-Check via Main-Prozess: Renderer-fetch scheitert an CORS
+  // (dev: localhost, prod: file://), Node-fetch kennt kein CORS.
+  // URL ist gepinnt — kein offener Fetch-Proxy (SSRF-Schutz).
+  async fetchUpdateVersion(url) {
+    const allowed = 'https://florde.vercel.app/version.json';
+    if (url !== allowed) throw new Error('Blocked: unexpected update URL');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('Update check HTTP ' + res.status);
+      const text = await res.text();
+      if (typeof text !== 'string' || text.length === 0 || text.length > 10000) {
+        throw new Error('Update check bad payload');
+      }
+      return text;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async openExternal(url) {
     try {
       const parsed = new URL(url);

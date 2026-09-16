@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  fetchUpdateVersion: (url) => ipcRenderer.invoke('update:fetch-version', url),
 
   browser: {
     open: (url) => ipcRenderer.invoke('browser:open', url),

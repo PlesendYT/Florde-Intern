@@ -47,6 +47,20 @@ test('checkForUpdate reports update only when remote is newer', async () => {
   assert.deepStrictEqual(r, { update: false, remote: '1.0' });
 });
 
+test('checkForUpdate prefers injected fetchText (main-process, no CORS)', async () => {
+  const { checkForUpdate } = await import('../domains/update/check.js');
+  let gotUrl = null;
+  const fetchText = async (u) => { gotUrl = u; return '{"version":"2.0"}'; };
+  const r = await checkForUpdate({ url: 'https://x/version.json', localVersion: '1.0', fetchText, isOnline: () => true });
+  assert.deepStrictEqual(r, { update: true, remote: '2.0' });
+  assert.strictEqual(gotUrl, 'https://x/version.json');
+  const r2 = await checkForUpdate({
+    url: 'https://x/version.json', localVersion: '1.0',
+    fetchText: async () => { throw new Error('no net'); }, isOnline: () => true,
+  });
+  assert.deepStrictEqual(r2, { update: false, remote: null });
+});
+
 test('buildUpdateConfirmText names both versions', async () => {
   const { buildUpdateConfirmText } = await import('../domains/update/check.js');
   const t = buildUpdateConfirmText('1.0.0', '1.1.0');

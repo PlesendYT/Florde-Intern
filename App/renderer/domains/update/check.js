@@ -43,24 +43,30 @@ function parseVersionPayload(text) {
   }
 }
 
-async function checkForUpdate({ url, localVersion, fetchFn, isOnline, timeoutMs }) {
+async function checkForUpdate({ url, localVersion, fetchFn, fetchText, isOnline, timeoutMs }) {
   const online = typeof isOnline === 'function'
     ? isOnline()
     : (typeof navigator !== 'undefined' ? navigator.onLine : true);
   if (online === false) return { update: false, remote: null };
   try {
-    const fetchImpl = fetchFn || fetch;
-    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs || 10000) : null;
-    let res;
-    try {
-      const opts = ctrl ? { signal: ctrl.signal } : undefined;
-      res = await fetchImpl(url || UPDATE_VERSION_URL, opts);
-    } finally {
-      if (timer) clearTimeout(timer);
+    let remote = null;
+    if (typeof fetchText === 'function') {
+      // Main-process fetch (no CORS): resolves payload text, rejects on error.
+      remote = parseVersionPayload(await fetchText(url || UPDATE_VERSION_URL));
+    } else {
+      const fetchImpl = fetchFn || fetch;
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs || 10000) : null;
+      let res;
+      try {
+        const opts = ctrl ? { signal: ctrl.signal } : undefined;
+        res = await fetchImpl(url || UPDATE_VERSION_URL, opts);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (!res || res.ok === false) return { update: false, remote: null };
+      remote = parseVersionPayload(await res.text());
     }
-    if (!res || res.ok === false) return { update: false, remote: null };
-    const remote = parseVersionPayload(await res.text());
     if (!remote) return { update: false, remote: null };
     return { update: isNewer(remote, localVersion), remote };
   } catch {

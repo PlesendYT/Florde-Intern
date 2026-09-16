@@ -1,17 +1,29 @@
-# Windows installers cannot be built on Linux/macOS: native modules
-# (better-sqlite3, node-pty) cannot be cross-compiled by node-gyp, and no
-# prebuilt Windows binaries exist for the pinned Electron version.
-# This workflow builds each installer on its native runner instead.
+# Release-Pipeline: bei jedem Push auf main bauen, und NUR wenn alle
+# Builds erfolgreich waren, ein GitHub Release mit genau diesen 7 Assets
+# erstellen (Version jeweils aus App/config.json, der einzigen Quelle):
+#   Florde-[Version]-x86_64.AppImage
+#   Florde-[Version]-amd64.deb
+#   Florde-[Version]-arm64.deb
+#   Florde-[Version]-x86_64-Setup.exe
+#   Florde-[Version]-arm64-Setup.exe
+#   Florde-[Version]-arm64.dmg
+#   Florde-[Version]-x64.dmg
+# Jede Plattform baut auf nativem Runner (native Module lassen sich nicht
+# cross-kompilieren). Fehlt eine Datei oder ein Build, schlägt der Workflow
+# fehl und es entsteht KEIN (unvollständiger) Release.
 name: Build installers
 
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build-win:
+  build-win-x64:
     runs-on: windows-latest
     defaults:
       run:
@@ -25,15 +37,46 @@ jobs:
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run build:win
+      - run: npm run build:win -- --publish never nsis
+      - name: Normalize asset name
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          mv "build-output/Florde-Setup-${VER}.exe" "build-output/Florde-${VER}-x86_64-Setup.exe"
+          ls "build-output/Florde-${VER}-x86_64-Setup.exe"
       - uses: actions/upload-artifact@v5
         with:
-          name: florde-windows
-          path: App/build-output/
+          name: florde-win-x64
+          path: App/build-output/Florde-*-x86_64-Setup.exe
           if-no-files-found: error
 
-  build-linux:
-    runs-on: ubuntu-latest
+  build-win-arm64:
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        working-directory: App
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:win -- --publish never nsis
+      - name: Normalize asset name
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          mv "build-output/Florde-Setup-${VER}.exe" "build-output/Florde-${VER}-arm64-Setup.exe"
+          ls "build-output/Florde-${VER}-arm64-Setup.exe"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: florde-win-arm64
+          path: App/build-output/Florde-*-arm64-Setup.exe
+          if-no-files-found: error
+
+  build-linux-x64:
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: App
@@ -45,9 +88,140 @@ jobs:
           cache: npm
           cache-dependency-path: App/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run build:linux
+      - run: npm run build:linux -- AppImage deb --publish never
+      - name: Normalize asset names
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          mv "build-output/Florde-${VER}-x64.AppImage" "build-output/Florde-${VER}-x86_64.AppImage"
+          mv "build-output/Florde-${VER}-x64.deb" "build-output/Florde-${VER}-amd64.deb"
+          ls "build-output/Florde-${VER}-x86_64.AppImage" "build-output/Florde-${VER}-amd64.deb"
       - uses: actions/upload-artifact@v5
         with:
-          name: florde-linux
-          path: App/build-output/
+          name: florde-linux-x64
+          path: |
+            App/build-output/Florde-*-x86_64.AppImage
+            App/build-output/Florde-*-amd64.deb
           if-no-files-found: error
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: App
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:linux -- deb --publish never
+      - name: Verify asset name
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          ls "build-output/Florde-${VER}-arm64.deb"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: florde-linux-arm64
+          path: App/build-output/Florde-*-arm64.deb
+          if-no-files-found: error
+
+  build-mac-x64:
+    runs-on: macos-15-intel
+    defaults:
+      run:
+        working-directory: App
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:mac -- dmg --publish never
+      - name: Verify asset name
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          ls "build-output/Florde-${VER}-x64.dmg"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: florde-mac-x64
+          path: App/build-output/Florde-*-x64.dmg
+          if-no-files-found: error
+
+  build-mac-arm64:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: App
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: App/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:mac -- dmg --publish never
+      - name: Verify asset name
+        run: |
+          VER=$(node -p "require('./config.json').version")
+          ls "build-output/Florde-${VER}-arm64.dmg"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: florde-mac-arm64
+          path: App/build-output/Florde-*-arm64.dmg
+          if-no-files-found: error
+
+  release:
+    # Läuft nur, wenn ALLE sechs Builds erfolgreich waren.
+    needs: [build-win-x64, build-win-arm64, build-linux-x64, build-linux-arm64, build-mac-x64, build-mac-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: florde-*
+          merge-multiple: true
+          path: dist
+      - name: Verify all 7 release assets exist
+        run: |
+          VER=$(node -p "require('./App/config.json').version")
+          echo "Erwartete Version: $VER"
+          cd dist
+          ls -la
+          MISSING=0
+          for f in \
+            "Florde-${VER}-x86_64.AppImage" \
+            "Florde-${VER}-amd64.deb" \
+            "Florde-${VER}-arm64.deb" \
+            "Florde-${VER}-x86_64-Setup.exe" \
+            "Florde-${VER}-arm64-Setup.exe" \
+            "Florde-${VER}-arm64.dmg" \
+            "Florde-${VER}-x64.dmg"; do
+            if [ ! -f "$f" ]; then echo "MISSING: $f"; MISSING=1; fi
+          done
+          if [ "$MISSING" -ne 0 ]; then echo "Release abgebrochen: Assets unvollständig."; exit 1; fi
+          echo "Alle 7 Assets vorhanden."
+          echo "VER=$VER" >> "$GITHUB_ENV"
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd dist
+          # VER kommt aus App/config.json (einzige Quelle), via $GITHUB_ENV.
+          TAG="v${VER}"
+          FILES="Florde-${VER}-x86_64.AppImage Florde-${VER}-amd64.deb Florde-${VER}-arm64.deb Florde-${VER}-x86_64-Setup.exe Florde-${VER}-arm64-Setup.exe Florde-${VER}-arm64.dmg Florde-${VER}-x64.dmg"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG existiert — Assets werden ersetzt."
+            # shellcheck disable=SC2086
+            gh release upload "$TAG" --clobber $FILES
+          else
+            echo "Release $TAG wird erstellt."
+            # shellcheck disable=SC2086
+            gh release create "$TAG" $FILES --title "Florde v${VER}" --generate-notes
+          fi

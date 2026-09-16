@@ -656,7 +656,7 @@ const PluginDocs = {
     'api-hooks': '# API Hooks\n\n## onMessage(role, content)\nCalled when a message is added to the chat.\n- **role**: `"user"` or `"assistant"`\n- **content**: The message text\n\n## onFileOpen(path, content)\nCalled when a file is opened in the editor.\n- **path**: File path relative to project\n- **content**: File content as string\n\n## onFileSave(path, content)\nCalled when a file is saved.\n\n## onAppReady()\nCalled when the application finishes initializing.\n\n> **Distribute your plugin as a ZIP file** containing `manifest.json`, your scripts, and any assets. Users upload it via **+ Upload** in the Plugin Marketplace.',
     'tools': '# Registering Tools\n\nPlugins can register custom tools that the AI can call during conversations:\n\n```javascript\npluginRegistry.registerTool("my_tool", async (args) => {\n  return "Result: " + args.input;\n});\n```\n\nTools appear in the AI\'s tool list. Pack your plugin folder into a **ZIP file** and upload it via **+ Upload**.',
     'themes': '# Custom Themes\n\nProvide a CSS file in your plugin that defines CSS custom properties:\n\n```css\n[data-theme="my-theme"] {\n  --bg: #ffffff;\n  --text: #000000;\n  --accent: #7c3aed;\n}\n```\n\nUsers can select your theme from Appearance settings.',
-    'examples': '# Example Plugins\n\n## Hello World Plugin\n\nA minimal plugin that registers a `hello_world` tool and hooks into app events.\n\n<button class="btn btn-sm btn-primary" onclick="downloadExamplePlugin()" style="margin:0.5rem 0;">\u2B07 hello-world-plugin.zip herunterladen</button>\n\nLade die ZIP herunter und installiere sie uber **+ Upload** im Plugin Marketplace.\n\n### manifest.json:\n```json\n{\n  "name": "hello-world",\n  "version": "1.0.0",\n  "description": "Hello World example plugin",\n  "author": "Florde",\n  "main": "index.js",\n  "hooks": ["onMessage", "onAppReady"],\n  "tools": [{\n    "type": "function",\n    "function": {\n      "name": "hello_world",\n      "description": "Returns a friendly greeting",\n      "parameters": {\n        "type": "object",\n        "properties": {\n          "name": { "type": "string", "description": "Name to greet" }\n        },\n        "required": ["name"]\n      }\n    }\n  }]\n}\n```\n\n### index.js:\n```javascript\nconsole.log(\"Hello World plugin loaded!\");\n\nwindow.addEventListener(\"app-ready\", () => {\n  console.log(\"Florde is ready!\");\n});\n\npluginRegistry.registerTool(\"hello_world\", async (args) => {\n  return \"Hello, \" + (args.name || \"World\") + \"! Greetings from Florde.\";\n});\n```'
+    'examples': '# Example Plugins\n\n## Hello World Plugin\n\nA minimal plugin that registers a `hello_world` tool and hooks into app events.\n\n<button class="btn btn-sm btn-primary" data-action="download-example-plugin" style="margin:0.5rem 0;">\u2B07 hello-world-plugin.zip herunterladen</button>\n\nLade die ZIP herunter und installiere sie uber **+ Upload** im Plugin Marketplace.\n\n### manifest.json:\n```json\n{\n  "name": "hello-world",\n  "version": "1.0.0",\n  "description": "Hello World example plugin",\n  "author": "Florde",\n  "main": "index.js",\n  "hooks": ["onMessage", "onAppReady"],\n  "tools": [{\n    "type": "function",\n    "function": {\n      "name": "hello_world",\n      "description": "Returns a friendly greeting",\n      "parameters": {\n        "type": "object",\n        "properties": {\n          "name": { "type": "string", "description": "Name to greet" }\n        },\n        "required": ["name"]\n      }\n    }\n  }]\n}\n```\n\n### index.js:\n```javascript\nconsole.log(\"Hello World plugin loaded!\");\n\nwindow.addEventListener(\"app-ready\", () => {\n  console.log(\"Florde is ready!\");\n});\n\npluginRegistry.registerTool(\"hello_world\", async (args) => {\n  return \"Hello, \" + (args.name || \"World\") + \"! Greetings from Florde.\";\n});\n```'
   },
 
   show() {
@@ -797,6 +797,13 @@ function renderMarkdown(md) {
 }
 
 // ==================== EXAMPLE DOWNLOAD ====================
+
+// CSP (script-src 'self') forbids inline handlers — delegated click for the
+// docs example-download button (rendered from the examples markdown).
+document.addEventListener('click', (e) => {
+  const b = e.target && e.target.closest ? e.target.closest('[data-action="download-example-plugin"]') : null;
+  if (b && typeof downloadExamplePlugin === 'function') downloadExamplePlugin();
+});
 
 function downloadExamplePlugin() {
   const files = {

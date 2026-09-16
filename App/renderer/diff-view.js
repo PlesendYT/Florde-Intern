@@ -63,7 +63,7 @@ const DiffView = {
     const action = !oldText ? 'new' : 'edited';
     return `
       <div class="diff-chat-file" data-path="${this._escapeHtml(path)}">
-        <div class="diff-chat-file-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <div class="diff-chat-file-header" data-diff-toggle>
           <span class="diff-chat-file-icon">${action === 'new' ? '&#128196;' : '&#9998;'}</span>
           <span class="diff-chat-file-path">${this._escapeHtml(path)}</span>
           <span class="diff-chat-file-stats">+${linesAdded} -${linesRemoved}</span>
@@ -71,7 +71,7 @@ const DiffView = {
         </div>
         <div class="diff-chat-file-body">
           <div class="diff-chat-copy-bar">
-            <button onclick="DiffView.copyDiff('${this._escapeHtml(path).replace(/'/g, "\\'")}')">&#128203; Copy Diff</button>
+            <button data-copy-diff>&#128203; Copy Diff</button>
           </div>
           <div class="diff-chat-file-content">${html}</div>
         </div>
@@ -93,8 +93,8 @@ const DiffView = {
       html += this._renderFileDiff(c.path, c.oldContent, c.newContent);
     }
     html += `<div class="diff-chat-actions">
-      <button onclick="DiffView.copyAll('diff')">&#128203; Copy All (Diff)</button>
-      <button onclick="DiffView.copyAll('full')">&#128203; Copy All (Full)</button>
+      <button data-copy-all="diff">&#128203; Copy All (Diff)</button>
+      <button data-copy-all="full">&#128203; Copy All (Full)</button>
     </div>`;
     html += `</div>`;
     return html;
@@ -142,3 +142,21 @@ const DiffView = {
     return div.innerHTML;
   }
 };
+
+// CSP (script-src 'self') forbids inline handlers — delegated clicks for
+// DiffView-rendered HTML (path via closest .diff-chat-file dataset).
+document.addEventListener('click', (e) => {
+  const t = e.target && e.target.closest ? e.target.closest('[data-diff-toggle],[data-copy-diff],[data-copy-all]') : null;
+  if (!t || typeof DiffView === 'undefined') return;
+  if (t.hasAttribute('data-diff-toggle')) {
+    const file = t.closest('.diff-chat-file');
+    if (file) file.classList.toggle('expanded');
+    return;
+  }
+  if (t.hasAttribute('data-copy-diff')) {
+    const file = t.closest('.diff-chat-file');
+    if (file) DiffView.copyDiff(file.dataset.path);
+    return;
+  }
+  if (t.hasAttribute('data-copy-all')) DiffView.copyAll(t.dataset.copyAll);
+});

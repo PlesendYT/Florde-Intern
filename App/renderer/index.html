@@ -80,8 +80,7 @@
       <div id="question-choices" class="question-choices"></div>
       <div id="custom-answer-container" style="display:none;margin-top:0.75rem;">
         <input id="custom-answer-input" type="text" placeholder="Your answer..."
-          style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
-          onkeydown="if(event.key==='Enter')document.getElementById('btn-submit-custom').click()">
+          style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;">
         <button id="btn-submit-custom" class="btn btn-primary" style="margin-top:0.5rem;width:100%;" lang-key="submit">Submit</button>
       </div>
       <div class="modal-actions" style="margin-top:1rem;">
@@ -105,9 +104,8 @@
     <div class="modal-content" style="max-width:450px;">
       <h2 id="prompt-title" lang-key="input_required">Input required</h2>
       <p id="prompt-text" style="color:var(--text2);margin-bottom:1rem;line-height:1.5;"></p>
-      <input id="prompt-input" type="text" placeholder="..."
-        style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;"
-        onkeydown="if(event.key==='Enter')document.getElementById('btn-prompt-ok').click()">
+        <input id="prompt-input" type="text" placeholder="..."
+        style="width:100%;padding:0.6rem;background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;font-size:0.95rem;box-sizing:border-box;">
       <div class="modal-actions" style="margin-top:1rem;">
         <button id="btn-prompt-cancel" class="btn btn-secondary" lang-key="cancel">Cancel</button>
         <button id="btn-prompt-ok" class="btn btn-primary" lang-key="ok">OK</button>
@@ -446,7 +444,7 @@
     <div class="modal-content">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 24px 0;">
         <h2 style="margin:0;" lang-key="settings">Settings</h2>
-        <button id="btn-close-settings-x" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;" onclick="hideModal('settings-modal')">&times;</button>
+        <button id="btn-close-settings-x" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 10px;border-radius:6px;">&times;</button>
       </div>
       <div class="settings-tabs">
         <button class="settings-tab active" data-tab="general" lang-key="tab_general">General</button>
@@ -513,27 +511,27 @@
           <h3 lang-key="behavior">Behavior</h3>
           <div class="settings-row">
             <div><label lang-key="see_thoughts">See Thoughts</label><br><small lang-key="see_thoughts_desc">Show AI reasoning process</small></div>
-            <div class="settings-toggle on" data-setting="see-thoughts" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle on" data-setting="see-thoughts"></div>
           </div>
           <div class="settings-row">
             <div><label lang-key="instant_mode">Instant Mode</label><br><small lang-key="instant_mode_desc">Faster response times</small></div>
-            <div class="settings-toggle" data-setting="instant-mode" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle" data-setting="instant-mode"></div>
           </div>
           <div class="settings-row">
             <div><label lang-key="detailed_activity">Detailed Activity</label><br><small lang-key="detailed_activity_desc">Extended activity logging</small></div>
-            <div class="settings-toggle on" data-setting="detailed-activity" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle on" data-setting="detailed-activity"></div>
           </div>
           <div class="settings-row">
             <div><label lang-key="auto_start">Auto-start</label><br><small lang-key="auto_start_desc">Launch on system startup</small></div>
-            <div class="settings-toggle" data-setting="auto-start" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle" data-setting="auto-start"></div>
           </div>
           <div class="settings-row">
             <div><label lang-key="offline_mode">Offline Mode</label><br><small lang-key="offline_mode_desc">Work without internet</small></div>
-            <div class="settings-toggle" data-setting="offline-mode" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle" data-setting="offline-mode"></div>
           </div>
           <div class="settings-row">
             <div><label lang-key="auto_accept">Auto Accept</label><br><small lang-key="auto_accept_desc">Automatically approve ALL actions — overrides Security permissions below</small></div>
-            <div class="settings-toggle" data-setting="auto-accept" onclick="this.classList.toggle('on')"></div>
+            <div class="settings-toggle" data-setting="auto-accept"></div>
           </div>
         </div>
         <div class="settings-card" style="margin-bottom:16px;">
@@ -1037,7 +1035,7 @@
           <hr style="border:none;border-top:1px solid var(--border);margin:0.8rem 0;">
           <label lang-key="layout_design_mode">Layout Design Mode</label>
           <div id="layout-design-mode-toggle">
-            <div class="settings-toggle" id="layout-design-toggle" onclick="this.classList.toggle('on'); if(typeof LayoutManager!=='undefined')LayoutManager.lock(!this.classList.contains('on'))"></div>
+            <div class="settings-toggle" id="layout-design-toggle"></div>
             <span style="font-size:0.8rem;color:var(--text3);" lang-key="layout_design_desc">When active, panels can be moved, resized, and rearranged</span>
           </div>
         </div>

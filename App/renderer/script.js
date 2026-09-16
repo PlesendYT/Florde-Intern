@@ -4379,7 +4379,7 @@ function renderChat() {
     if (msg._images && msg._images.length > 0) {
       msgHtml += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px;">';
       for (const img of msg._images) {
-        msgHtml += `<img src="${img.dataUrl}" class="chat-image" style="max-height:120px;border-radius:6px;" onclick="this.classList.toggle('full')">`;
+        msgHtml += `<img src="${img.dataUrl}" class="chat-image" style="max-height:120px;border-radius:6px;">`;
       }
       msgHtml += '</div>';
     }
@@ -4816,6 +4816,27 @@ document.getElementById('btn-git-commit-show')?.addEventListener('click', async 
 
 document.getElementById('provider-select').addEventListener('change', () => { updateModelDropdown(); updatePrivacyIndicator(); updateModelInfoBadge(); });
 document.getElementById('model-select')?.addEventListener('change', () => { onChatModelChanged(); });
+
+// CSP (script-src 'self') forbids inline handlers — delegated replacements
+// for the onclick/onkeydown attributes removed from index.html.
+document.getElementById('btn-close-settings-x')?.addEventListener('click', () => hideModal('settings-modal'));
+document.querySelectorAll('#settings-modal .settings-toggle[data-setting]:not(#layout-design-toggle)').forEach(t => {
+  t.addEventListener('click', () => t.classList.toggle('on'));
+});
+document.getElementById('layout-design-toggle')?.addEventListener('click', function() {
+  this.classList.toggle('on');
+  if (typeof LayoutManager !== 'undefined') LayoutManager.lock(!this.classList.contains('on'));
+});
+document.getElementById('custom-answer-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btn-submit-custom')?.click();
+});
+document.getElementById('prompt-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btn-prompt-ok')?.click();
+});
+document.addEventListener('click', (e) => {
+  const img = e.target && e.target.closest ? e.target.closest('.chat-image') : null;
+  if (img) img.classList.toggle('full');
+});
 
 // ==================== ICON RAIL ====================
 // Rail buttons delegate to EXISTING toggle mechanisms (same pattern as the

@@ -278,7 +278,7 @@ const CodeIntelligence = {
         const content = data[t];
         if (!content) return;
         const label = { task: '📋 Task', spec: '📄 Spec', plan: '📝 Plan', konzept: '💡 Konzept', note: '📌 Note' }[t] || t;
-        html += `<div class="ci-ie-result"><div class="ci-ie-result-header" onclick="this.nextElementSibling.classList.toggle('hidden')">${label} <span>🔼</span></div><div class="ci-ie-result-body">${escapeHtml(content)}</div></div>`;
+        html += `<div class="ci-ie-result"><div class="ci-ie-result-header" data-ci-toggle>${label} <span>🔼</span></div><div class="ci-ie-result-body">${escapeHtml(content)}</div></div>`;
       });
       resultsEl.innerHTML = html || '<div style="padding:0.5rem;color:var(--text2);">Keine Ergebnisse generiert.</div>';
       this._playEventSound();
@@ -986,3 +986,10 @@ const CodeIntelligence = {
     }
   },
 };
+
+// CSP (script-src 'self') forbids inline handlers — delegated toggle for
+// generated result headers.
+document.addEventListener('click', (e) => {
+  const h = e.target && e.target.closest ? e.target.closest('[data-ci-toggle]') : null;
+  if (h && h.nextElementSibling) h.nextElementSibling.classList.toggle('hidden');
+});

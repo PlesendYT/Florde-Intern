@@ -1194,6 +1194,17 @@ body.layout-floating #btn-sidebar-toggle { display: flex; }
 .agentic-btn.agentic-build:hover { background: var(--accent); }
 .agentic-btn.agentic-plan { background: var(--accent); color: #fff; }
 .agentic-btn.agentic-plan:hover { background: #6d28d9; }
+.agentic-btn.agentic-dryrun { background: var(--status-warn); color: var(--accent-ink); }
+.agentic-btn.agentic-dryrun:hover { background: var(--status-warn); }
+.dryrun-badge { font-size: 0.72rem; font-weight: 600; color: var(--accent-ink, #fff); background: var(--accent); border-radius: 6px; padding: 2px 8px; }
+.dryrun-review { border-top: 1px solid var(--border); background: var(--bg2); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.dryrun-review.hidden { display: none; }
+.dryrun-summary { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+.dryrun-ops { font-size: 0.75rem; color: var(--text2); max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.dryrun-op-fail { color: var(--status-danger); }
+.dryrun-op-warn { color: var(--status-warn); }
+.dryrun-actions { display: flex; gap: 6px; }
+.dryrun-actions .btn { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
 #btn-send-chat {
   background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
   padding: 0.2rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem;

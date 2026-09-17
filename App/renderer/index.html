@@ -283,6 +283,7 @@
           <div class="chat-panel">
             <div class="panel-header">
               <span lang-key="chat">Chat</span>
+              <span id="dryrun-badge" class="dryrun-badge hidden"></span>
               <button id="btn-send-chat" title="Send current editor to chat" lang-key="chat_send">↑ Chat</button>
               <button id="btn-ai-router" title="AI Router — Configure provider/model routes" style="font-size:0.7rem;padding:2px 6px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:4px;cursor:pointer;">Router</button>
               <select id="provider-select">
@@ -306,6 +307,15 @@
               <button id="btn-export-chat" title="Export Chat" lang-key="export">Export</button>
             </div>
             <div id="chat-tab-bar"></div>
+            <div id="dryrun-review" class="dryrun-review hidden">
+              <div id="dryrun-summary" class="dryrun-summary"></div>
+              <div id="dryrun-ops" class="dryrun-ops"></div>
+              <div class="dryrun-actions">
+                <button data-dryrun="apply" class="btn btn-primary">Apply to Project</button>
+                <button data-dryrun="reject" class="btn btn-secondary">Reject</button>
+                <button data-dryrun="continue" class="btn btn-secondary">Modify–Continue</button>
+              </div>
+            </div>
             <div id="chat-messages" class="chat-messages"></div>
              <div class="chat-input-area">
               <div id="chat-image-preview" class="chat-image-preview hidden"></div>
@@ -1518,6 +1528,10 @@
   <script type="module" src="domains/theme/theme.js"></script>
   <script type="module" src="domains/project/history.js"></script>
   <script type="module" src="domains/marketplace/manifest.js"></script>
+  <script type="module" src="domains/dryrun/classify.js"></script>
+  <script type="module" src="domains/dryrun/paths.js"></script>
+  <script type="module" src="domains/dryrun/sessions.js"></script>
+  <script type="module" src="domains/dryrun/rewrite.js"></script>
   <script src="script.js" defer></script>
 </body>
 </html>

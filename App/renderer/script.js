@@ -2665,15 +2665,22 @@ async function loadSettings() {
   }
   const ci = document.getElementById('custom-instructions');
   if (ci && s.customInstructions !== undefined) ci.value = s.customInstructions;
-  // Restore agent mode preference
+  // Restore agent mode preference (build/plan/dryrun three-state toggle)
   const savedMode = localStorage.getItem('florde-agent-mode');
-  if (savedMode === 'build') {
+  if (savedMode === 'build' || savedMode === 'plan' || savedMode === 'dryrun') {
     const btn = document.getElementById('btn-agentic-mode');
     if (btn) {
-      btn.classList.remove('agentic-plan');
-      btn.classList.add('agentic-build');
-      btn.textContent = 'Build';
-      btn.title = 'Build mode: AI executes directly';
+      const labels = { build: 'Build', plan: 'Plan', dryrun: 'Dry Run' };
+      const titles = {
+        build: 'Build mode: AI executes directly',
+        plan: 'Plan mode: AI plans first, you approve',
+        dryrun: 'Dry Run mode: isolated test run, nothing touches the real project',
+      };
+      btn.classList.toggle('agentic-plan', savedMode === 'plan');
+      btn.classList.toggle('agentic-build', savedMode === 'build');
+      btn.classList.toggle('agentic-dryrun', savedMode === 'dryrun');
+      btn.textContent = labels[savedMode];
+      btn.title = titles[savedMode];
     }
   }
   // Load loop detection settings
@@ -3700,6 +3707,7 @@ async function openProject(name) {
     LayoutManager.load('project-' + name);
   }
   renderFileTree();
+  try { if (typeof DryRun !== 'undefined') { DryRun.renderHeader(name); DryRun.renderReview(name); } } catch {}
   updateSandboxStatus();
   updatePrivacyIndicator();
   updateProviderDropdown();
@@ -3913,6 +3921,17 @@ async function saveSession() {
 }
 
 async function saveAllTabs() {
+  // Dry-run (b): session bytes mirrored into real-project-keyed openTabs must
+  // never leak into the real project via (auto/manual) save. Apply/Reject use
+  // direct project IPC and bypass this guard intentionally.
+  if (typeof DryRun !== 'undefined' && DryRun.activeFor) {
+    try {
+      if (currentProject && DryRun.activeFor(currentProject)) {
+        logToTerminal('Save blocked: dry-run session active — use Apply to Project to keep session changes, or Reject to discard', 'warn');
+        return;
+      }
+    } catch {}
+  }
   const currentContent = editor ? editor.getValue() : '';
   for (let f of Object.keys(tabContents)) {
     tabContents[f] = f === getActiveFileName() ? currentContent : tabContents[f];
@@ -3931,6 +3950,17 @@ async function saveAllTabs() {
 
 async function saveFileByName(name) {
   if (!name) return;
+  // Dry-run (b): see saveAllTabs — block manual + autosave while a session
+  // is active for the current project.
+  if (typeof DryRun !== 'undefined' && DryRun.activeFor) {
+    try {
+      if (currentProject && DryRun.activeFor(currentProject)) {
+        logToTerminal('Save blocked: dry-run session active — use Apply to Project to keep session changes, or Reject to discard', 'warn');
+        renderTabs();
+        return;
+      }
+    } catch {}
+  }
   // If this file is currently shown, flush the live editor value first.
   if (editor && getActiveFileName() === name) {
     tabContents[name] = editor.getValue();
@@ -4104,6 +4134,11 @@ function renameTab(index) {
 
 async function renderFileTree() {
   if (!currentProject) return;
+  // Dry-run (a): while a session is active for this project the tree stays
+  // frozen on the real project — listing the real project here would present
+  // real files as if they were session state. Session changes surface via
+  // the dry-run review panel + diff viewer instead.
+  try { if (typeof DryRun !== 'undefined' && DryRun.activeFor && DryRun.activeFor(currentProject)) return; } catch {}
   const container = document.getElementById('file-tree');
   container.innerHTML = '';
   const files = await window.electronAPI.projectListFiles(currentProject);
@@ -4555,12 +4590,22 @@ document.getElementById('btn-attach-image').addEventListener('click', () => {
 
 document.getElementById('btn-agentic-mode').addEventListener('click', () => {
   const btn = document.getElementById('btn-agentic-mode');
-  const isPlan = btn.classList.contains('agentic-plan');
-  btn.classList.toggle('agentic-plan', !isPlan);
-  btn.classList.toggle('agentic-build', isPlan);
-  btn.textContent = isPlan ? 'Build' : 'Plan';
-  btn.title = isPlan ? 'Build mode: AI executes directly' : 'Plan mode: AI plans first, you approve';
-  localStorage.setItem('florde-agent-mode', isPlan ? 'build' : 'plan');
+  const order = ['build', 'plan', 'dryrun'];
+  const labels = { build: 'Build', plan: 'Plan', dryrun: 'Dry Run' };
+  const titles = {
+    build: 'Build mode: AI executes directly',
+    plan: 'Plan mode: AI plans first, you approve',
+    dryrun: 'Dry Run mode: isolated test run, nothing touches the real project',
+  };
+  const current = localStorage.getItem('florde-agent-mode') || 'build';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  btn.classList.toggle('agentic-plan', next === 'plan');
+  btn.classList.toggle('agentic-build', next === 'build');
+  btn.classList.toggle('agentic-dryrun', next === 'dryrun');
+  btn.textContent = labels[next];
+  btn.title = titles[next];
+  localStorage.setItem('florde-agent-mode', next);
+  if (typeof DryRun !== 'undefined') DryRun.onModeChange(next);
 });
 
 document.getElementById('chat-image-input').addEventListener('change', (e) => {
@@ -5216,7 +5261,7 @@ const DryRun = {
     const projectRoot = await window.electronAPI.getProjectRoot(project);
     const res = await window.electronAPI.dryrun.start(project, { projectRoot });
     if (!res || !res.ok) throw new Error('Dry run start failed: ' + ((res && res.error) || 'unknown error'));
-    const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch });
+    const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch, manifest: res.manifest });
     // venv note: a Python project (requirements.txt / pyproject.toml /
     // setup.py found in the fresh manifest) gets guidance only. Creating a
     // venv unasked would surprise (disk writes + activation side effects),
@@ -5241,7 +5286,336 @@ const DryRun = {
     if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
     reg.finish(project, summary);
   },
+  sessionOpts(project) {
+    try {
+      const s = this.activeFor(project);
+      if (s && s.workspace && s.workspace.path) return { sessionRoot: s.workspace.path };
+    } catch {}
+    return null;
+  },
+  onModeChange(next) {
+    const project = (typeof currentProject !== 'undefined') ? currentProject : null;
+    if (next === 'dryrun') {
+      if (!project) {
+        try { logToTerminal('Dry Run needs an open project first — staying in Build mode', 'warn'); } catch {}
+        this._setToggle('build');
+        return;
+      }
+      if (!this.activeFor(project)) {
+        this.start(project).then(
+          () => { this.renderHeader(project); this.renderReview(project); try { renderFileTree(); } catch {} },
+          (err) => {
+            try { logToTerminal('Dry run start failed: ' + (err && err.message ? err.message : err), 'error'); } catch {}
+            this._setToggle('build');
+            this.renderHeader(project);
+            this.renderReview(project);
+          }
+        );
+        return;
+      }
+      this.renderHeader(project);
+      this.renderReview(project);
+      try { renderFileTree(); } catch {}
+      return;
+    }
+    // Leaving dry-run: move a still-active session into review so the
+    // Apply/Reject/Continue panel stays visible instead of stranding work.
+    try {
+      const reg = this._registry();
+      const s = reg ? reg.get(project) : null;
+      if (s && s.state === 'active') {
+        try { reg.finish(project, this._summarize(s.ops || [])); } catch {}
+      }
+    } catch {}
+    this.renderHeader(project);
+    this.renderReview(project);
+    try { renderFileTree(); } catch {}
+  },
+  renderHeader(project) {
+    const badge = document.getElementById('dryrun-badge');
+    if (!badge) return;
+    let s = null;
+    try { const reg = this._registry(); s = reg ? reg.get(project) : null; } catch { s = null; }
+    if (s && (s.state === 'active' || s.state === 'review') && s.workspace && s.workspace.path) {
+      badge.textContent = 'DRY RUN · ' + s.workspace.path;
+      badge.classList.remove('hidden');
+    } else {
+      badge.textContent = '';
+      badge.classList.add('hidden');
+    }
+  },
+  async renderReview(project) {
+    const panel = document.getElementById('dryrun-review');
+    const summaryEl = document.getElementById('dryrun-summary');
+    const opsEl = document.getElementById('dryrun-ops');
+    if (!panel || !summaryEl || !opsEl) return;
+    let s = null;
+    try { const reg = this._registry(); s = reg ? reg.get(project) : null; } catch { s = null; }
+    if (!s || (s.state !== 'active' && s.state !== 'review')) {
+      panel.classList.add('hidden');
+      summaryEl.textContent = '';
+      opsEl.innerHTML = '';
+      return;
+    }
+    let ch = null;
+    try { ch = await this._changes(project); } catch { ch = null; }
+    const created = ch ? ch.created.length : 0;
+    const modified = ch ? ch.modified.length : 0;
+    const deletedSuffix = (ch && ch.deleted.length) ? ' · ' + ch.deleted.length + ' deleted' : '';
+    summaryEl.textContent = created + ' files created · ' + modified + ' files modified · ' + (ch ? ch.commands : 0) + ' commands executed' + deletedSuffix;
+    opsEl.innerHTML = '';
+    const ops = Array.isArray(s.ops) ? s.ops.slice(-30) : [];
+    for (const op of ops) {
+      const line = document.createElement('div');
+      const bad = op.status === 'error' || op.status === 'denied';
+      const warn = op.status === 'approval';
+      if (bad) line.className = 'dryrun-op-fail';
+      else if (warn) line.className = 'dryrun-op-warn';
+      line.textContent = (bad ? '✖ ' : (warn ? '⚠ ' : '')) + (op.action || '') + ' ' + (op.target || '') + (op.detail ? ' — ' + op.detail : '');
+      opsEl.appendChild(line);
+    }
+    panel.classList.remove('hidden');
+    // Diff: session-vs-real file pairs into the existing read-only viewer.
+    try {
+      const names = [...(ch ? ch.created : []), ...(ch ? ch.modified : [])].slice(0, 20);
+      if (names.length > 0 && typeof DiffViewer !== 'undefined') {
+        const opts = (s.workspace && s.workspace.path) ? { sessionRoot: s.workspace.path } : null;
+        const files = [];
+        for (const n of names) {
+          let content = '';
+          try { content = await window.electronAPI.projectReadFile(project, n, opts) || ''; } catch {}
+          files.push({ name: n, content, language: detectLanguage(n) });
+        }
+        if (files.length > 0) DiffViewer.show(files);
+      }
+    } catch {}
+  },
+  async _changes(project) {
+    const out = { created: [], modified: [], deleted: [], commands: 0 };
+    const reg = this._registry();
+    if (!reg || !project) return out;
+    let s = null;
+    try { s = reg.get(project); } catch { return out; }
+    if (!s) return out;
+    const ops = Array.isArray(s.ops) ? s.ops : [];
+    const touched = new Set();
+    for (const op of ops) {
+      if (op.kind === 'command') out.commands += 1;
+      if (op.kind === 'file' && op.target) touched.add(String(op.target).replace(/^\/+/, ''));
+    }
+    const manifest = (s.workspace && Array.isArray(s.workspace.manifest)) ? s.workspace.manifest : [];
+    const manifestSet = new Set(manifest.map((f) => f.rel));
+    let sessionFiles = [];
+    try {
+      const opts = (s.workspace && s.workspace.path) ? { sessionRoot: s.workspace.path } : null;
+      sessionFiles = await window.electronAPI.projectListFiles(project, opts);
+    } catch { sessionFiles = []; }
+    if (!Array.isArray(sessionFiles)) sessionFiles = [];
+    const sessionSet = new Set(sessionFiles);
+    for (const f of sessionFiles) {
+      if (!manifestSet.has(f) && !out.created.includes(f)) out.created.push(f);
+    }
+    for (const f of touched) {
+      if (manifestSet.has(f) && sessionSet.has(f) && !out.modified.includes(f)) out.modified.push(f);
+      else if (manifestSet.has(f) && !sessionSet.has(f) && !out.deleted.includes(f)) out.deleted.push(f);
+      else if (!manifestSet.has(f) && sessionSet.has(f) && !out.created.includes(f)) out.created.push(f);
+    }
+    for (const m of manifestSet) {
+      if (!sessionSet.has(m) && !out.deleted.includes(m)) out.deleted.push(m);
+    }
+    out.created.sort();
+    out.modified.sort();
+    out.deleted.sort();
+    return out;
+  },
+  _summarize(ops) {
+    let files = 0;
+    let commands = 0;
+    for (const op of (ops || [])) {
+      if (op.kind === 'command') commands += 1;
+      else if (op.kind === 'file') files += 1;
+    }
+    return { files, commands, at: Date.now() };
+  },
+  _setToggle(mode) {
+    const btn = document.getElementById('btn-agentic-mode');
+    if (!btn) return;
+    const labels = { build: 'Build', plan: 'Plan', dryrun: 'Dry Run' };
+    const titles = {
+      build: 'Build mode: AI executes directly',
+      plan: 'Plan mode: AI plans first, you approve',
+      dryrun: 'Dry Run mode: isolated test run, nothing touches the real project',
+    };
+    btn.classList.toggle('agentic-plan', mode === 'plan');
+    btn.classList.toggle('agentic-build', mode === 'build');
+    btn.classList.toggle('agentic-dryrun', mode === 'dryrun');
+    btn.textContent = labels[mode];
+    btn.title = titles[mode];
+    try { localStorage.setItem('florde-agent-mode', mode); } catch {}
+  },
+  async applyReview(project) {
+    const reg = this._registry();
+    if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
+    const s = reg.get(project);
+    if (!s) return;
+    const ch = await this._changes(project);
+    // (1) conflict check: real file size vs snapshot manifest from session start.
+    const manifest = new Map(((s.workspace && s.workspace.manifest) || []).map((f) => [f.rel, f]));
+    const skipped = new Set();
+    for (const f of [...ch.modified, ...ch.created]) {
+      const snap = manifest.get(f);
+      if (!snap) continue;
+      let real = null;
+      try { real = await window.electronAPI.projectReadFile(project, f); } catch { real = null; }
+      if (real === null || real === undefined) continue;
+      if (snap.size !== undefined && real.length !== snap.size) {
+        let ok = false;
+        try { ok = confirm('"' + f + '" changed in the real project since the dry run started. Overwrite with the session version?'); } catch { ok = false; }
+        if (!ok) {
+          skipped.add(f);
+          try { logToTerminal('Dry run apply skipped (conflict): ' + f, 'warn'); } catch {}
+        }
+      }
+    }
+    // (2) copy created/modified via the existing project write IPC (real root).
+    const sessOpts = { sessionRoot: s.workspace.path };
+    for (const f of [...ch.created, ...ch.modified]) {
+      if (skipped.has(f)) continue;
+      let content = null;
+      try { content = await window.electronAPI.projectReadFile(project, f, sessOpts); } catch { content = null; }
+      if (content === null || content === undefined) continue;
+      await window.electronAPI.projectWriteFile(project, f, content);
+    }
+    // (3) deletes only after individual confirm().
+    for (const f of ch.deleted) {
+      let ok = false;
+      try { ok = confirm('Delete "' + f + '" from the real project?'); } catch { ok = false; }
+      if (!ok) continue;
+      try { await window.electronAPI.projectDeleteFile(project, f); } catch {}
+    }
+    // (4) registry apply() + IPC dryrun:cleanup.
+    try { reg.apply(project); } catch {}
+    try { await window.electronAPI.dryrun.cleanup(project, s); } catch {}
+    this._setToggle('build');
+    this.renderHeader(project);
+    this.renderReview(project);
+    try { renderFileTree(); } catch {}
+    try { logToTerminal('Dry run applied to project', 'success'); } catch {}
+  },
+  async rejectReview(project) {
+    const reg = this._registry();
+    if (!reg) return;
+    const s = reg.get(project);
+    if (!s) return;
+    try { reg.reject(project); } catch {}
+    try { await window.electronAPI.dryrun.cleanup(project, s); } catch {}
+    // Drop session bytes mirrored into real-project-keyed tabs (see (b)).
+    try { await this._reloadTabsFromReal(project); } catch {}
+    this._setToggle('build');
+    this.renderHeader(project);
+    this.renderReview(project);
+    try { renderFileTree(); } catch {}
+    try { if (typeof DiffViewer !== 'undefined') DiffViewer.hide(); } catch {}
+    try { logToTerminal('Dry run rejected — temp workspace removed', 'info'); } catch {}
+  },
+  continueReview(project) {
+    // Leave the session active (re-activate from review if needed) and
+    // hand focus back to the chat input.
+    try {
+      const reg = this._registry();
+      const s = reg ? reg.get(project) : null;
+      if (s && s.state === 'review') {
+        try {
+          const raw = localStorage.getItem('florde-dryrun:' + project);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            parsed.state = 'active';
+            localStorage.setItem('florde-dryrun:' + project, JSON.stringify(parsed));
+          }
+        } catch {}
+        this._setToggle('dryrun');
+        this.renderHeader(project);
+        this.renderReview(project);
+      }
+    } catch {}
+    try {
+      const input = document.getElementById('chat-input');
+      if (input) input.focus();
+    } catch {}
+    try { logToTerminal('Dry run continues — session stays active', 'info'); } catch {}
+  },
+  async _reloadTabsFromReal(project) {
+    for (const name of [...openTabs]) {
+      try {
+        const content = await window.electronAPI.projectReadFile(project, name);
+        tabContents[name] = content === null ? '' : content;
+        tabDirty[name] = false;
+      } catch {}
+    }
+    try { renderTabs(); } catch {}
+    try {
+      const active = (typeof getActiveFileName === 'function') ? getActiveFileName() : null;
+      if (active && editor) editor.setValue(tabContents[active] || '');
+    } catch {}
+  },
+  async checkOrphans() {
+    try {
+      if (!window.electronAPI || !window.electronAPI.dryrun) return;
+      const [svcOrphans, projects] = await Promise.all([
+        window.electronAPI.dryrun.orphans().catch(() => []),
+        (window.electronAPI.listProjects ? window.electronAPI.listProjects().catch(() => []) : []),
+      ]);
+      const names = (projects || []).map((p) => p.name);
+      let regOrphans = [];
+      try { const reg = this._registry(); if (reg) regOrphans = reg.listOrphans(names) || []; } catch {}
+      const total = (svcOrphans || []).length + regOrphans.length;
+      if (total === 0) return;
+      const modal = document.getElementById('florde-confirm-modal');
+      const text = document.getElementById('florde-confirm-text');
+      const btns = document.getElementById('florde-confirm-buttons');
+      if (!modal || !text || !btns || typeof addButton !== 'function') return;
+      btns.innerHTML = '';
+      const paths = [...(svcOrphans || []).map((o) => o.path), ...regOrphans.map((o) => o.path)].filter(Boolean);
+      text.textContent = 'Found ' + total + ' leftover dry-run workspace(s): ' + paths.slice(0, 5).join(', ') + (paths.length > 5 ? ', …' : '') + '. Clean them up?';
+      modal.classList.remove('hidden');
+      const close = () => modal.classList.add('hidden');
+      addButton('Clean up', 'cleanup', 'btn btn-primary', async () => {
+        close();
+        for (const o of (svcOrphans || [])) {
+          try { await window.electronAPI.dryrun.cleanup(null, { workspace: { path: o.path, kind: 'worktree' } }); } catch {}
+        }
+        try {
+          const reg = this._registry();
+          for (const o of regOrphans) {
+            try {
+              const sess = reg.get(o.project);
+              if (sess) { try { await window.electronAPI.dryrun.cleanup(o.project, sess); } catch {} }
+              try { reg.reject(o.project); } catch {}
+            } catch {}
+          }
+        } catch {}
+        try { logToTerminal('Dry-run orphans cleaned up', 'success'); } catch {}
+      }, btns);
+      addButton('Keep', 'keep', 'btn btn-secondary', () => close(), btns);
+    } catch {}
+  },
 };
+
+// CSP-safe: one delegated listener for the dry-run review actions.
+document.addEventListener('click', (e) => {
+  const t = e.target && e.target.closest ? e.target.closest('[data-dryrun]') : null;
+  if (!t || typeof DryRun === 'undefined') return;
+  const action = t.dataset ? t.dataset.dryrun : null;
+  const project = (typeof currentProject !== 'undefined') ? currentProject : null;
+  if (!action || !project) return;
+  if (action === 'apply') {
+    DryRun.applyReview(project).catch((err) => { try { logToTerminal('Dry run apply failed: ' + (err && err.message ? err.message : err), 'error'); } catch {} });
+  } else if (action === 'reject') {
+    DryRun.rejectReview(project).catch((err) => { try { logToTerminal('Dry run reject failed: ' + (err && err.message ? err.message : err), 'error'); } catch {} });
+  } else if (action === 'continue') {
+    try { DryRun.continueReview(project); } catch {}
+  }
+});
 
 async function executeToolCall(name, args) {
   const project = currentProject;
@@ -9611,6 +9985,8 @@ TabGroupManager.init();
 pluginRegistry.init().then(() => {
   window.__updateTools();
 });
+// Dry-run: prompt about leftover temp workspaces once at startup.
+try { if (typeof DryRun !== 'undefined') DryRun.checkOrphans().catch(() => {}); } catch {}
 
 // Layout Snap Toggle
 let layoutSnapped = false;
@@ -9623,6 +9999,9 @@ document.getElementById('btn-layout-snap')?.addEventListener('click', () => {
 if (window.electronAPI.onFileChanged) {
   window.electronAPI.onFileChanged((project, file) => {
     if (project !== currentProject) return;
+    // Dry-run: real-project watcher events must not overwrite session bytes
+    // mirrored into open tabs while a session is active.
+    try { if (typeof DryRun !== 'undefined' && DryRun.activeFor && DryRun.activeFor(project)) return; } catch {}
     const idx = openTabs.indexOf(file);
     if (idx < 0) return;
     // Only reload if no unsaved changes, otherwise show badge

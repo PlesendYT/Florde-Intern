@@ -5175,6 +5175,74 @@ function _stashDirtyTab(filePath, op) {
   } catch {}
 }
 
+// ==================== DRY RUN (session layer) ====================
+// Task 5: per-project dry-run sessions. The agent loop stays untouched;
+// executeToolCall below is the single interception point: while a session
+// is active for the current project, file paths are rewritten into the
+// session workspace and commands are classified (blocked / needs-approval
+// / safe) with every decision recorded in the session op-log.
+// Shape contract (frozen for Task 6, which builds the toggle/header/review
+// UI on top): activeFor / start / logOp / finish + localStorage-backed
+// registry adapter. All methods degrade gracefully when the dryrun domain
+// modules are not loaded (no session can exist then, tools run as before).
+const DryRun = {
+  __reg: null,
+  _registry() {
+    const bridge = (typeof window !== 'undefined' && window.__dryrunSessions) ? window.__dryrunSessions : null;
+    if (!bridge) return null;
+    if (!this.__reg) {
+      const storage = {
+        get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+        set: (k, v) => { localStorage.setItem(k, v); },
+        del: (k) => { localStorage.removeItem(k); },
+        keys: () => { try { return Object.keys(localStorage); } catch { return []; } },
+      };
+      this.__reg = bridge.createSessionRegistry(storage);
+    }
+    return this.__reg;
+  },
+  activeFor(project) {
+    try {
+      const reg = this._registry();
+      if (!reg || !project) return null;
+      const s = reg.get(project);
+      return (s && s.state === 'active') ? s : null;
+    } catch { return null; }
+  },
+  async start(project) {
+    const reg = this._registry();
+    if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
+    if (!project) throw new Error('No project open');
+    const projectRoot = await window.electronAPI.getProjectRoot(project);
+    const res = await window.electronAPI.dryrun.start(project, { projectRoot });
+    if (!res || !res.ok) throw new Error('Dry run start failed: ' + ((res && res.error) || 'unknown error'));
+    const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch });
+    // venv note: a Python project (requirements.txt / pyproject.toml /
+    // setup.py found in the fresh manifest) gets guidance only. Creating a
+    // venv unasked would surprise (disk writes + activation side effects),
+    // so the agent/user runs `python -m venv` inside the session workspace
+    // explicitly instead.
+    try {
+      const manifest = Array.isArray(res.manifest) ? res.manifest : [];
+      const isPython = manifest.some((f) => f && (f.rel === 'requirements.txt' || f.rel === 'pyproject.toml' || f.rel === 'setup.py'));
+      if (isPython) logToTerminal('Dry run: Python project detected — run "python -m venv .venv" inside the session workspace before installing packages (no venv is created automatically).', 'info');
+      else logToTerminal('Dry run session started (' + res.kind + ') at ' + res.path, 'info');
+    } catch {}
+    return session;
+  },
+  logOp(project, op) {
+    try {
+      const reg = this._registry();
+      if (reg && project) reg.addOp(project, op);
+    } catch {}
+  },
+  finish(project, summary) {
+    const reg = this._registry();
+    if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
+    reg.finish(project, summary);
+  },
+};
+
 async function executeToolCall(name, args) {
   const project = currentProject;
   const type = currentProjectType;
@@ -5184,8 +5252,30 @@ async function executeToolCall(name, args) {
     return 'Permission denied: ' + name + ' is blocked';
   }
 
+  const __drySession = (typeof DryRun !== 'undefined' && DryRun.activeFor)
+    ? DryRun.activeFor(project)
+    : null;
+  if (__drySession) {
+    if (!window.__dryrunRewrite) throw new Error('Dry run unavailable: rewrite module not loaded');
+    const { rewriteForSession } = window.__dryrunRewrite;
+    const cls = window.__dryrunClassify ? window.__dryrunClassify.classifyCommand : undefined;
+    const rw = rewriteForSession(__drySession.workspace.path, name, args, cls);
+    if (rw.denied) {
+      DryRun.logOp(project, { kind: name === 'exec_command' ? 'command' : 'file', action: name, target: (args && (args.path || args.command)) || '', status: rw.approval ? 'approval' : 'denied', detail: rw.reason });
+      if (rw.approval) {
+        const ok = confirm('Dry Run: allow "' + ((args && (args.path || args.command)) || name) + '"? (' + rw.reason + ')');
+        if (!ok) throw new Error('Dry run command needs approval and was declined');
+      } else {
+        throw new Error('Dry run blocked: ' + rw.reason);
+      }
+    } else {
+      args = rw.args;
+    }
+  }
+
   setActivity(formatToolActivity(name, args));
 
+  try {
   switch (name) {
     case 'read_file':
       if (!args || !args.path) throw new Error('path required for read_file');
@@ -5230,6 +5320,7 @@ async function executeToolCall(name, args) {
         } catch {}
         renderFileTree();
         DiffViewer.show(written.map(sp => ({ name: sp, content: args.files[sp] || '', language: detectLanguage(sp) })));
+        if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'ok' });
         return 'Batch written ' + written.length + ' files: ' + written.join(', ');
       }
       const _writePath = sanitizePath(args.path);
@@ -5261,6 +5352,7 @@ async function executeToolCall(name, args) {
           await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'update ' + sanitizePath(args.path)).replace(/"/g, "'") + '" 2>nul');
         }
       } catch {}
+      if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'ok' });
       return 'File written: ' + sanitizePath(args.path);
 
     case 'delete_file':
@@ -5287,6 +5379,7 @@ async function executeToolCall(name, args) {
         renderTabs();
       }
       renderFileTree();
+      if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'ok' });
       return 'File deleted: ' + delPath;
 
     case 'list_files':
@@ -5304,7 +5397,7 @@ async function executeToolCall(name, args) {
     case 'exec_command':
       if (!args || !args.command) throw new Error('command required for exec_command');
       if (!project) throw new Error('No project open');
-      const execDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : sandboxDir;
+      const execDir = (__drySession ? __drySession.workspace.path : null) || (currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : sandboxDir);
       if (!execDir) throw new Error('AI Sandbox not configured');
       logToTerminal('AI executing: ' + args.command + ' in ' + execDir, 'command');
       const risk = assessShellRisk(args.command);
@@ -5368,6 +5461,7 @@ async function executeToolCall(name, args) {
             await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'edit ' + efPath).replace(/"/g, "'") + '" 2>nul');
           }
         } catch {}
+        if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'ok' });
         return 'File edited: ' + efPath;
       }
 
@@ -5588,6 +5682,12 @@ async function executeToolCall(name, args) {
         throw new Error('MCP tool not found: ' + name);
       }
       throw new Error('Unknown tool: ' + name);
+  }
+  } catch (__dryOpErr) {
+    if (__drySession && (name === 'write_file' || name === 'edit_file' || name === 'delete_file')) {
+      DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'error', detail: String((__dryOpErr && __dryOpErr.message) || __dryOpErr) });
+    }
+    throw __dryOpErr;
   }
 }
 

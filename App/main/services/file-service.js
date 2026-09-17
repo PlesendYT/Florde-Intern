@@ -3,7 +3,16 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { dialog, app } = require('electron');
 const shared = require('./shared');
+const { resolveSessionPath } = require('./dryrun-service');
 const { getProjectRoot, getProjectMeta, getProjectsDir, isSafeProjectName } = shared;
+
+// Trailing `opts` carrier for dry-run isolation: when opts.sessionRoot is a
+// non-empty string, file IO resolves inside that temp workspace instead of
+// the real project root. Absent/empty opts → unchanged legacy behavior.
+function _sessionRootOf(opts) {
+  if (!opts || typeof opts.sessionRoot !== 'string' || opts.sessionRoot.length === 0) return null;
+  return opts.sessionRoot;
+}
 
 class FileService {
   constructor(options = {}) {
@@ -92,8 +101,9 @@ class FileService {
     return getProjectRoot(name);
   }
 
-  listProjectFiles(name) {
-    const root = getProjectRoot(name);
+  listProjectFiles(name, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    const root = sessionRoot ? path.resolve(sessionRoot) : getProjectRoot(name);
     if (!root || !fs.existsSync(root)) return [];
     const files = [];
     function walk(d, prefix) {
@@ -108,7 +118,13 @@ class FileService {
     return files;
   }
 
-  readProjectFile(name, filePath) {
+  readProjectFile(name, filePath, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    if (sessionRoot) {
+      const full = resolveSessionPath(sessionRoot, filePath);
+      if (!full || !fs.existsSync(full)) return null;
+      return fs.readFileSync(full, 'utf-8');
+    }
     const root = getProjectRoot(name);
     if (!root) return null;
     const full = shared.resolveSafe(root, filePath);
@@ -116,7 +132,20 @@ class FileService {
     return fs.readFileSync(full, 'utf-8');
   }
 
-  writeProjectFile(name, filePath, content) {
+  writeProjectFile(name, filePath, content, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    if (sessionRoot) {
+      const full = resolveSessionPath(sessionRoot, filePath);
+      if (!full) return false;
+      const normalized = full.replace(/\\/g, '/');
+      if (normalized.includes('/.florde/memory/rules.md')) {
+        throw new Error('rules.md is read-only — edit it directly in the file system or use the Management Panel');
+      }
+      const dir = path.dirname(full);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(full, content, 'utf-8');
+      return true;
+    }
     const root = getProjectRoot(name);
     if (!root) return false;
     const full = shared.resolveSafe(root, filePath);
@@ -131,7 +160,14 @@ class FileService {
     return true;
   }
 
-  deleteProjectFile(name, filePath) {
+  deleteProjectFile(name, filePath, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    if (sessionRoot) {
+      const full = resolveSessionPath(sessionRoot, filePath);
+      if (!full) return false;
+      if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
+      return false;
+    }
     const root = getProjectRoot(name);
     if (!root) return false;
     const full = shared.resolveSafe(root, filePath);
@@ -140,7 +176,17 @@ class FileService {
     return false;
   }
 
-  renameProjectFile(name, oldPath, newPath) {
+  renameProjectFile(name, oldPath, newPath, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    if (sessionRoot) {
+      const from = resolveSessionPath(sessionRoot, oldPath);
+      const to = resolveSessionPath(sessionRoot, newPath);
+      if (!from || !to || !fs.existsSync(from)) return false;
+      const dir = path.dirname(to);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.renameSync(from, to);
+      return true;
+    }
     const root = getProjectRoot(name);
     if (!root) return false;
     const from = shared.resolveSafe(root, oldPath);
@@ -152,8 +198,9 @@ class FileService {
     return true;
   }
 
-  async searchInFiles(name, query) {
-    const root = getProjectRoot(name);
+  async searchInFiles(name, query, opts) {
+    const sessionRoot = _sessionRootOf(opts);
+    const root = sessionRoot ? path.resolve(sessionRoot) : getProjectRoot(name);
     if (!root || !fs.existsSync(root)) return [];
     const results = [];
     const lower = query.toLowerCase();

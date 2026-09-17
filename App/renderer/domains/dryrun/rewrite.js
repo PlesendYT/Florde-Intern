@@ -18,6 +18,24 @@ function rewriteForSession(sessionRoot, toolName, args, classify) {
       if (resolved === null) return { denied: true, reason: 'path escapes session root' };
       out.path = resolved;
     }
+    if (toolName === 'rename_file' && out.new_path !== undefined) {
+      const resolved = resolveInRoot(sessionRoot, out.new_path);
+      if (resolved === null) return { denied: true, reason: 'path escapes session root' };
+      out.new_path = resolved;
+    }
+    if (toolName === 'write_file' && out.files !== undefined) {
+      const src = out.files;
+      if (!src || typeof src !== 'object' || Array.isArray(src)) {
+        return { denied: true, reason: 'path escapes session root' };
+      }
+      const mapped = {};
+      for (const [key, value] of Object.entries(src)) {
+        const resolved = resolveInRoot(sessionRoot, key);
+        if (resolved === null) return { denied: true, reason: 'path escapes session root' };
+        mapped[resolved] = value;
+      }
+      out.files = mapped;
+    }
     return { args: out };
   }
   return { args };

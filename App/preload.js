@@ -15,14 +15,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadSession: (n) => ipcRenderer.invoke('load-session', n),
   saveSession: (n, d) => ipcRenderer.invoke('save-session', n, d),
 
-  projectListFiles: (n) => ipcRenderer.invoke('project-list-files', n),
-  projectReadFile: (n, f) => ipcRenderer.invoke('project-read-file', n, f),
-  projectWriteFile: (n, f, c) => ipcRenderer.invoke('project-write-file', n, f, c),
-  projectDeleteFile: (n, f) => ipcRenderer.invoke('project-delete-file', n, f),
-  projectRenameFile: (n, o, n2) => ipcRenderer.invoke('project-rename-file', n, o, n2),
+  projectListFiles: (n, o) => ipcRenderer.invoke('project-list-files', n, o),
+  projectReadFile: (n, f, o) => ipcRenderer.invoke('project-read-file', n, f, o),
+  projectWriteFile: (n, f, c, o) => ipcRenderer.invoke('project-write-file', n, f, c, o),
+  projectDeleteFile: (n, f, o) => ipcRenderer.invoke('project-delete-file', n, f, o),
+  projectRenameFile: (n, o2, n2, o) => ipcRenderer.invoke('project-rename-file', n, o2, n2, o),
 
   getProjectRoot: (n) => ipcRenderer.invoke('get-project-root', n),
-  searchInFiles: (n, q) => ipcRenderer.invoke('search-in-files', n, q),
+  searchInFiles: (n, q, o) => ipcRenderer.invoke('search-in-files', n, q, o),
 
   exportZip: (n) => ipcRenderer.invoke('export-zip', n),
 

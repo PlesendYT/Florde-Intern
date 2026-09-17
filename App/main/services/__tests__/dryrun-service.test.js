@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { DryRunService } = require('../dryrun-service');
+const { DryRunService, resolveSessionPath } = require('../dryrun-service');
 
 describe('DryRunService copy workspace', () => {
   let tmp, proj, svc;
@@ -79,5 +79,20 @@ describe('DryRunService git worktree workspace', () => {
     } finally {
       await svc.cleanup('p', { workspace: { kind: r.kind, path: r.path } });
     }
+  });
+});
+
+describe('resolveSessionPath containment', () => {
+  it('resolves inside paths against the session root', () => {
+    assert.strictEqual(resolveSessionPath('/tmp/ws', 'main.py'), path.join(path.resolve('/tmp/ws'), 'main.py'));
+    assert.strictEqual(resolveSessionPath('/tmp/ws', 'sub/x.py'), path.join(path.resolve('/tmp/ws'), 'sub', 'x.py'));
+  });
+
+  it('rejects .. breakout, absolute and empty input', () => {
+    assert.strictEqual(resolveSessionPath('/tmp/ws', '../evil.py'), null);
+    assert.strictEqual(resolveSessionPath('/tmp/ws', 'a/../../evil.py'), null);
+    assert.strictEqual(resolveSessionPath('/tmp/ws', '/etc/passwd'), null);
+    assert.strictEqual(resolveSessionPath('/tmp/ws', ''), null);
+    assert.strictEqual(resolveSessionPath('/tmp/ws', '   '), null);
   });
 });

@@ -8,6 +8,25 @@ const execFileAsync = promisify(execFile);
 const SKIP_DIRS = new Set(['node_modules', '.git', '.venv', 'venv', '__pycache__', '.mypy_cache', '.pytest_cache']);
 const MAX_MANIFEST_FILES = 5000;
 
+// Pure containment helper for session-aware file IPC: resolves a
+// session-relative path against sessionRoot. Returns the absolute path
+// inside sessionRoot, or null on escape (absolute input, `..` breakout,
+// empty/blank, overlong, NUL). Mirrors the containment logic of
+// resolveSafe in ./shared.js. No electron import: testable under plain node.
+function resolveSessionPath(sessionRoot, relPath) {
+  if (typeof sessionRoot !== 'string' || sessionRoot.length === 0 || sessionRoot.length > 1000) return null;
+  if (typeof relPath !== 'string' || relPath.length === 0 || relPath.length > 1000) return null;
+  if (/[\0]/.test(sessionRoot) || /[\0]/.test(relPath)) return null;
+  if (relPath.trim() === '') return null;
+  if (path.isAbsolute(relPath)) return null;
+  if (/^[A-Za-z]:[\\/]/.test(relPath)) return null;
+  const canonRoot = path.resolve(sessionRoot);
+  const resolved = path.resolve(canonRoot, relPath);
+  if (resolved === canonRoot) return resolved;
+  if (!resolved.startsWith(canonRoot + path.sep)) return null;
+  return resolved;
+}
+
 async function buildManifest(root) {
   const files = [];
   const stack = [''];
@@ -108,4 +127,4 @@ class DryRunService {
   }
 }
 
-module.exports = { DryRunService, SKIP_DIRS, MAX_MANIFEST_FILES };
+module.exports = { DryRunService, SKIP_DIRS, MAX_MANIFEST_FILES, resolveSessionPath };

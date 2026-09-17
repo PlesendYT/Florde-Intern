@@ -5255,6 +5255,11 @@ async function executeToolCall(name, args) {
   const __drySession = (typeof DryRun !== 'undefined' && DryRun.activeFor)
     ? DryRun.activeFor(project)
     : null;
+  // Fix (dry-run isolation): rewritten absolute session paths must not reach
+  // the project-scoped file IPC — sanitizePath plus the project root would
+  // redirect them into the real project. Carry session-relative paths plus
+  // this opts carrier instead; main re-resolves them inside the workspace.
+  let __dryFileOpts = null;
   if (__drySession) {
     if (!window.__dryrunRewrite) throw new Error('Dry run unavailable: rewrite module not loaded');
     const { rewriteForSession } = window.__dryrunRewrite;
@@ -5270,6 +5275,45 @@ async function executeToolCall(name, args) {
       }
     } else {
       args = rw.args;
+      if (['read_file', 'write_file', 'edit_file', 'delete_file', 'list_files', 'search_files', 'rename_file'].includes(name)) {
+        const __dryRoot = __drySession.workspace.path;
+        __dryFileOpts = { sessionRoot: __dryRoot };
+        // The rewrite yields posix-style absolute session paths; the file
+        // IPC expects session-relative paths (main re-resolves via opts).
+        const __dryPosixRoot = (root) => {
+          let r = String(root || '').replace(/\\/g, '/');
+          const dm = r.match(/^([A-Za-z]):\//);
+          if (dm) r = '/' + dm[1].toLowerCase() + r.slice(3);
+          if (!r.startsWith('/')) r = '/' + r;
+          return r.replace(/\/+$/, '') || '/';
+        };
+        const __dryToRel = (abs) => {
+          if (typeof abs !== 'string') return null;
+          let a = abs.replace(/\\/g, '/');
+          const dm = a.match(/^([A-Za-z]):\//);
+          if (dm) a = '/' + dm[1].toLowerCase() + a.slice(3);
+          if (!a.startsWith('/')) a = '/' + a;
+          a = a.replace(/\/+/g, '/');
+          const base = __dryPosixRoot(__dryRoot);
+          if (a === base) return '.';
+          if (a.startsWith(base + '/')) return a.slice(base.length + 1);
+          return null;
+        };
+        const __dryRelOrThrow = (abs) => {
+          const rel = __dryToRel(abs);
+          if (rel === null) throw new Error('Dry run blocked: path escapes session root');
+          return rel;
+        };
+        if (args && typeof args.path === 'string') args.path = __dryRelOrThrow(args.path);
+        if (name === 'rename_file' && args && typeof args.new_path === 'string') args.new_path = __dryRelOrThrow(args.new_path);
+        if (name === 'write_file' && args && args.files && typeof args.files === 'object') {
+          const __dryMapped = {};
+          for (const [__dryKey, __dryVal] of Object.entries(args.files)) {
+            __dryMapped[__dryRelOrThrow(__dryKey)] = __dryVal;
+          }
+          args.files = __dryMapped;
+        }
+      }
     }
   }
 
@@ -5283,7 +5327,7 @@ async function executeToolCall(name, args) {
       addAuditEntry('local', 'Read_File: ' + sanitizePath(args.path));
       AuditLog.log({ type: 'file_read', action: 'File read', status: 'auto', summary: 'File ' + sanitizePath(args.path) + ' read', details: { file: sanitizePath(args.path) }, source: 'AI' });
       logToTerminal('Read_File: ' + sanitizePath(args.path), 'info');
-      return await window.electronAPI.projectReadFile(project, sanitizePath(args.path));
+      return await window.electronAPI.projectReadFile(project, sanitizePath(args.path), __dryFileOpts);
 
     case 'write_file':
       if (!args) throw new Error('args required');
@@ -5295,8 +5339,8 @@ async function executeToolCall(name, args) {
           const sp = sanitizePath(filePath);
           _stashDirtyTab(sp, 'batch write');
           let _batchOldContent = '';
-          try { _batchOldContent = await window.electronAPI.projectReadFile(project, sp) || ''; } catch (e) {}
-          await window.electronAPI.projectWriteFile(project, sp, content);
+          try { _batchOldContent = await window.electronAPI.projectReadFile(project, sp, __dryFileOpts) || ''; } catch (e) {}
+          await window.electronAPI.projectWriteFile(project, sp, content, __dryFileOpts);
           if (typeof DiffView !== 'undefined') DiffView.addChange(sp, _batchOldContent, content);
           const wfIdx = openTabs.indexOf(sp);
           if (wfIdx >= 0) {
@@ -5329,8 +5373,8 @@ async function executeToolCall(name, args) {
       AuditLog.log({ type: 'file_write', action: 'File written', status: 'auto', summary: 'File ' + _writePath + ' written', details: { file: _writePath }, source: 'AI' });
       logToTerminal('Write_File: ' + _writePath, 'info');
       let _oldContent = '';
-      try { _oldContent = await window.electronAPI.projectReadFile(project, _writePath) || ''; } catch (e) {}
-      await window.electronAPI.projectWriteFile(project, _writePath, args.content);
+      try { _oldContent = await window.electronAPI.projectReadFile(project, _writePath, __dryFileOpts) || ''; } catch (e) {}
+      await window.electronAPI.projectWriteFile(project, _writePath, args.content, __dryFileOpts);
       if (typeof DiffView !== 'undefined') DiffView.addChange(_writePath, _oldContent, args.content);
       // Live editor sync: reload if open in a tab
       const wfIdx = openTabs.indexOf(_writePath);
@@ -5366,7 +5410,7 @@ async function executeToolCall(name, args) {
       addAuditEntry('local', 'Delete_File: ' + delPath);
       AuditLog.log({ type: 'file_write', action: 'File deleted', status: 'auto', summary: 'File ' + delPath + ' deleted', details: { file: delPath }, source: 'AI' });
       logToTerminal('Delete_File: ' + delPath, 'info');
-      await window.electronAPI.projectDeleteFile(project, delPath);
+      await window.electronAPI.projectDeleteFile(project, delPath, __dryFileOpts);
       const delIdx = openTabs.indexOf(delPath);
       if (delIdx >= 0) {
         const disp = modelDisposables.get(delPath);
@@ -5384,14 +5428,14 @@ async function executeToolCall(name, args) {
 
     case 'list_files':
       if (!project) throw new Error('No project open');
-      const files = await window.electronAPI.projectListFiles(project);
+      const files = await window.electronAPI.projectListFiles(project, __dryFileOpts);
       renderFileTree();
       return JSON.stringify(files);
 
     case 'search_files':
       if (!args || !args.query) throw new Error('query required for search_files');
       if (!project) throw new Error('No project open');
-      const results = await window.electronAPI.searchInFiles(project, args.query);
+      const results = await window.electronAPI.searchInFiles(project, args.query, __dryFileOpts);
       return JSON.stringify(results);
 
     case 'exec_command':
@@ -5425,7 +5469,7 @@ async function executeToolCall(name, args) {
       {
         const efPath = sanitizePath(args.path);
         _stashDirtyTab(efPath, 'edit');
-        let content = await window.electronAPI.projectReadFile(project, efPath);
+        let content = await window.electronAPI.projectReadFile(project, efPath, __dryFileOpts);
         const _efOldContent = content;
         const oldStr = args.oldString;
         const newStr = args.newString;
@@ -5441,7 +5485,7 @@ async function executeToolCall(name, args) {
           }
           content = content.slice(0, idx) + newStr + content.slice(idx + oldStr.length);
         }
-        await window.electronAPI.projectWriteFile(project, efPath, content);
+        await window.electronAPI.projectWriteFile(project, efPath, content, __dryFileOpts);
         if (typeof DiffView !== 'undefined') DiffView.addChange(efPath, _efOldContent, content);
         const efIdx = openTabs.indexOf(efPath);
         if (efIdx >= 0) {
@@ -5474,18 +5518,18 @@ async function executeToolCall(name, args) {
       AuditLog.log({ type: 'file_write', action: 'File renamed', status: 'auto', summary: oldPath + ' -> ' + newPath, details: { from: oldPath, to: newPath }, source: 'AI' });
       logToTerminal('Rename_File: ' + oldPath + ' -> ' + newPath, 'info');
       // Read old content
-      const oldContent = await window.electronAPI.projectReadFile(project, oldPath);
+      const oldContent = await window.electronAPI.projectReadFile(project, oldPath, __dryFileOpts);
       // Write to new path
-      await window.electronAPI.projectWriteFile(project, newPath, oldContent);
+      await window.electronAPI.projectWriteFile(project, newPath, oldContent, __dryFileOpts);
       // Delete old path
-      await window.electronAPI.projectDeleteFile(project, oldPath);
+      await window.electronAPI.projectDeleteFile(project, oldPath, __dryFileOpts);
       // Update imports if requested
       if (args.update_imports !== false) {
         const oldFilename = oldPath.split('/').pop();
         const newFilename = newPath.split('/').pop();
         const oldBasename = oldFilename.replace(/\.[^.]+$/, '');
         const newBasename = newFilename.replace(/\.[^.]+$/, '');
-        const results = await window.electronAPI.searchInFiles(project, oldBasename);
+        const results = await window.electronAPI.searchInFiles(project, oldBasename, __dryFileOpts);
         if (results && results.length > 0) {
           const seenFiles = new Set();
           let updatedCount = 0;
@@ -5494,12 +5538,12 @@ async function executeToolCall(name, args) {
             if (seenFiles.has(match.file)) continue;
             seenFiles.add(match.file);
             try {
-              let content = await window.electronAPI.projectReadFile(project, match.file);
+              let content = await window.electronAPI.projectReadFile(project, match.file, __dryFileOpts);
               const original = content;
               content = content.replace(new RegExp(oldBasename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newBasename);
               content = content.replace(new RegExp(oldPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), newPath);
               if (content !== original) {
-                await window.electronAPI.projectWriteFile(project, match.file, content);
+                await window.electronAPI.projectWriteFile(project, match.file, content, __dryFileOpts);
                 updatedCount++;
               }
             } catch {}

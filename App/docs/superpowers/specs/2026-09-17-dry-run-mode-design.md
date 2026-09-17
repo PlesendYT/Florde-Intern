@@ -10,11 +10,16 @@ Leitsatz: **Der Agent arbeitet echt, aber nichts Echtes wird angefasst.**
 
 - `btn-agentic-mode` wird zur 3-Wege-Umschaltung Build → Plan → Dry Run
   (Klassen/Labels analog Bestand, persistiert in `florde-agent-mode`).
-- Genau **eine** Dry-Run-Session gleichzeitig. Neustart oder Modus-Wechsel bei
-  aktiver Session öffnet einen Dialog (Apply / Reject / Weiter im Dry Run).
-- Solange aktiv: Chat-Header zeigt permanent **DRY RUN + Temp-Pfad**.
+- Maximal **eine Dry-Run-Session pro Projekt gleichzeitig** (Session-Registry
+  keyed by Projekt). Sessions verschiedener Projekte laufen unabhängig
+  nebeneinander; Projektwechsel berührt fremde Sessions nicht.
+- Neustart im selben Projekt oder Modus-Wechsel bei dort aktiver Session
+  öffnet einen Dialog (Apply / Reject / Weiter im Dry Run).
+- Solange für das aktuelle Projekt aktiv: Chat-Header zeigt permanent
+  **DRY RUN + Temp-Pfad**. Anzeige und Toggle-Zustand folgen dem jeweils
+  geöffneten Projekt.
 - Nach Reject/Apply: Hinweis verschwindet, Toggle fällt auf den vorherigen
-  Modus zurück.
+  Modus zurück (pro Projekt gemerkt).
 
 ## 2. Workspace-Isolation
 
@@ -27,7 +32,8 @@ Leitsatz: **Der Agent arbeitet echt, aber nichts Echtes wird angefasst.**
 - Befehle laufen mit cwd im Temp-Workspace.
 - Cleanup bei Reject/Apply (Worktree entfernen + Branch löschen bzw.
   Temp-Verzeichnis löschen). Verwaiste Workspaces (Crash/Neustart) werden
-  beim nächsten Start erkannt und zur Entsorgung angeboten.
+  beim nächsten Start erkannt und zur Entsorgung angeboten (pro Projekt,
+  inkl. Anzeige zu welchem Projekt sie gehören).
 
 ## 3. Ausführungs-Umlenkung + Command-Klassifizierung
 
@@ -74,5 +80,5 @@ Leitsatz: **Der Agent arbeitet echt, aber nichts Echtes wird angefasst.**
 ## Nicht-Ziele (explizit)
 
 - Kein Umbau von Build-/Plan-Logik, Chat, Settings oder Themes.
-- Kein Multi-Session-Management, keine neue Sandbox-Technologie.
+- Kein globales Session-Dashboard, keine neue Sandbox-Technologie.
 - Kein automatisches Mergen per Git (Apply = dateiweises Kopieren).

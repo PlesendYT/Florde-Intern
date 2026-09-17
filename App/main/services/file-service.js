@@ -8,10 +8,24 @@ const { getProjectRoot, getProjectMeta, getProjectsDir, isSafeProjectName } = sh
 
 // Trailing `opts` carrier for dry-run isolation: when opts.sessionRoot is a
 // non-empty string, file IO resolves inside that temp workspace instead of
-// the real project root. Absent/empty opts → unchanged legacy behavior.
-function _sessionRootOf(opts) {
-  if (!opts || typeof opts.sessionRoot !== 'string' || opts.sessionRoot.length === 0) return null;
-  return opts.sessionRoot;
+// the real project root. Absent opts (or no sessionRoot key) → unchanged
+// legacy behavior. Fail-closed: when opts explicitly carries `sessionRoot`
+// (key present) but the value is not a valid existing absolute directory,
+// callers must return their failure shape and never touch the real project.
+function _sessionModeOf(opts) {
+  if (!opts || !('sessionRoot' in opts)) return { mode: 'legacy' };
+  const v = opts.sessionRoot;
+  if (typeof v !== 'string' || v.length === 0 || v.length > 1000) return { mode: 'invalid' };
+  if (/[\0]/.test(v)) return { mode: 'invalid' };
+  if (!path.isAbsolute(v)) return { mode: 'invalid' };
+  let stat;
+  try {
+    stat = fs.statSync(v);
+  } catch {
+    return { mode: 'invalid' };
+  }
+  if (!stat.isDirectory()) return { mode: 'invalid' };
+  return { mode: 'session', root: v };
 }
 
 class FileService {
@@ -102,8 +116,9 @@ class FileService {
   }
 
   listProjectFiles(name, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    const root = sessionRoot ? path.resolve(sessionRoot) : getProjectRoot(name);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return [];
+    const root = sm.mode === 'session' ? path.resolve(sm.root) : getProjectRoot(name);
     if (!root || !fs.existsSync(root)) return [];
     const files = [];
     function walk(d, prefix) {
@@ -119,9 +134,10 @@ class FileService {
   }
 
   readProjectFile(name, filePath, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    if (sessionRoot) {
-      const full = resolveSessionPath(sessionRoot, filePath);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return null;
+    if (sm.mode === 'session') {
+      const full = resolveSessionPath(sm.root, filePath);
       if (!full || !fs.existsSync(full)) return null;
       return fs.readFileSync(full, 'utf-8');
     }
@@ -133,9 +149,10 @@ class FileService {
   }
 
   writeProjectFile(name, filePath, content, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    if (sessionRoot) {
-      const full = resolveSessionPath(sessionRoot, filePath);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return false;
+    if (sm.mode === 'session') {
+      const full = resolveSessionPath(sm.root, filePath);
       if (!full) return false;
       const normalized = full.replace(/\\/g, '/');
       if (normalized.includes('/.florde/memory/rules.md')) {
@@ -161,9 +178,10 @@ class FileService {
   }
 
   deleteProjectFile(name, filePath, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    if (sessionRoot) {
-      const full = resolveSessionPath(sessionRoot, filePath);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return false;
+    if (sm.mode === 'session') {
+      const full = resolveSessionPath(sm.root, filePath);
       if (!full) return false;
       if (fs.existsSync(full)) { fs.rmSync(full, { recursive: true }); return true; }
       return false;
@@ -177,10 +195,11 @@ class FileService {
   }
 
   renameProjectFile(name, oldPath, newPath, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    if (sessionRoot) {
-      const from = resolveSessionPath(sessionRoot, oldPath);
-      const to = resolveSessionPath(sessionRoot, newPath);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return false;
+    if (sm.mode === 'session') {
+      const from = resolveSessionPath(sm.root, oldPath);
+      const to = resolveSessionPath(sm.root, newPath);
       if (!from || !to || !fs.existsSync(from)) return false;
       const dir = path.dirname(to);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -199,8 +218,9 @@ class FileService {
   }
 
   async searchInFiles(name, query, opts) {
-    const sessionRoot = _sessionRootOf(opts);
-    const root = sessionRoot ? path.resolve(sessionRoot) : getProjectRoot(name);
+    const sm = _sessionModeOf(opts);
+    if (sm.mode === 'invalid') return [];
+    const root = sm.mode === 'session' ? path.resolve(sm.root) : getProjectRoot(name);
     if (!root || !fs.existsSync(root)) return [];
     const results = [];
     const lower = query.toLowerCase();

@@ -5358,7 +5358,8 @@ async function executeToolCall(name, args) {
         // Auto git commit
         try {
           const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
-          if (gitDir) {
+          // Dry-run: session content must never enter real history — skip auto-commit entirely.
+          if (!__drySession && gitDir) {
             await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: batch write ' + written.length + ' files" 2>nul');
           }
         } catch {}
@@ -5392,7 +5393,8 @@ async function executeToolCall(name, args) {
       // Auto git commit if in a git repo
       try {
         const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
-        if (gitDir) {
+        // Dry-run: session content must never enter real history — skip auto-commit entirely.
+        if (!__drySession && gitDir) {
           await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'update ' + sanitizePath(args.path)).replace(/"/g, "'") + '" 2>nul');
         }
       } catch {}
@@ -5501,7 +5503,8 @@ async function executeToolCall(name, args) {
         }
         try {
           const gitDir = currentProjectType === 'local' ? await window.electronAPI.getProjectRoot(project) : null;
-          if (gitDir) {
+          // Dry-run: session content must never enter real history — skip auto-commit entirely.
+          if (!__drySession && gitDir) {
             await window.electronAPI.sandboxExec(gitDir, 'git add -A 2>nul && git commit -m "Auto-commit: ' + (args.description || 'edit ' + efPath).replace(/"/g, "'") + '" 2>nul');
           }
         } catch {}

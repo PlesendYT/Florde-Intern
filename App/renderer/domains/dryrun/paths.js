@@ -19,6 +19,7 @@ function toPosixRoot(root) {
 
 function resolveInRoot(root, userPath) {
   if (typeof userPath !== 'string' || userPath.trim() === '') return null;
+  if (/[\0]/.test(userPath)) return null;
   const base = toPosixRoot(root);
   const rel = String(userPath).replace(/\\/g, '/').trim();
   if (/^[A-Za-z]:\//.test(rel) || rel.startsWith('/')) return null;

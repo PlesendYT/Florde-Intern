@@ -16,3 +16,11 @@ test('tricky prefixes and dots do not escape', () => {
   assert.strictEqual(resolveInRoot('/tmp/ws', 'a/./b.py'), '/tmp/ws/a/b.py');
   assert.strictEqual(resolveInRoot('/tmp/ws', 'C:/evil.py'), null);
 });
+
+test('NUL bytes are rejected (fail closed)', () => {
+  assert.strictEqual(resolveInRoot('/tmp/ws', 'a\0b.py'), null);
+  assert.strictEqual(resolveInRoot('/tmp/ws', 'a/\0b'), null);
+  assert.strictEqual(resolveInRoot('/tmp/ws', '\0'), null);
+  assert.strictEqual(resolveInRoot('/tmp/ws', '../evil\0.py'), null);
+  assert.strictEqual(resolveInRoot('/tmp/ws', 'sub\0/../evil.py'), null);
+});

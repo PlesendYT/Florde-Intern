@@ -11,8 +11,11 @@ const MAX_MANIFEST_FILES = 5000;
 // Pure containment helper for session-aware file IPC: resolves a
 // session-relative path against sessionRoot. Returns the absolute path
 // inside sessionRoot, or null on escape (absolute input, `..` breakout,
-// empty/blank, overlong, NUL). Mirrors the containment logic of
-// resolveSafe in ./shared.js. No electron import: testable under plain node.
+// empty/blank, overlong, NUL, symlink escape). Mirrors the containment
+// logic of resolveSafe in ./shared.js. No electron import: testable under
+// plain node.
+// Note: renderer `resolveInRoot` stays string-based by design — this main-
+// layer helper is the enforcement point (it can use fs.realpathSync).
 function resolveSessionPath(sessionRoot, relPath) {
   if (typeof sessionRoot !== 'string' || sessionRoot.length === 0 || sessionRoot.length > 1000) return null;
   if (typeof relPath !== 'string' || relPath.length === 0 || relPath.length > 1000) return null;
@@ -24,7 +27,32 @@ function resolveSessionPath(sessionRoot, relPath) {
   const resolved = path.resolve(canonRoot, relPath);
   if (resolved === canonRoot) return resolved;
   if (!resolved.startsWith(canonRoot + path.sep)) return null;
-  return resolved;
+  // Symlink escape: string-prefix containment can be bypassed by a symlink
+  // inside the session pointing outside. Resolve the nearest existing
+  // ancestor and verify it stays inside the realpath of sessionRoot.
+  // Handles non-existent targets by realpath-ing the parent chain.
+  let realRoot;
+  try {
+    realRoot = fs.realpathSync(canonRoot);
+  } catch {
+    return resolved; // session root itself missing — no symlink can exist inside
+  }
+  let cur = resolved;
+  for (;;) {
+    try {
+      const realCur = fs.realpathSync(cur);
+      if (realCur === realRoot || realCur.startsWith(realRoot + path.sep)) return resolved;
+      return null;
+    } catch (e) {
+      if (e && e.code === 'ENOENT') {
+        const parent = path.dirname(cur);
+        if (parent === cur) return null;
+        cur = parent;
+        continue;
+      }
+      return null;
+    }
+  }
 }
 
 async function buildManifest(root) {

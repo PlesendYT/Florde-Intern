@@ -95,4 +95,38 @@ describe('resolveSessionPath containment', () => {
     assert.strictEqual(resolveSessionPath('/tmp/ws', ''), null);
     assert.strictEqual(resolveSessionPath('/tmp/ws', '   '), null);
   });
+
+  it('denies symlink escapes inside the session, allows normal nested paths', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-sym-'));
+    try {
+      const sessionRoot = path.join(base, 'ws');
+      const outside = path.join(base, 'outside');
+      fs.mkdirSync(sessionRoot, { recursive: true });
+      fs.mkdirSync(outside, { recursive: true });
+      fs.writeFileSync(path.join(outside, 'secret.txt'), 'secret');
+      fs.mkdirSync(path.join(sessionRoot, 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(sessionRoot, 'sub', 'ok.py'), 'x');
+      // Normal nested paths still resolve.
+      assert.strictEqual(
+        resolveSessionPath(sessionRoot, 'sub/ok.py'),
+        path.join(path.resolve(sessionRoot), 'sub', 'ok.py')
+      );
+      // Non-existent target without symlink still resolves (parent chain realpaths inside).
+      assert.strictEqual(
+        resolveSessionPath(sessionRoot, 'newdir/newfile.py'),
+        path.join(path.resolve(sessionRoot), 'newdir', 'newfile.py')
+      );
+      // Symlink inside session pointing outside must resolve null.
+      const link = path.join(sessionRoot, 'link');
+      try {
+        fs.symlinkSync(outside, link, 'dir');
+      } catch {
+        return; // symlink creation not permitted; skip escape assertions
+      }
+      assert.strictEqual(resolveSessionPath(sessionRoot, 'link/secret.txt'), null);
+      assert.strictEqual(resolveSessionPath(sessionRoot, 'link'), null);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
 });

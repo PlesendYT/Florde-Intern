@@ -8,6 +8,7 @@ const { TranslationService } = require('./main/services/translation-service');
 const { FileService } = require('./main/services/file-service');
 const { ShellService } = require('./main/services/shell-service');
 const { DbService } = require('./main/services/db-service');
+const { DryRunService } = require('./main/services/dryrun-service');
 const { SystemService } = require('./main/services/system-service');
 const { MiscService } = require('./main/services/misc-service');
 const { PermissionStore } = require('./main/services/permission-store');
@@ -18,6 +19,7 @@ const { registerTranslationIpc } = require('./main/ipc/translation');
 const { registerFileIpc } = require('./main/ipc/file');
 const { registerShellIpc } = require('./main/ipc/shell');
 const { registerDbIpc } = require('./main/ipc/db');
+const { registerDryRunIpc } = require('./main/ipc/dryrun');
 const { registerSystemIpc } = require('./main/ipc/system');
 const { registerMiscIpc } = require('./main/ipc/misc');
 
@@ -167,6 +169,7 @@ app.whenReady().then(async () => {
     shellService.setPermissionGate(permissionGate);
   }
   const dbService = new DbService();
+  const dryrunService = new DryRunService();
   const systemService = new SystemService({ getMainWindow });
   const miscService = new MiscService({ getMainWindow });
 
@@ -176,6 +179,7 @@ app.whenReady().then(async () => {
   registerFileIpc({ ipcMain, fileService });
   registerShellIpc({ ipcMain, shellService });
   registerDbIpc({ ipcMain, dbService });
+  registerDryRunIpc({ ipcMain, dryrunService });
   registerSystemIpc({ ipcMain, systemService });
   registerMiscIpc({ ipcMain, miscService });
 

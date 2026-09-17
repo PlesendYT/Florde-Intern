@@ -63,6 +63,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeProjectVolumes: (project) => ipcRenderer.invoke('sandbox:remove-project-volumes', project),
   },
 
+  dryrun: {
+    start: (projectName, opts) => ipcRenderer.invoke('dryrun:start', projectName, opts),
+    cleanup: (projectName, session) => ipcRenderer.invoke('dryrun:cleanup', projectName, session),
+    orphans: () => ipcRenderer.invoke('dryrun:orphans'),
+  },
+
   watchProject: (n) => ipcRenderer.invoke('watch-project', n),
   unwatchProject: (n) => ipcRenderer.invoke('unwatch-project', n),
   onFileChanged: (callback) => {

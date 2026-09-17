@@ -229,6 +229,14 @@ class FileService {
       for (const e of entries) {
         if (e.name.startsWith('.')) continue;
         const full = path.join(d, e.name);
+        if (sm.mode === 'session') {
+          // 4a: containment — a file symlink inside the session (ws/evil ->
+          // /etc/passwd) would otherwise be read and returned. Skip anything
+          // that does not resolve inside the session root.
+          const rel = path.relative(root, full);
+          if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+          if (!resolveSessionPath(sm.root, rel)) continue;
+        }
         if (e.isDirectory()) await walk(full);
         else {
           try {

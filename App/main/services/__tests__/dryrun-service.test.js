@@ -129,4 +129,69 @@ describe('resolveSessionPath containment', () => {
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+  it('denies dangling symlink write-targets (4b)', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-dangle-'));
+    try {
+      const sessionRoot = path.join(base, 'ws');
+      const outside = path.join(base, 'outside');
+      fs.mkdirSync(sessionRoot, { recursive: true });
+      fs.mkdirSync(outside, { recursive: true });
+      // Dangling: ws/link -> <outside-existing-dir>/newfile (target not yet existent).
+      // writeFileSync would follow the link and create the OUTSIDE file.
+      const target = path.join(outside, 'newfile');
+      const link = path.join(sessionRoot, 'link');
+      try {
+        fs.symlinkSync(target, link);
+      } catch {
+        return; // symlink creation disallowed; skip
+      }
+      assert.strictEqual(resolveSessionPath(sessionRoot, 'link'), null);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('denies non-existent paths under an outside symlink (4b guard)', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-undersym-'));
+    try {
+      const sessionRoot = path.join(base, 'ws');
+      const outside = path.join(base, 'outside');
+      fs.mkdirSync(sessionRoot, { recursive: true });
+      fs.mkdirSync(outside, { recursive: true });
+      const link = path.join(sessionRoot, 'link');
+      try {
+        fs.symlinkSync(outside, link, 'dir');
+      } catch {
+        return; // symlink creation disallowed; skip
+      }
+      assert.strictEqual(resolveSessionPath(sessionRoot, 'link/newfile.py'), null);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('denies outside-pointing file symlinks (4a search-enumeration guard)', () => {
+    // Session searchInFiles must skip these: it filters every candidate
+    // through resolveSessionPath and drops nulls.
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dryrun-filesym-'));
+    try {
+      const sessionRoot = path.join(base, 'ws');
+      const outside = path.join(base, 'outside');
+      fs.mkdirSync(sessionRoot, { recursive: true });
+      fs.mkdirSync(outside, { recursive: true });
+      fs.writeFileSync(path.join(outside, 'secret.txt'), 'SECRET-OUTSIDE');
+      fs.writeFileSync(path.join(sessionRoot, 'ok.txt'), 'ok');
+      const evil = path.join(sessionRoot, 'evil');
+      try {
+        fs.symlinkSync(path.join(outside, 'secret.txt'), evil);
+      } catch {
+        return; // symlink creation disallowed; skip
+      }
+      assert.strictEqual(resolveSessionPath(sessionRoot, 'evil'), null);
+      assert.ok(resolveSessionPath(sessionRoot, 'ok.txt') !== null);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
 });

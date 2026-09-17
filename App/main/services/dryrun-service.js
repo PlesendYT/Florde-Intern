@@ -45,6 +45,14 @@ function resolveSessionPath(sessionRoot, relPath) {
       return null;
     } catch (e) {
       if (e && e.code === 'ENOENT') {
+        // Dangling symlink: the failing component itself is a link whose
+        // target does not exist yet — writeFileSync would follow it outside.
+        // Deny links; only descend for genuinely missing (non-link) parts.
+        try {
+          if (fs.lstatSync(cur).isSymbolicLink()) return null;
+        } catch (le) {
+          if (!(le && le.code === 'ENOENT')) return null;
+        }
         const parent = path.dirname(cur);
         if (parent === cur) return null;
         cur = parent;

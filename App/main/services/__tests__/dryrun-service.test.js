@@ -80,6 +80,32 @@ describe('DryRunService git worktree workspace', () => {
       await svc.cleanup('p', { workspace: { kind: r.kind, path: r.path } });
     }
   });
+
+  it('sourceManifest mtimes equal source mtimes for worktree sessions (N3)', async function () {
+    try {
+      execFileSync('git', ['--version'], { stdio: 'ignore' });
+    } catch {
+      this.skip();
+    }
+    // Pin the SOURCE mtime to an old value AFTER the beforeEach commit
+    // (git does not track mtimes, so no re-commit needed). The worktree
+    // checkout stamps fresh mtimes; sourceManifest must match the source.
+    const oldTime = new Date('2020-01-01T00:00:00Z');
+    const appFile = path.join(repo, 'app.py');
+    fs.utimesSync(appFile, oldTime, oldTime);
+    const srcStat = fs.statSync(appFile);
+    const r = await svc.start('p', { projectRoot: repo });
+    try {
+      assert.strictEqual(r.ok, true);
+      assert.ok(Array.isArray(r.sourceManifest));
+      const entry = r.sourceManifest.find((f) => f.rel === 'app.py');
+      assert.ok(entry);
+      assert.strictEqual(entry.mtimeMs, srcStat.mtimeMs);
+      assert.strictEqual(entry.size, srcStat.size);
+    } finally {
+      await svc.cleanup('p', { workspace: { kind: r.kind, path: r.path } });
+    }
+  });
 });
 
 describe('resolveSessionPath containment', () => {

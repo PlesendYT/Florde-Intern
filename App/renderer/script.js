@@ -3707,7 +3707,10 @@ async function openProject(name) {
     LayoutManager.load('project-' + name);
   }
   renderFileTree();
-  try { if (typeof DryRun !== 'undefined') { DryRun.renderHeader(name); DryRun.renderReview(name); } } catch {}
+  // N4: sync the global toggle to this project — dryrun iff it has an
+  // active/review session, else its remembered mode (default build) — so
+  // toggle and badge never disagree after a project switch.
+  try { if (typeof DryRun !== 'undefined') { DryRun.syncToggleForProject(name); DryRun.renderHeader(name); DryRun.renderReview(name); } } catch {}
   updateSandboxStatus();
   updatePrivacyIndicator();
   updateProviderDropdown();
@@ -3923,10 +3926,11 @@ async function saveSession() {
 async function saveAllTabs() {
   // Dry-run (b): session bytes mirrored into real-project-keyed openTabs must
   // never leak into the real project via (auto/manual) save. Apply/Reject use
-  // direct project IPC and bypass this guard intentionally.
-  if (typeof DryRun !== 'undefined' && DryRun.activeFor) {
+  // direct project IPC and bypass this guard intentionally. Covers active AND
+  // review: tab buffers still hold session bytes in review.
+  if (typeof DryRun !== 'undefined' && DryRun.activeOrReviewFor) {
     try {
-      if (currentProject && DryRun.activeFor(currentProject)) {
+      if (currentProject && DryRun.activeOrReviewFor(currentProject)) {
         logToTerminal('Save blocked: dry-run session active — use Apply to Project to keep session changes, or Reject to discard', 'warn');
         return;
       }
@@ -3950,11 +3954,12 @@ async function saveAllTabs() {
 
 async function saveFileByName(name) {
   if (!name) return;
-  // Dry-run (b): see saveAllTabs — block manual + autosave while a session
-  // is active for the current project.
-  if (typeof DryRun !== 'undefined' && DryRun.activeFor) {
+  // Dry-run (b): see saveAllTabs — block manual + autosave (the autosave
+  // timer path calls saveFileByName) while a session is active OR in review
+  // for the current project.
+  if (typeof DryRun !== 'undefined' && DryRun.activeOrReviewFor) {
     try {
-      if (currentProject && DryRun.activeFor(currentProject)) {
+      if (currentProject && DryRun.activeOrReviewFor(currentProject)) {
         logToTerminal('Save blocked: dry-run session active — use Apply to Project to keep session changes, or Reject to discard', 'warn');
         renderTabs();
         return;
@@ -4142,7 +4147,6 @@ async function renderFileTree() {
   try {
     if (typeof DryRun !== 'undefined') {
       if (DryRun.activeOrReviewFor && DryRun.activeOrReviewFor(currentProject)) return;
-      else if (DryRun.activeFor && DryRun.activeFor(currentProject)) return;
     }
   } catch {}
   const container = document.getElementById('file-tree');
@@ -4605,6 +4609,22 @@ document.getElementById('btn-agentic-mode').addEventListener('click', () => {
   };
   const current = localStorage.getItem('florde-agent-mode') || 'build';
   const next = order[(order.indexOf(current) + 1) % order.length];
+  // N4 per-project toggle sync: remember the last non-dryrun mode per
+  // project. On entry to dryrun save the mode we came from (exactly once
+  // per entry); on plain non-dryrun switches with no session remember the
+  // choice. Never overwrite the remembered mode while a session exists.
+  try {
+    const proj = (typeof currentProject !== 'undefined') ? currentProject : null;
+    if (proj && typeof DryRun !== 'undefined' && DryRun._rememberPrev) {
+      let hasSession = false;
+      try { hasSession = !!(DryRun.activeOrReviewFor && DryRun.activeOrReviewFor(proj)); } catch { hasSession = false; }
+      if (next === 'dryrun' && current !== 'dryrun' && (current === 'build' || current === 'plan')) {
+        DryRun._rememberPrev(proj, current);
+      } else if (next !== 'dryrun' && !hasSession) {
+        DryRun._rememberPrev(proj, next);
+      }
+    }
+  } catch {}
   btn.classList.toggle('agentic-plan', next === 'plan');
   btn.classList.toggle('agentic-build', next === 'build');
   btn.classList.toggle('agentic-dryrun', next === 'dryrun');
@@ -5276,7 +5296,7 @@ const DryRun = {
     const projectRoot = await window.electronAPI.getProjectRoot(project);
     const res = await window.electronAPI.dryrun.start(project, { projectRoot });
     if (!res || !res.ok) throw new Error('Dry run start failed: ' + ((res && res.error) || 'unknown error'));
-    const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch, manifest: res.manifest });
+    const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch, manifest: res.manifest, sourceManifest: res.sourceManifest });
     try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
     // venv note: a Python project (requirements.txt / pyproject.toml /
     // setup.py found in the fresh manifest) gets guidance only. Creating a
@@ -5302,13 +5322,6 @@ const DryRun = {
     if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
     reg.finish(project, summary);
   },
-  sessionOpts(project) {
-    try {
-      const s = this.activeFor(project);
-      if (s && s.workspace && s.workspace.path) return { sessionRoot: s.workspace.path };
-    } catch {}
-    return null;
-  },
   onModeChange(next) {
     const project = (typeof currentProject !== 'undefined') ? currentProject : null;
     if (next === 'dryrun') {
@@ -5317,7 +5330,10 @@ const DryRun = {
         this._setToggle('build');
         return;
       }
-      if (!this.activeFor(project)) {
+      // Review stays isolated: an existing active OR review session just
+      // re-renders the Apply/Reject panel — never silently restarts (the
+      // user must Apply/Reject the review first).
+      if (!this.activeOrReviewFor(project)) {
         this.start(project).then(
           () => { this.renderHeader(project); this.renderReview(project); try { renderFileTree(); } catch {} },
           (err) => {
@@ -5523,6 +5539,35 @@ const DryRun = {
     btn.title = titles[mode];
     try { localStorage.setItem('florde-agent-mode', mode); } catch {}
   },
+  // N4 per-project toggle sync: the mode toggle is global but sessions are
+  // per-project. Remember the last non-dryrun mode per project so the toggle
+  // and the badge can never disagree (toggle Dry Run with no session).
+  _prevKey(project) {
+    return 'florde-agent-mode-prev:' + project;
+  },
+  _getPrev(project) {
+    try {
+      const v = localStorage.getItem(this._prevKey(project));
+      return (v === 'build' || v === 'plan') ? v : null;
+    } catch { return null; }
+  },
+  _rememberPrev(project, mode) {
+    try {
+      if (project && (mode === 'build' || mode === 'plan')) localStorage.setItem(this._prevKey(project), mode);
+    } catch {}
+  },
+  _restoreToggle(project) {
+    try {
+      const p = this._getPrev(project);
+      this._setToggle(p || 'build');
+    } catch { try { this._setToggle('build'); } catch {} }
+  },
+  syncToggleForProject(project) {
+    try {
+      if (this.activeOrReviewFor && this.activeOrReviewFor(project)) this._setToggle('dryrun');
+      else this._restoreToggle(project);
+    } catch {}
+  },
   async applyReview(project) {
     const reg = this._registry();
     if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
@@ -5531,7 +5576,10 @@ const DryRun = {
     const ch = await this._changes(project);
     // (1) conflict check via read-only stat IPC: snapshot size+mtime vs real.
     // Byte sizes (not chars), plus created-collision and resuscitate confirms.
-    const manifest = new Map(((s.workspace && s.workspace.manifest) || []).map((f) => [f.rel, f]));
+    // N3 split: compare against sourceManifest (real-at-start), not the
+    // dest-built manifest (session-at-start); falls back to manifest for
+    // pre-split sessions.
+    const manifest = new Map((((s.workspace && (s.workspace.sourceManifest || s.workspace.manifest)) || [])).map((f) => [f.rel, f]));
     const skipped = new Set();
     const canStat = !!(window.electronAPI && typeof window.electronAPI.projectStatFile === 'function');
     const byteLen = (str) => {
@@ -5607,7 +5655,9 @@ const DryRun = {
     if (skipped.size > 0) {
       try { await this._reloadTabsFromReal(project, [...skipped]); } catch {}
     }
-    this._setToggle('build');
+    // N4: restore the per-project remembered mode (default build), not a
+    // forced global 'build', so toggle and badge never disagree.
+    this._restoreToggle(project);
     this.renderHeader(project);
     this.renderReview(project);
     try { renderFileTree(); } catch {}
@@ -5623,7 +5673,8 @@ const DryRun = {
     try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
     // Drop session bytes mirrored into real-project-keyed tabs (see (b)).
     try { await this._reloadTabsFromReal(project); } catch {}
-    this._setToggle('build');
+    // N4: restore the per-project remembered mode (default build).
+    this._restoreToggle(project);
     this.renderHeader(project);
     this.renderReview(project);
     try { renderFileTree(); } catch {}
@@ -5734,8 +5785,11 @@ async function executeToolCall(name, args) {
     return 'Permission denied: ' + name + ' is blocked';
   }
 
-  const __drySession = (typeof DryRun !== 'undefined' && DryRun.activeFor)
-    ? DryRun.activeFor(project)
+  // B1: review stays fully isolated — interception covers active OR review
+  // (tab buffers still hold session bytes in review; follow-ups target the
+  // session, and Modify-Continue just refocuses chat).
+  const __drySession = (typeof DryRun !== 'undefined' && DryRun.activeOrReviewFor)
+    ? DryRun.activeOrReviewFor(project)
     : null;
   // Fix (dry-run isolation): rewritten absolute session paths must not reach
   // the project-scoped file IPC — sanitizePath plus the project root would
@@ -5847,7 +5901,9 @@ async function executeToolCall(name, args) {
         } catch {}
         renderFileTree();
         DiffViewer.show(written.map(sp => ({ name: sp, content: args.files[sp] || '', language: detectLanguage(sp) })));
-        if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'ok' });
+        // B2: batch writes log the comma-joined file list (args.path is
+        // empty for batch, so the generic path||command target would be '').
+        if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: written.join(', '), status: 'ok' });
         return 'Batch written ' + written.length + ' files: ' + written.join(', ');
       }
       const _writePath = sanitizePath(args.path);
@@ -5937,6 +5993,19 @@ async function executeToolCall(name, args) {
       const aiMsg = document.querySelector('.chat-msg.ai:last-child');
       if (aiMsg) aiMsg.appendChild(shellView);
       logToTerminal('Command output: ' + outputText.substring(0, 500), 'info');
+      // B2: exec success was never logged yet the summary counts commands.
+      // Target is the command; detail carries the exit code where available.
+      if (__drySession) {
+        let __dryCode = null;
+        try {
+          if (execResult && typeof execResult === 'object') {
+            const c = (execResult.code !== undefined) ? execResult.code : ((execResult.exitCode !== undefined) ? execResult.exitCode : execResult.status);
+            if (typeof c === 'number') __dryCode = c;
+          }
+        } catch {}
+        const __dryFailed = !!(execResult && typeof execResult === 'object' && execResult.ok === false);
+        DryRun.logOp(project, { kind: 'command', action: name, target: (args && args.command) || '', status: __dryFailed ? 'error' : 'ok', detail: (__dryCode !== null ? 'exit ' + __dryCode : '') });
+      }
       return outputText;
 
     case 'ask_question':
@@ -6049,6 +6118,8 @@ async function executeToolCall(name, args) {
         }
         renderTabs();
       }
+      // B2: rename success was never logged. Target is `old -> new`.
+      if (__drySession) DryRun.logOp(project, { kind: 'file', action: name, target: oldPath + ' -> ' + newPath, status: 'ok' });
       return 'Renamed ' + oldPath + ' to ' + newPath;
 
     case 'vision_request':
@@ -6213,8 +6284,25 @@ async function executeToolCall(name, args) {
       throw new Error('Unknown tool: ' + name);
   }
   } catch (__dryOpErr) {
-    if (__drySession && (name === 'write_file' || name === 'edit_file' || name === 'delete_file')) {
-      DryRun.logOp(project, { kind: 'file', action: name, target: (args && (args.path || args.command)) || '', status: 'error', detail: String((__dryOpErr && __dryOpErr.message) || __dryOpErr) });
+    // B2: log errors too — exec as command with exit code where available,
+    // rename with `old -> new`, batch with the comma-joined file list.
+    if (__drySession && (name === 'write_file' || name === 'edit_file' || name === 'delete_file' || name === 'exec_command' || name === 'rename_file')) {
+      let __dryTarget = (args && (args.path || args.command)) || '';
+      let __dryKind = 'file';
+      let __dryDetail = String((__dryOpErr && __dryOpErr.message) || __dryOpErr);
+      if (name === 'exec_command') {
+        __dryKind = 'command';
+        __dryTarget = (args && args.command) || '';
+        try {
+          const c = __dryOpErr && (__dryOpErr.code !== undefined ? __dryOpErr.code : (__dryOpErr.status !== undefined ? __dryOpErr.status : __dryOpErr.exitCode));
+          if (typeof c === 'number') __dryDetail = 'exit ' + c;
+        } catch {}
+      } else if (name === 'rename_file') {
+        __dryTarget = ((args && args.path) || '') + ' -> ' + ((args && args.new_path) || '');
+      } else if (name === 'write_file' && args && args.files && typeof args.files === 'object') {
+        try { __dryTarget = Object.keys(args.files).join(', '); } catch {}
+      }
+      DryRun.logOp(project, { kind: __dryKind, action: name, target: __dryTarget, status: 'error', detail: __dryDetail });
     }
     throw __dryOpErr;
   }
@@ -10108,8 +10196,8 @@ if (window.electronAPI.onFileChanged) {
   window.electronAPI.onFileChanged((project, file) => {
     if (project !== currentProject) return;
     // Dry-run: real-project watcher events must not overwrite session bytes
-    // mirrored into open tabs while a session is active.
-    try { if (typeof DryRun !== 'undefined' && DryRun.activeFor && DryRun.activeFor(project)) return; } catch {}
+    // mirrored into open tabs while a session is active OR in review.
+    try { if (typeof DryRun !== 'undefined' && DryRun.activeOrReviewFor && DryRun.activeOrReviewFor(project)) return; } catch {}
     const idx = openTabs.indexOf(file);
     if (idx < 0) return;
     // Only reload if no unsaved changes, otherwise show badge

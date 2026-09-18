@@ -17,7 +17,7 @@ function createSessionRegistry(storage) {
     },
     addOp(project, op) {
       const s = get(project);
-      if (!s || s.state !== 'active') throw new Error('no active session for ' + project);
+      if (!s || (s.state !== 'active' && s.state !== 'review')) throw new Error('no active session for ' + project);
       s.ops.push({ at: Date.now(), ...op });
       put(project, s);
     },

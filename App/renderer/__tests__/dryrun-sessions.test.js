@@ -50,3 +50,16 @@ test('activate moves review back to active, throws otherwise', () => {
   r.apply('p');
   assert.throws(() => r.activate('p'), /no review session/);
 });
+
+test('addOp accepts review state (follow-ups in review stay isolated + logged)', () => {
+  const r = createSessionRegistry(memStore());
+  r.start('p', { path: '/tmp/w', kind: 'copy' });
+  r.addOp('p', { kind: 'file', action: 'write_file', target: 'a.py', status: 'ok' });
+  r.finish('p', { files: 1 });
+  assert.strictEqual(r.get('p').state, 'review');
+  r.addOp('p', { kind: 'command', action: 'exec_command', target: 'python a.py', status: 'ok' });
+  const s = r.get('p');
+  assert.strictEqual(s.state, 'review');
+  assert.strictEqual(s.ops.length, 2);
+  assert.strictEqual(s.ops[1].action, 'exec_command');
+});

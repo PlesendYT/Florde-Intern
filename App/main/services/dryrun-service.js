@@ -127,7 +127,13 @@ class DryRunService {
       } catch (e) {
         return { ok: false, error: 'git worktree failed: ' + e.message };
       }
-      return { ok: true, kind: 'worktree', path: dest, branch, manifest: await buildManifest(dest) };
+      // N3 split: dest-built manifest stays the baseline for _changes
+      // modified detection (session-at-start); source-built manifest is the
+      // baseline for the Apply conflict check (real-at-start). git worktree
+      // and copy both stamp fresh mtimes in dest, so a single manifest
+      // cannot serve both checks without false positives on one side.
+      const [manifest, sourceManifest] = await Promise.all([buildManifest(dest), buildManifest(projectRoot)]);
+      return { ok: true, kind: 'worktree', path: dest, branch, manifest, sourceManifest };
     }
     try {
       fs.cpSync(projectRoot, dest, {
@@ -137,7 +143,8 @@ class DryRunService {
     } catch (e) {
       return { ok: false, error: 'copy failed: ' + e.message };
     }
-    return { ok: true, kind: 'copy', path: dest, branch: null, manifest: await buildManifest(dest) };
+    const [manifest, sourceManifest] = await Promise.all([buildManifest(dest), buildManifest(projectRoot)]);
+    return { ok: true, kind: 'copy', path: dest, branch: null, manifest, sourceManifest };
   }
 
   async cleanup(projectName, session) {

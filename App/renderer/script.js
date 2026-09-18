@@ -4134,11 +4134,17 @@ function renameTab(index) {
 
 async function renderFileTree() {
   if (!currentProject) return;
-  // Dry-run (a): while a session is active for this project the tree stays
-  // frozen on the real project — listing the real project here would present
-  // real files as if they were session state. Session changes surface via
-  // the dry-run review panel + diff viewer instead.
-  try { if (typeof DryRun !== 'undefined' && DryRun.activeFor && DryRun.activeFor(currentProject)) return; } catch {}
+  // Dry-run (a): while a session is active OR in review for this project the
+  // tree stays frozen on the real project — listing the real project here
+  // would present real files as if they were session state. Session changes
+  // surface via the dry-run review panel + diff viewer instead. Unfreezes
+  // only on apply/reject (session deleted).
+  try {
+    if (typeof DryRun !== 'undefined') {
+      if (DryRun.activeOrReviewFor && DryRun.activeOrReviewFor(currentProject)) return;
+      else if (DryRun.activeFor && DryRun.activeFor(currentProject)) return;
+    }
+  } catch {}
   const container = document.getElementById('file-tree');
   container.innerHTML = '';
   const files = await window.electronAPI.projectListFiles(currentProject);
@@ -5232,6 +5238,7 @@ function _stashDirtyTab(filePath, op) {
 // modules are not loaded (no session can exist then, tools run as before).
 const DryRun = {
   __reg: null,
+  _listingWarned: null,
   _registry() {
     const bridge = (typeof window !== 'undefined' && window.__dryrunSessions) ? window.__dryrunSessions : null;
     if (!bridge) return null;
@@ -5254,6 +5261,14 @@ const DryRun = {
       return (s && s.state === 'active') ? s : null;
     } catch { return null; }
   },
+  activeOrReviewFor(project) {
+    try {
+      const reg = this._registry();
+      if (!reg || !project) return null;
+      const s = reg.get(project);
+      return (s && (s.state === 'active' || s.state === 'review')) ? s : null;
+    } catch { return null; }
+  },
   async start(project) {
     const reg = this._registry();
     if (!reg) throw new Error('Dry run unavailable: session registry not loaded');
@@ -5262,6 +5277,7 @@ const DryRun = {
     const res = await window.electronAPI.dryrun.start(project, { projectRoot });
     if (!res || !res.ok) throw new Error('Dry run start failed: ' + ((res && res.error) || 'unknown error'));
     const session = reg.start(project, { path: res.path, kind: res.kind, branch: res.branch, manifest: res.manifest });
+    try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
     // venv note: a Python project (requirements.txt / pyproject.toml /
     // setup.py found in the fresh manifest) gets guidance only. Creating a
     // venv unasked would surprise (disk writes + activation side effects),
@@ -5325,6 +5341,7 @@ const DryRun = {
       const s = reg ? reg.get(project) : null;
       if (s && s.state === 'active') {
         try { reg.finish(project, this._summarize(s.ops || [])); } catch {}
+        try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
       }
     } catch {}
     this.renderHeader(project);
@@ -5375,16 +5392,37 @@ const DryRun = {
       opsEl.appendChild(line);
     }
     panel.classList.remove('hidden');
-    // Diff: session-vs-real file pairs into the existing read-only viewer.
+    // Deleted names as a group in the ops panel (counts stay in the summary).
     try {
-      const names = [...(ch ? ch.created : []), ...(ch ? ch.modified : [])].slice(0, 20);
-      if (names.length > 0 && typeof DiffViewer !== 'undefined') {
+      if (ch && ch.deleted && ch.deleted.length > 0) {
+        const del = document.createElement('div');
+        del.className = 'dryrun-op-fail';
+        const shown = ch.deleted.slice(0, 20);
+        del.textContent = 'Deleted: ' + shown.join(', ') + (ch.deleted.length > shown.length ? ' … (+' + (ch.deleted.length - shown.length) + ' more)' : '');
+        opsEl.appendChild(del);
+      }
+    } catch {}
+    // Diff: created as single session entries; modified as before/after pairs
+    // `name (real)` / `name (session)` in the existing single-pane viewer.
+    try {
+      const createdNames = (ch ? ch.created : []).slice(0, 20);
+      const modifiedNames = (ch ? ch.modified : []).slice(0, Math.max(0, 20 - createdNames.length));
+      if ((createdNames.length + modifiedNames.length) > 0 && typeof DiffViewer !== 'undefined') {
         const opts = (s.workspace && s.workspace.path) ? { sessionRoot: s.workspace.path } : null;
         const files = [];
-        for (const n of names) {
+        for (const n of createdNames) {
           let content = '';
           try { content = await window.electronAPI.projectReadFile(project, n, opts) || ''; } catch {}
           files.push({ name: n, content, language: detectLanguage(n) });
+        }
+        for (const n of modifiedNames) {
+          let realContent = '';
+          let sessContent = '';
+          try { realContent = await window.electronAPI.projectReadFile(project, n) || ''; } catch {}
+          try { sessContent = await window.electronAPI.projectReadFile(project, n, opts) || ''; } catch {}
+          const lang = detectLanguage(n);
+          files.push({ name: n + ' (real)', content: realContent, language: lang });
+          files.push({ name: n + ' (session)', content: sessContent, language: lang });
         }
         if (files.length > 0) DiffViewer.show(files);
       }
@@ -5404,21 +5442,53 @@ const DryRun = {
       if (op.kind === 'file' && op.target) touched.add(String(op.target).replace(/^\/+/, ''));
     }
     const manifest = (s.workspace && Array.isArray(s.workspace.manifest)) ? s.workspace.manifest : [];
-    const manifestSet = new Set(manifest.map((f) => f.rel));
-    let sessionFiles = [];
+    const manifestMap = new Map(manifest.map((f) => [f.rel, f]));
+    const manifestSet = new Set(manifestMap.keys());
+    let sessionFiles = null;
+    let listingFailed = false;
     try {
       const opts = (s.workspace && s.workspace.path) ? { sessionRoot: s.workspace.path } : null;
       sessionFiles = await window.electronAPI.projectListFiles(project, opts);
-    } catch { sessionFiles = []; }
-    if (!Array.isArray(sessionFiles)) sessionFiles = [];
+    } catch { listingFailed = true; sessionFiles = null; }
+    if (!Array.isArray(sessionFiles)) listingFailed = true;
+    if (listingFailed) {
+      // Never synthesize deletes from a failed listing: return empty changes.
+      try {
+        if (!this._listingWarned) this._listingWarned = new Set();
+        if (!this._listingWarned.has(project)) {
+          this._listingWarned.add(project);
+          logToTerminal('Dry run: session file listing failed — showing no file changes (not marking deletes)', 'warn');
+        }
+      } catch {}
+      return out;
+    }
     const sessionSet = new Set(sessionFiles);
     for (const f of sessionFiles) {
       if (!manifestSet.has(f) && !out.created.includes(f)) out.created.push(f);
     }
-    for (const f of touched) {
-      if (manifestSet.has(f) && sessionSet.has(f) && !out.modified.includes(f)) out.modified.push(f);
-      else if (manifestSet.has(f) && !sessionSet.has(f) && !out.deleted.includes(f)) out.deleted.push(f);
-      else if (!manifestSet.has(f) && sessionSet.has(f) && !out.created.includes(f)) out.created.push(f);
+    // Modified: manifest-vs-session stat compare (size or mtimeMs differs).
+    // Covers shell edits (sed, build output) missed by op-log-only detection.
+    const canStat = !!(window.electronAPI && typeof window.electronAPI.projectStatFile === 'function');
+    const sessOpts = (s.workspace && s.workspace.path) ? { sessionRoot: s.workspace.path } : null;
+    if (canStat) {
+      for (const f of sessionSet) {
+        if (!manifestSet.has(f)) continue;
+        const snap = manifestMap.get(f);
+        if (!snap) continue;
+        let st = null;
+        try { st = await window.electronAPI.projectStatFile(project, f, sessOpts); } catch { st = null; }
+        if (!st) continue;
+        const sizeDiff = (snap.size !== undefined && st.size !== undefined && st.size !== snap.size);
+        const mtimeDiff = (snap.mtimeMs !== undefined && st.mtimeMs !== undefined && st.mtimeMs !== snap.mtimeMs);
+        if ((sizeDiff || mtimeDiff) && !out.modified.includes(f)) out.modified.push(f);
+        else if ((snap.size === undefined && snap.mtimeMs === undefined) && touched.has(f) && !out.modified.includes(f)) {
+          out.modified.push(f);
+        }
+      }
+    } else {
+      for (const f of touched) {
+        if (manifestSet.has(f) && sessionSet.has(f) && !out.modified.includes(f)) out.modified.push(f);
+      }
     }
     for (const m of manifestSet) {
       if (!sessionSet.has(m) && !out.deleted.includes(m)) out.deleted.push(m);
@@ -5459,16 +5529,51 @@ const DryRun = {
     const s = reg.get(project);
     if (!s) return;
     const ch = await this._changes(project);
-    // (1) conflict check: real file size vs snapshot manifest from session start.
+    // (1) conflict check via read-only stat IPC: snapshot size+mtime vs real.
+    // Byte sizes (not chars), plus created-collision and resuscitate confirms.
     const manifest = new Map(((s.workspace && s.workspace.manifest) || []).map((f) => [f.rel, f]));
     const skipped = new Set();
+    const canStat = !!(window.electronAPI && typeof window.electronAPI.projectStatFile === 'function');
+    const byteLen = (str) => {
+      try { if (typeof Buffer !== 'undefined' && Buffer.byteLength) return Buffer.byteLength(str || '', 'utf8'); } catch {}
+      try { return new TextEncoder().encode(str || '').length; } catch {}
+      return (str || '').length;
+    };
     for (const f of [...ch.modified, ...ch.created]) {
       const snap = manifest.get(f);
-      if (!snap) continue;
-      let real = null;
-      try { real = await window.electronAPI.projectReadFile(project, f); } catch { real = null; }
-      if (real === null || real === undefined) continue;
-      if (snap.size !== undefined && real.length !== snap.size) {
+      let realStat = null;
+      try {
+        if (canStat) {
+          realStat = await window.electronAPI.projectStatFile(project, f);
+        } else {
+          const real = await window.electronAPI.projectReadFile(project, f);
+          if (real === null || real === undefined) realStat = null;
+          else realStat = { size: byteLen(real), mtimeMs: undefined };
+        }
+      } catch { realStat = null; }
+      if (!snap) {
+        if (realStat) {
+          let ok = false;
+          try { ok = confirm('"' + f + '" was also created in the real project outside the dry run. Overwrite with the session version?'); } catch { ok = false; }
+          if (!ok) {
+            skipped.add(f);
+            try { logToTerminal('Dry run apply skipped (collision): ' + f, 'warn'); } catch {}
+          }
+        }
+        continue;
+      }
+      if (!realStat) {
+        let ok = false;
+        try { ok = confirm('"' + f + '" was deleted in the real project since the dry run started. Recreate it from the session version?'); } catch { ok = false; }
+        if (!ok) {
+          skipped.add(f);
+          try { logToTerminal('Dry run apply skipped (deleted in real): ' + f, 'warn'); } catch {}
+        }
+        continue;
+      }
+      const sizeDiff = (snap.size !== undefined && realStat.size !== undefined && realStat.size !== snap.size);
+      const mtimeDiff = (snap.mtimeMs !== undefined && realStat.mtimeMs !== undefined && realStat.mtimeMs !== snap.mtimeMs);
+      if (sizeDiff || mtimeDiff) {
         let ok = false;
         try { ok = confirm('"' + f + '" changed in the real project since the dry run started. Overwrite with the session version?'); } catch { ok = false; }
         if (!ok) {
@@ -5496,6 +5601,12 @@ const DryRun = {
     // (4) registry apply() + IPC dryrun:cleanup.
     try { reg.apply(project); } catch {}
     try { await window.electronAPI.dryrun.cleanup(project, s); } catch {}
+    try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
+    // Reload skipped-conflict tabs from the real project so no stale session
+    // bytes linger (only OPEN tabs in the set; never opens new tabs).
+    if (skipped.size > 0) {
+      try { await this._reloadTabsFromReal(project, [...skipped]); } catch {}
+    }
     this._setToggle('build');
     this.renderHeader(project);
     this.renderReview(project);
@@ -5509,6 +5620,7 @@ const DryRun = {
     if (!s) return;
     try { reg.reject(project); } catch {}
     try { await window.electronAPI.dryrun.cleanup(project, s); } catch {}
+    try { if (this._listingWarned) this._listingWarned.delete(project); } catch {}
     // Drop session bytes mirrored into real-project-keyed tabs (see (b)).
     try { await this._reloadTabsFromReal(project); } catch {}
     this._setToggle('build');
@@ -5519,23 +5631,17 @@ const DryRun = {
     try { logToTerminal('Dry run rejected — temp workspace removed', 'info'); } catch {}
   },
   continueReview(project) {
-    // Leave the session active (re-activate from review if needed) and
+    // Leave the session active (re-activate from review via the registry) and
     // hand focus back to the chat input.
     try {
       const reg = this._registry();
       const s = reg ? reg.get(project) : null;
       if (s && s.state === 'review') {
-        try {
-          const raw = localStorage.getItem('florde-dryrun:' + project);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            parsed.state = 'active';
-            localStorage.setItem('florde-dryrun:' + project, JSON.stringify(parsed));
-          }
-        } catch {}
+        try { reg.activate(project); } catch {}
         this._setToggle('dryrun');
         this.renderHeader(project);
         this.renderReview(project);
+        try { renderFileTree(); } catch {}
       }
     } catch {}
     try {
@@ -5544,8 +5650,10 @@ const DryRun = {
     } catch {}
     try { logToTerminal('Dry run continues — session stays active', 'info'); } catch {}
   },
-  async _reloadTabsFromReal(project) {
+  async _reloadTabsFromReal(project, names) {
+    const only = (Array.isArray(names) || names instanceof Set) ? new Set(names) : null;
     for (const name of [...openTabs]) {
+      if (only && !only.has(name)) continue;
       try {
         const content = await window.electronAPI.projectReadFile(project, name);
         tabContents[name] = content === null ? '' : content;

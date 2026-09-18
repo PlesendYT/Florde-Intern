@@ -148,6 +148,27 @@ class FileService {
     return fs.readFileSync(full, 'utf-8');
   }
 
+  statProjectFile(name, filePath, opts) {
+    try {
+      const sm = _sessionModeOf(opts);
+      if (sm.mode === 'invalid') return null;
+      let full = null;
+      if (sm.mode === 'session') {
+        full = resolveSessionPath(sm.root, filePath);
+      } else {
+        const root = getProjectRoot(name);
+        if (!root) return null;
+        full = shared.resolveSafe(root, filePath);
+      }
+      if (!full || !fs.existsSync(full)) return null;
+      const stat = fs.statSync(full);
+      if (!stat.isFile()) return null;
+      return { size: stat.size, mtimeMs: stat.mtimeMs };
+    } catch {
+      return null;
+    }
+  }
+
   writeProjectFile(name, filePath, content, opts) {
     const sm = _sessionModeOf(opts);
     if (sm.mode === 'invalid') return false;

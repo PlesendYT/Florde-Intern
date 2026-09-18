@@ -28,6 +28,13 @@ function createSessionRegistry(storage) {
       s.summary = summary || null;
       put(project, s);
     },
+    activate(project) {
+      const s = get(project);
+      if (!s || s.state !== 'review') throw new Error('no review session for ' + project);
+      s.state = 'active';
+      put(project, s);
+      return s;
+    },
     apply(project) {
       if (!get(project)) throw new Error('no session for ' + project);
       storage.del(key(project));

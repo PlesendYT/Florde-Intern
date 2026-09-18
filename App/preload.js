@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   projectListFiles: (n, o) => ipcRenderer.invoke('project-list-files', n, o),
   projectReadFile: (n, f, o) => ipcRenderer.invoke('project-read-file', n, f, o),
+  projectStatFile: (n, f, o) => ipcRenderer.invoke('stat-project-file', n, f, o),
   projectWriteFile: (n, f, c, o) => ipcRenderer.invoke('project-write-file', n, f, c, o),
   projectDeleteFile: (n, f, o) => ipcRenderer.invoke('project-delete-file', n, f, o),
   projectRenameFile: (n, o2, n2, o) => ipcRenderer.invoke('project-rename-file', n, o2, n2, o),

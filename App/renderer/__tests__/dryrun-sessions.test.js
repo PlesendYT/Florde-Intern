@@ -36,3 +36,17 @@ test('reject clears session, listOrphans finds unknown projects', () => {
   r2.start('gone', { path: '/tmp/old', kind: 'copy' });
   assert.deepStrictEqual(r2.listOrphans(['other']), [{ project: 'gone', path: '/tmp/old', kind: 'copy' }]);
 });
+
+test('activate moves review back to active, throws otherwise', () => {
+  const r = createSessionRegistry(memStore());
+  r.start('p', { path: '/tmp/w', kind: 'copy' });
+  assert.throws(() => r.activate('p'), /no review session/);
+  r.finish('p', { files: 1 });
+  assert.strictEqual(r.get('p').state, 'review');
+  r.activate('p');
+  assert.strictEqual(r.get('p').state, 'active');
+  assert.throws(() => r.activate('missing'), /no review session/);
+  r.finish('p', null);
+  r.apply('p');
+  assert.throws(() => r.activate('p'), /no review session/);
+});

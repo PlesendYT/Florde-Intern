@@ -9,6 +9,7 @@ function registerFileIpc({ ipcMain, fileService }) {
 
   ipcMain.handle('project-list-files', (event, name, opts) => fileService.listProjectFiles(name, opts));
   ipcMain.handle('project-read-file', (event, name, filePath, opts) => fileService.readProjectFile(name, filePath, opts));
+  ipcMain.handle('stat-project-file', (event, name, filePath, opts) => fileService.statProjectFile(name, filePath, opts));
   ipcMain.handle('project-write-file', (event, name, filePath, content, opts) => fileService.writeProjectFile(name, filePath, content, opts));
   ipcMain.handle('project-delete-file', (event, name, filePath, opts) => fileService.deleteProjectFile(name, filePath, opts));
   ipcMain.handle('project-rename-file', (event, name, oldPath, newPath, opts) => fileService.renameProjectFile(name, oldPath, newPath, opts));

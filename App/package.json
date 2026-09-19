@@ -21,11 +21,12 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"renderer/__tests__/*.test.js\" \"sandbox/__tests__/*.test.js\" \"main/services/__tests__/*.test.js\" \"scripts/__tests__/*.test.js\"",
     "rebuild": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild",
-    "build:bundle": "electron-vite build",
-    "build": "electron-vite build && electron-builder --win --linux",
-    "build:win": "electron-vite build && electron-builder --win",
-    "build:linux": "electron-vite build && electron-builder --linux",
-    "build:mac": "electron-vite build && electron-builder --mac"
+    "build:bundle": "electron-vite build && npm run --silent prepare-renderer",
+    "build": "electron-vite build && npm run --silent prepare-renderer && electron-builder --win --linux",
+    "build:win": "electron-vite build && npm run --silent prepare-renderer && electron-builder --win",
+    "build:linux": "electron-vite build && npm run --silent prepare-renderer && electron-builder --linux",
+    "build:mac": "electron-vite build && npm run --silent prepare-renderer && electron-builder --mac",
+    "prepare-renderer": "node scripts/prepare-renderer-out.js"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

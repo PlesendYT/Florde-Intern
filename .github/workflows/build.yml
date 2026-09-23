@@ -11,6 +11,9 @@
 # Jede Plattform baut auf nativem Runner (native Module lassen sich nicht
 # cross-kompilieren). Fehlt eine Datei oder ein Build, schlägt der Workflow
 # fehl und es entsteht KEIN (unvollständiger) Release.
+# Am Ende läuft IMMER (Erfolg wie Fehler) der cleanup-Job: er löscht nur die
+# temporären Workflow-Artifacts und den Actions-Cache dieses Laufs.
+# Releases und Release-Assets werden niemals angefasst.
 name: Build installers
 
 on:
@@ -229,3 +232,49 @@ jobs:
             # shellcheck disable=SC2086
             gh release create "$TAG" $FILES --title "Florde v${VER}" --generate-notes
           fi
+
+  cleanup:
+    # Letzter Schritt: läuft IMMER — nach erfolgreichem Release ebenso wie
+    # bei fehlgeschlagenen Builds. Löscht ausschließlich temporäre
+    # Workflow-Artifacts und den Actions-Cache; Releases/Assets bleiben
+    # unangetastet (kein gh-release-Befehl in diesem Job).
+    needs: [build-win-x64, build-win-arm64, build-linux-x64, build-linux-arm64, build-mac-x64, build-mac-arm64, release]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Delete workflow artifacts of this run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          RUN_ID="${{ github.run_id }}"
+          FAILED=0
+          for id in $(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" --jq '.artifacts[].id'); do
+            if gh api --method DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null 2>&1; then
+              echo "Artifact gelöscht: $id"
+            else
+              echo "::warning::Artifact $id konnte nicht gelöscht werden"
+              FAILED=1
+            fi
+          done
+          echo "Artifacts bereinigt."
+          exit $FAILED
+      - name: Delete Actions cache
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          REF="${{ github.ref }}"
+          FAILED=0
+          for key in $(gh api "repos/$REPO/actions/caches?ref=$REF&per_page=100" --jq '.actions_caches[].key' | sort -u); do
+            if gh cache delete "$key" --ref "$REF" >/dev/null 2>&1; then
+              echo "Cache gelöscht: $key"
+            else
+              echo "::warning::Cache $key konnte nicht gelöscht werden"
+              FAILED=1
+            fi
+          done
+          echo "Cache bereinigt."
+          exit $FAILED

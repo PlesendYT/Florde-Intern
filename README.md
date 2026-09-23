@@ -82,6 +82,10 @@ Florde verfolgt einen **Privacy-First-Ansatz**.
  Ein besonderer Schwerpunkt liegt darauf, dem User möglichst viel Kontrolle darüber zu geben, welche Daten lokal verarbeitet werden und welche externen Dienste verwendet werden.  
  Durch die Unterstützung lokaler Modelle, unter anderem über Ollama, kann KI-Verarbeitung auch lokal erfolgen.  
  Florde soll dabei nicht voraussetzen, dass sämtliche Entwicklungsdaten grundsätzlich an einen zentralen Cloud-Dienst übertragen werden.   
+### **Secrets- und Capture-Schutz**  
+ Alle Eingabefelder für Secrets (API-Keys, Tokens) tragen das Tag `data-secret="true"` und werden erzwungen maskiert (`type="password"`, keine Autovervollständigung/Rechtschreibprüfung) dargestellt.  
+ Zusätzlich aktiviert Florde standardmäßig und ohne Toggle den nativen OS-Capture-Schutz des Hauptfensters (`BrowserWindow.setContentProtection`, kein DRM).  
+ Geltung: **Windows** (ab Win 10 2004 vollständig aus Captures entfernt, älter: schwarzes Fenster), **macOS** (Ausnahme: neuere Apps mit Apples ScreenCaptureKit erfassen das Fenster trotz Schutz), **Linux: wirkungslos** (von Electron/Chromium nicht implementiert — unter Linux gibt es bewusst keine Capture-Garantie).  
 ## **Projektcharakter**  
 Florde verbindet mehrere Bereiche in einer Anwendung:   
 - KI-Agenten   

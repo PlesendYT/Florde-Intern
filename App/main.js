@@ -12,6 +12,7 @@ const { DryRunService } = require('./main/services/dryrun-service');
 const { SystemService } = require('./main/services/system-service');
 const { MiscService } = require('./main/services/misc-service');
 const { PermissionStore } = require('./main/services/permission-store');
+const { applyContentProtection } = require('./main/services/content-protection');
 const { PermissionGate, resolveToolCategory } = require('./main/services/permission-gate');
 const { registerSandboxIpc } = require('./main/ipc/sandbox');
 const { registerSettingsIpc } = require('./main/ipc/settings');
@@ -62,6 +63,10 @@ function createWindow() {
       webviewTag: false,
     },
   });
+  // Security: OS-level capture exclusion for the whole window
+  // (Windows/macOS; documented no-op on Linux). Always on, no toggle —
+  // independent of whether a secret input is currently masked.
+  applyContentProtection(mainWindow);
   if (DEV_SERVER_URL) {
     mainWindow.loadURL(DEV_SERVER_URL);
   } else {

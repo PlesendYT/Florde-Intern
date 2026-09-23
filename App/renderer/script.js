@@ -10176,6 +10176,12 @@ DecisionLog.init();
 AuditLog.init();
 ManagementPanel.init();
 if (typeof ApiKeyManager !== 'undefined') ApiKeyManager.init();
+// Secret inputs (API keys, tokens): enforce masked password mode + tag guard.
+// The observer covers dynamically rendered key inputs (e.g. AI router routes).
+if (typeof window !== 'undefined' && window.__secrets) {
+  window.__secrets.applySecretProtection(document);
+  window.__secrets.observeSecretProtection(document);
+}
 // CodeIntelligence.init() removed — lifecycle managed by ManagementPanel
 TabGroupManager.init();
 pluginRegistry.init().then(() => {
@@ -11304,7 +11310,7 @@ const AIRouter = {
           <button data-id="${route.id}" data-action="delete" class="btn btn-sm btn-secondary" style="font-size:0.7rem;color:var(--danger);">✕</button>
         </div>
         <div style="display:flex;gap:0.4rem;align-items:center;">
-          ${isLocal ? `<input type="text" value="${this._esc(route.url || '')}" data-id="${route.id}" data-field="url" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="URL (e.g. http://localhost:11434)">` : `<input type="password" value="${this._esc(route.key || '')}" data-id="${route.id}" data-field="key" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="API Key">`}
+          ${isLocal ? `<input type="text" value="${this._esc(route.url || '')}" data-id="${route.id}" data-field="url" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="URL (e.g. http://localhost:11434)">` : `<input type="password" data-secret="true" value="${this._esc(route.key || '')}" data-id="${route.id}" data-field="key" class="ai-router-input" style="flex:1;padding:0.3rem 0.5rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" placeholder="API Key">`}
           <span style="font-size:0.7rem;color:var(--text3);">Temp:</span>
           <input type="number" value="${route.temperature || 0.7}" data-id="${route.id}" data-field="temperature" class="ai-router-input" style="width:50px;padding:0.3rem;background:var(--bg1);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.75rem;" min="0" max="2" step="0.1">
         </div>

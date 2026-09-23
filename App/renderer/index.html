@@ -585,7 +585,7 @@
             <div class="provider-body" data-provider="openai">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-openai" placeholder="sk-..." />
+                <input type="password" data-secret="true" id="key-openai" placeholder="sk-..." />
                 <span class="key-status" id="status-openai"></span>
               </div>
               <label>Model</label>
@@ -615,7 +615,7 @@
             <div class="provider-body" data-provider="deepseek">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-deepseek" placeholder="sk-..." />
+                <input type="password" data-secret="true" id="key-deepseek" placeholder="sk-..." />
                 <span class="key-status" id="status-deepseek"></span>
               </div>
               <label>Model</label>
@@ -636,7 +636,7 @@
             <div class="provider-body" data-provider="mistral">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-mistral" placeholder="..." />
+                <input type="password" data-secret="true" id="key-mistral" placeholder="..." />
                 <span class="key-status" id="status-mistral"></span>
               </div>
               <label>Model</label>
@@ -663,7 +663,7 @@
             <div class="provider-body" data-provider="anthropic">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
+                <input type="password" data-secret="true" id="key-anthropic" placeholder="sk-ant-..." />
                 <span class="key-status" id="status-anthropic"></span>
               </div>
               <label>Model</label>
@@ -686,7 +686,7 @@
             <div class="provider-body" data-provider="gemini">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-gemini" placeholder="..." />
+                <input type="password" data-secret="true" id="key-gemini" placeholder="..." />
                 <span class="key-status" id="status-gemini"></span>
               </div>
               <label>Model</label>
@@ -709,7 +709,7 @@
             <div class="provider-body" data-provider="grok">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-grok" placeholder="xai-..." />
+                <input type="password" data-secret="true" id="key-grok" placeholder="xai-..." />
                 <span class="key-status" id="status-grok"></span>
               </div>
               <label>Model</label>
@@ -730,7 +730,7 @@
             <div class="provider-body" data-provider="opencodezen">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-opencodezen" placeholder="oc-..." />
+                <input type="password" data-secret="true" id="key-opencodezen" placeholder="oc-..." />
                 <span class="key-status" id="status-opencodezen"></span>
               </div>
               <label>Model</label>
@@ -792,7 +792,7 @@
             <div class="provider-body" data-provider="opencodego">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-opencodego" placeholder="oc-..." />
+                <input type="password" data-secret="true" id="key-opencodego" placeholder="oc-..." />
                 <span class="key-status" id="status-opencodego"></span>
               </div>
               <label>Model</label>
@@ -883,7 +883,7 @@
             <div class="provider-body" data-provider="openrouter">
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-openrouter" placeholder="sk-or-..." />
+                <input type="password" data-secret="true" id="key-openrouter" placeholder="sk-or-..." />
                 <span class="key-status" id="status-openrouter"></span>
               </div>
               <label>Model</label>
@@ -939,7 +939,7 @@
               <input type="text" id="url-custom" value="https://api.example.com/v1/chat/completions" />
               <label>API Key</label>
               <div class="key-input-wrap">
-                <input type="password" id="key-custom" placeholder="..." />
+                <input type="password" data-secret="true" id="key-custom" placeholder="..." />
                 <span class="key-status" id="status-custom"></span>
               </div>
               <label>Model</label>
@@ -989,7 +989,7 @@
               <h3 id="app-connect-title" lang-key="connect_app">Connect App</h3>
               <p id="app-connect-desc" style="font-size:0.85rem;color:var(--text2);margin-bottom:1rem;"></p>
               <label lang-key="api_key_token">API Key / Token</label>
-              <input type="password" id="app-connect-key" placeholder="Paste your API key here..." autofocus />
+              <input type="password" data-secret="true" id="app-connect-key" placeholder="Paste your API key here..." autofocus />
               <p style="font-size:0.78rem;color:var(--text3);margin-top:0.3rem;" id="app-connect-help"></p>
               <div class="modal-actions" style="margin-top:1rem;">
                 <button id="btn-app-connect-save" class="btn btn-primary" lang-key="connect">Connect</button>
@@ -1532,6 +1532,7 @@
   <script type="module" src="domains/dryrun/paths.js"></script>
   <script type="module" src="domains/dryrun/sessions.js"></script>
   <script type="module" src="domains/dryrun/rewrite.js"></script>
+  <script type="module" src="domains/security/secrets.js"></script>
   <script src="script.js" defer></script>
 </body>
 </html>
